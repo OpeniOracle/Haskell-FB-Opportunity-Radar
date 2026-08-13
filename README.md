@@ -41,16 +41,21 @@ package version 0.1. Work produced in response to the baseline lives under `docs
 | Path | Purpose |
 | --- | --- |
 | `docs/design/10_DESIGN_RESPONSE.md` | Design-phase response to `00_CLAUDE_MASTER_PROMPT.md`: product statement, conflict register, traceability matrix, architecture, information architecture, user journeys, data-model review, source strategy, reliability plan, backlog, open decisions, and the proposed approval sequence |
-| `docs/design/11_SCHEMA_DELTA_PROPOSAL.sql` | Proposed v0.1.0 → v0.2.0 schema delta. A proposal for review, **not** a migration. Nothing has been applied |
+| `docs/design/11_SCHEMA_DELTA_PROPOSAL.sql` | Proposed v0.1.0 → v0.3.0 schema delta. A proposal for review, **not** a migration. Nothing has been applied |
 | `docs/design/12_PILOT_SOURCE_COVERAGE_MATRIX.md` | Verified per-account source coverage for all 15 Highest Value accounts, with a confidence label on every cell |
 | `docs/design/13_GATE_1_DECISION_PACKET.md` | Every open stakeholder decision with recommended default, alternatives, operational consequence, cost, owner, and required timing |
+| `docs/design/14_EXTERNAL_RESEARCH_RECONCILIATION.md` | Disposition of every material external research finding, the research-claim staging contract, and the change register |
 | `docs/adr/` | Architecture decision record. All entries are Proposed until ratified at a stakeholder gate |
 
-The design response is at version 0.2. Version 0.2 corrected two v0.1 findings — the
-characterization of the PACK EXPO event data, and an unverified SEC coverage count — and
-deepened the temporal model, evidence access modes, idempotency, runtime boundaries, and
-metrics design. Both corrections are recorded in the response rather than quietly
-rewritten.
+The design response is at version 0.3.
+
+- **v0.2** corrected two v0.1 findings — the characterization of the PACK EXPO event data,
+  and an unverified SEC coverage count — and deepened the temporal model, evidence access
+  modes, idempotency, runtime boundaries, and metrics design.
+- **v0.3** reconciled external research (Gemini and Perplexity outputs). Every external
+  claim was treated as untrusted input; no external record entered a canonical table.
+
+Corrections are recorded in the documents rather than quietly rewritten.
 
 ## How to use this package with Claude
 

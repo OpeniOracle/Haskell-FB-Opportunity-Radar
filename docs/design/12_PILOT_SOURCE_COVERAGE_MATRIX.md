@@ -3,7 +3,13 @@
 Companion to `docs/design/10_DESIGN_RESPONSE.md` §7. Supersedes the unsupported
 "five of fifteen file nothing with the SEC" count in the first design response.
 
-Version 0.2 · Status: **for stakeholder review at Gate G-3**
+Version 0.3 · Status: **for stakeholder review at Gate G-3**
+
+**v0.3** incorporates the external-research reconciliation: Nestlé's CIK is upgraded to
+**Verified**, three corporate-event dates are made precise, the FSIS MPI establishment API
+and EPA FRS are added to the pilot stack, a permanently-unavailable source is recorded,
+and a vendor-evaluation track replaces the assumption that local permit coverage must be
+built connector by connector. Dispositions are in `14_EXTERNAL_RESEARCH_RECONCILIATION.md`.
 
 ---
 
@@ -58,7 +64,7 @@ be counted as company coverage:
 | --- | --- | --- | --- | --- | --- |
 | 1 | PepsiCo, Inc. | Public (US) | **0000077476** (Verified) | Operational periodic | EDGAR + newsroom + state incentives |
 | 2 | The Coca-Cola Company | Public (US) | **0000021344** (Verified) | Operational periodic — **brand owner, not plant operator** | Bottler newsrooms + bottler filings |
-| 3 | Nestlé S.A. | Public (SIX; US OTC ADR) | 792990 (Unverified) | Ownership-only at best | US subsidiary newsrooms + state/local |
+| 3 | Nestlé S.A. | Public (SIX; US OTC ADR) | **0000792990** (Verified) | **Ownership-only** — verified identity, no operational periodic coverage | US subsidiary newsrooms + state/local |
 | 4 | The Kroger Co. | Public (US) | **0000056873** (Verified) | Operational periodic | Newsroom + DC/plant announcements + local planning |
 | 5 | Tyson Foods, Inc. | Public (US) | **0000100493** (Verified) | Operational periodic | **FSIS** + EDGAR + closures |
 | 6 | Mars, Incorporated | **Private** | None (operating co.) | Ownership-only, via targets | Newsroom + **Kellanova legacy footprint** + state/local |
@@ -95,8 +101,8 @@ Verified during this pass, and material to entity modeling:
 | Mars completes acquisition of **Kellanova** ($36B) | **11 Dec 2025** | Mars — a private company with no SEC coverage — absorbs a large US plant footprint (Pringles, Cheez-It, Pop-Tarts). Kellanova's periodic filings (CIK 0000055067) end as a coverage source at deregistration |
 | **Nestlé Waters NA** → BlueTriton (2021) → merged with Primo Water into **Primo Brands** (PRMB, CIK 0002042694) | merger closed **8 Nov 2024** | Poland Spring, Deer Park, Ozarka, Ice Mountain, Pure Life plant activity is **not Nestlé**. Attributing it to Nestlé would be a resolution error against a Highest Value account |
 | Unilever demerges ice cream as **The Magnum Ice Cream Company** (MICC) | trading from **8 Dec 2025** | Ben & Jerry's, Magnum, Cornetto, Wall's plants leave Unilever |
-| **KDP acquires JDE Peet's**, then plans a tax-free split into two US-listed companies | acquisition ~**Apr 2026**; separation readiness targeted **year-end 2026** | KDP will likely become two accounts *during the pilot* |
-| **Kimberly-Clark / Kenvue** merger pending (shareholders approved 29 Jan 2026; HSR expired 4 Feb 2026) | expected **2H 2026** | A sixth structural change may land inside the pilot window |
+| **KDP completes the JDE Peet's acquisition** (96.22%), then plans a tax-free split into two US-listed companies | completed **1 Apr 2026**; separation date **undetermined** | KDP will likely become two accounts *during the pilot* |
+| **Kimberly-Clark / Kenvue** merger pending (shareholders approved 29 Jan 2026; HSR expired 4 Feb 2026) | expected **Q4 2026** | A sixth structural change is likely to land inside the pilot window |
 
 Four completed reorganizations in roughly twenty months, plus two more in flight. This
 is not an edge case to handle later. **The entity model must treat ownership as
@@ -163,12 +169,16 @@ will silently misattribute projects every time one of these closes.
 
 - **Canonical company:** Nestlé S.A. · **Status:** Public, SIX Swiss Exchange; US
   presence is an unsponsored/Level-1 ADR (NSRGY), not a US listing
-- **SEC CIK:** 792990 — **Unverified** (appeared only in a third-party filing aggregator,
-  never in an SEC-controlled URL)
+- **SEC CIK:** 0000792990 — **Verified** (SEC-controlled URLs under
+  `/Archives/edgar/data/792990/`, accessions `0001209191-15-057775` and
+  `0000950170-24-111110`). Upgraded from Unverified in v0.2. **The coverage class does not
+  change**: these are ownership and transaction filings against other registrants, not
+  operational periodic coverage of Nestlé's F&B business
 - **Useful periodic filing coverage:** **None.** Not a US reporting company; no 10-K and
   no 20-F obligation as an OTC Level-1 ADR
-- **Ownership-only / incidental:** Historic SC 13D/G-type filings against US registrants.
-  Episodic; must not be treated as coverage
+- **Ownership-only / incidental:** SC 13D/G-type filings against US registrants, spanning
+  at least 2015 and 2024. Episodic and genuinely useful as an M&A signal; **must not be
+  treated as company coverage**
 - **Newsroom:** `nestle.com/media/pressreleases` (global) and `nestleusa.com/media` —
   both **Unverified**; **Purina** (`purina.com` / Nestlé Purina newsroom) matters
   independently for pet food
@@ -287,8 +297,9 @@ will silently misattribute projects every time one of these closes.
   directly useful for entity resolution** and appear in the verified URLs
 - **Ownership-only / incidental:** —
 - **Newsroom / IR:** `investor.kimberly-clark.com/news-releases` — **Corroborated**
-- **Subsidiaries / operators:** Kimberly-Clark North America; **Kenvue acquisition
-  pending, expected 2H 2026** (shareholders approved 29 Jan 2026; HSR expired 4 Feb 2026)
+- **Subsidiaries / operators:** Kimberly-Clark North America; **Kenvue acquisition pending, expected Q4
+  2026** per Kenvue's Q2 2026 results (shareholders approved 29 Jan 2026; HSR expired
+  4 Feb 2026; reported at ~$48.7bn). **Not completed — do not represent it as closed**
 - **Priority state / permit / regulatory / utility:** WI, GA, AL, TX, PA, CT; EPA ECHO is
   highly relevant (tissue and nonwovens are water- and energy-intensive); **industrial
   water and wastewater is the strongest Haskell capability match for this account**
@@ -427,10 +438,12 @@ will silently misattribute projects every time one of these closes.
 - **IR:** `investors.keurigdrpepper.com` — **Unverified**; `keurigdrpepper.com` corporate
   releases — **Corroborated**
 - **Subsidiaries / operators:** Dr Pepper, Snapple, Canada Dry, Core, Bai, Keurig coffee
-  systems; **JDE Peet's acquired ~April 2026** (>95% of shares; Euronext listing
-  terminated). **A tax-free spin into two independent US-listed companies — a refreshment
-  beverage company and a global coffee company — is planned, with operational readiness
-  targeted by year-end 2026**
+  systems; **JDE Peet's acquisition completed 1 April 2026** — the offer was declared
+  unconditional on 27 March 2026 and settled on 1 April at €31.85 per share for
+  466,712,270 shares, **96.22%** of JDE Peet's, roughly €14.86bn. **A tax-free spin into
+  two independent US-listed companies follows an interim operating period; no separation
+  date is fixed** (operational readiness was targeted for year-end 2026, which is a
+  target, not a date)
 - **Priority state / permit / regulatory / utility:** TX (Frisco/Plano HQ), VT (Keurig),
   PA, MA, CA, GA; state incentives; water and wastewater permits for bottling
 - **Coverage gaps:** **The account will likely become two accounts inside the pilot
@@ -496,6 +509,65 @@ no periodic filing coverage at all**, and Coca-Cola's filings do not reach its p
 Newsrooms and state incentive sources must be enabled in **week 1** alongside EDGAR, or
 five of fifteen accounts will show green connector health and produce nothing — the exact
 failure mode the platform exists to prevent.
+
+---
+
+## Sources added or corrected by the external-research pass
+
+### USDA FSIS MPI establishment directory API — **added to the pilot stack**
+
+The v0.2 matrix carried FSIS *recalls* and missed the **establishment directory API**,
+which is a different and more valuable thing: a weekly-updated registry of meat, poultry,
+and egg establishments, queryable in JSON, keyed by **establishment number**.
+
+That establishment number is a durable facility identifier that persists across recalls.
+For a platform whose load-bearing problem is facility identity, a government-maintained
+facility registry with a stable key is worth more than the recall feed built on top of it.
+
+- Documentation: `fsis.usda.gov/science-data/developer-resources/mpi-api` — **Verified**
+- Directory: `fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory`
+- Priority: **A**, Tyson-critical, also relevant to any protein or prepared-foods account
+- Open questions (V8): schema, rate limits, and the quality of the
+  establishment-to-organization join
+
+### EPA ECHO / FRS — **promoted from B to A**, for identity rather than signal
+
+Promoted not for enforcement content, which lags, but because the **Facility Registry
+Service ID is a stable cross-program facility key**. Together with FSIS establishment
+numbers it gives two independent government-maintained identifiers to resolve facilities
+against — which is exactly what the entity-resolution ladder in ADR 0005 needs at its
+deterministic top end.
+
+### FDA Food Facility Registration — **permanently unavailable, recorded so it is not re-attempted**
+
+The FDA's list of registered food facilities and the registration documents themselves are
+**not subject to disclosure under FOIA**, and neither is derived information that would
+identify a registered person — **21 U.S.C. 350d(a)(5)**. There is no lawful connector to
+build here.
+
+This is recorded deliberately. A food-facility registry is such an obvious thing to want
+that, without a written record of why it does not exist, an implementer will rediscover the
+same dead end. openFDA food enforcement remains useful for recalls and is **not** a
+facility registry.
+
+### Commercial project and permit vendors — evaluation track, not a purchase
+
+The external research assessed five vendors. Three of its conclusions were wrong and are
+corrected here; all five remain **unverified on the question that actually decides
+suitability**, which is F&B coverage depth.
+
+| Vendor | External research said | Corrected finding | Status |
+| --- | --- | --- | --- |
+| **BuildCentral / Hubexo** | No genuine machine-callable API | **Wrong.** A published API datasheet exists (`constructionwire.com/Content/pdf/buildcentral_api.pdf`) | API exists. **But ConstructionWire's advertised verticals are retail/CRE, hotels, multi-family and single-family residential, medical, and energy & mining — food and beverage is not among them.** Coverage is now the open question, not access |
+| **ConstructConnect** | No credible official API documentation | **Wrong.** An official developer portal exists (`developer.io.constructconnect.com/overview`), REST with `x-api-key` | Access appears gated to subscribers. The unofficial third-party scraper wrapper remains **rejected** on ToS grounds — that part was right |
+| **Industrial Info Resources** | Vendor marketing claims only | **Partly wrong.** A real API exists: REST, OpenAPI 3.0, JWT (`api.industrialinfo.com/idb/`) | Version claim unconfirmed — sources reviewed describe **v2.6 of 17 Mar 2026**, not v2.7 of July 2026. The portal presents an **energy-oriented** database; F&B depth is a demo question |
+| **Dodge Construction Network** | Vendor marketing claims only | Unchanged | Quote-only; F&B depth unverified |
+| **Shovels.ai** | Corroborated; best build-vs-buy alternative | Unchanged | Free tier exists (250 requests); jurisdictional overlap with pilot geographies unverified |
+
+**Recommendation (D21).** Run a bounded vendor track in parallel with two or three
+API-exposed jurisdictions, and decide on evidence. Building dozens of municipal connectors
+before knowing whether one vendor covers the same ground is the expensive mistake; buying
+a subscription before knowing whether it contains any F&B projects is the other one.
 
 ---
 

@@ -1,5 +1,5 @@
 -- Haskell Food & Beverage Opportunity Radar
--- PROPOSED schema delta v0.1.0 -> v0.2.0
+-- PROPOSED schema delta v0.1.0 -> v0.2.0 -> v0.3.0
 --
 -- THIS IS A DESIGN PROPOSAL, NOT A MIGRATION. Do not run it.
 -- Nothing here has been applied to any database.
@@ -17,6 +17,17 @@
 --   * expected-coverage model, so health is not mistaken for coverage       (C23)
 --   * time-bounded ownership for corporate reorganizations                  (C24)
 --   * replay-cache key covering every effective model input                 (C25)
+--
+-- Revision 0.3 adds the external-research reconciliation deltas:
+--   * evidence corrections as relationships, never overwrites                (C26)
+--   * per-source cadence and yield baselines                                 (C27)
+--   * outbound-alert circuit breaker, quarantine before delivery             (C28)
+--   * bounded retries, parked messages, per-source circuit state             (C29)
+--   * research-claim staging with an activation gate that fails closed  (ADR 0011)
+--   * 'season' added to temporal_precision, from a real mis-stored date       (C2)
+--   * four-value scope vocabulary: fnb_core/fnb_adjacent/non_fnb/unknown     (C22)
+--   * provisional signal subtypes and ranking hypotheses, all NON-SCORING
+--   * a register of permanently unavailable sources
 --
 -- Each block cites the conflict-register ID from 10_DESIGN_RESPONSE.md §2.
 -- Ordering below is dependency order, not priority order.
@@ -240,6 +251,8 @@ create type temporal_precision as enum (
     'exact_day',    -- "on 14 March 2027"
     'month',        -- "in March 2027"
     'quarter',      -- "in Q3 2027"
+    'season',       -- "by spring 2029" -- added by the external-research pass, where an
+                    -- external record had stored exactly this phrase as 2029-03-31
     'half_year',    -- "in the second half of 2027"
     'year',         -- "in 2027"
     'range',        -- "between 2027 and 2029"
@@ -593,15 +606,22 @@ create table account_source_expectations (
 --     coverage must come from newsrooms, incentives, and permits instead.
 
 -- C22  Account scope classification, so non-core F&B accounts are classified
---      rather than treated as list errors.
+--      rather than treated as list errors. Four-value vocabulary per the external
+--      research reconciliation; 'unknown' is a transient state, not a resting place.
 alter table organizations
-    add column scope_class text not null default 'core_food_beverage'
+    add column scope_class text not null default 'unknown'
         check (scope_class in (
-            'core_food_beverage',
-            'adjacent_consumer_products',
-            'strategic_supplier_partner',
-            'scope_confirmation_required'
+            'fnb_core',
+            'fnb_adjacent',      -- adjacent manufacturer OR strategic supplier/partner
+            'non_fnb',
+            'unknown'
         ));
+
+-- Supplier routing is a property of WHICH FACILITY a signal concerns, not of the
+-- account class: a signal about a supplier's own plant is eligible, one about its
+-- customers' plants is account intelligence.
+alter table organizations
+    add column supplier_routing boolean not null default false;
 
 -- ---------------------------------------------------------------------------
 -- C25  MODEL REPLAY CACHE. The v0.1 key -- content hash, prompt version, model,
@@ -721,6 +741,274 @@ alter table market_trends
     add column velocity_method text not null default 'org_weighted_rate_v1',
     add column window_days smallint not null default 30,
     add column baseline_days smallint not null default 90;
+
+-- ---------------------------------------------------------------------------
+-- C26  CORRECTIONS SUPERSEDE; THEY DO NOT OVERWRITE. (ADR 0012)
+--
+--      An external review proposed that newer documents automatically overwrite
+--      older conflicting properties. Rejected: evidence is immutable, and
+--      recency is not authority -- a syndicated copy published Thursday is newer
+--      and weaker than the company's own Tuesday release.
+-- ---------------------------------------------------------------------------
+
+create table evidence_relationships (
+    id uuid primary key default gen_random_uuid(),
+    subject_evidence_id uuid not null references evidence(id) on delete cascade,
+    object_evidence_id uuid not null references evidence(id) on delete cascade,
+    relationship text not null check (relationship in (
+        'corrects', 'retracts', 'withdraws', 'contradicts',
+        'supersedes', 'delays', 'cancels'
+    )),
+    detected_by text not null check (detected_by in (
+        'explicit_marker', 'publisher_notice', 'model_candidate', 'manual'
+    )),
+    detected_at timestamptz not null default now(),
+    check (subject_evidence_id <> object_evidence_id),
+    unique (subject_evidence_id, object_evidence_id, relationship)
+);
+
+create index evidence_relationships_object_idx
+    on evidence_relationships(object_evidence_id, relationship);
+
+-- Project/opportunity lifecycle gains the matching states so a delayed or
+-- cancelled project is a STATE, not a deletion.
+alter table signals
+    add column correction_state text not null default 'current'
+        check (correction_state in (
+            'current', 'corrected', 'retracted', 'withdrawn', 'superseded', 'disputed'
+        ));
+
+-- The presented view is COMPUTED, never stored, in this order:
+--   1. correction status  (retracted/withdrawn leave the view, stay readable)
+--   2. source authority   (primary > official_secondary > secondary)
+--   3. specificity        (names a facility > names a region)
+--   4. temporal applicability (as-at the event date -- ADR 0005)
+--   5. recency            (final tiebreak, never the first test)
+-- A materialized projection for read performance is acceptable later, provided
+-- it is derived and rebuildable. It must not become the system of record.
+
+alter table sources
+    add column source_authority text not null default 'unknown'
+        check (source_authority in (
+            'primary', 'official_secondary', 'secondary', 'unknown'
+        ));
+
+-- ---------------------------------------------------------------------------
+-- C27, C28, C29  OPERABILITY CONTAINMENT.
+-- ---------------------------------------------------------------------------
+
+-- C27  Per-source cadence and yield baselines. A global "novelty below P99 over
+--      7 days" rule was rejected: meaningless for a board that meets quarterly,
+--      and noise-dominated on low-count series.
+alter table sources
+    add column expected_cadence interval,
+    add column baseline_yield_per_cycle numeric(8,2),
+    add column baseline_observed_cycles integer not null default 0,
+    add column cadence_grace_multiplier numeric(3,2) not null default 2.0;
+
+-- C29  Bounded retries -> parked queue -> circuit breaker recorded on the source.
+alter table sources
+    add column circuit_state text not null default 'closed'
+        check (circuit_state in ('closed', 'half_open', 'open')),
+    add column circuit_opened_at timestamptz,
+    add column max_attempts_per_run integer not null default 4
+        check (max_attempts_per_run between 1 and 10);
+
+create table parked_messages (
+    id uuid primary key default gen_random_uuid(),
+    source_id text references sources(id),
+    queue_class text not null,
+    payload_ref text not null,          -- reference, never the payload itself
+    failure_code text not null,
+    failure_detail text,
+    attempts integer not null check (attempts >= 1),
+    parked_at timestamptz not null default now(),
+    replayed_at timestamptz,
+    replay_outcome text
+);
+
+create index parked_messages_open_idx
+    on parked_messages(queue_class, parked_at) where replayed_at is null;
+
+-- Alerting is on oldest-parked-age, retry-exhaustion rate, and depth relative to
+-- source volume. NOT on "parked_messages is non-empty" -- one permanently
+-- malformed PDF would then page someone forever and train them to ignore it.
+
+-- C28  Outbound-alert circuit breaker: quarantine BEFORE delivery. Deduplication
+--      is not a defense against a legitimate-looking flood; it would ship the
+--      storm perfectly.
+create table alert_dispatch_windows (
+    id uuid primary key default gen_random_uuid(),
+    window_start timestamptz not null,
+    window_end timestamptz not null,
+    alerts_generated integer not null default 0,
+    moving_average numeric(10,2),
+    breaker_multiple numeric(4,2) not null default 3.0,
+    breaker_tripped boolean not null default false,
+    pinned_inference_version text,
+    released_at timestamptz,
+    released_by text,
+    unique (window_start, window_end)
+);
+
+alter table alerts
+    add column quarantined boolean not null default false,
+    add column quarantine_window_id uuid references alert_dispatch_windows(id);
+
+-- ---------------------------------------------------------------------------
+-- C13 (E13/E14)  Provisional signal subtypes and ranking hypotheses from the
+--      external backtest. They carry NO scoring weight. The backtest is a set of
+--      worked examples -- one summarized row per project, no defined outcome
+--      dates, most rows citing a bare domain -- so its thresholds (a 500,000
+--      gal/day water figure, an SPE-implies->$100M correlation, a Series C
+--      cut-off, a job-title filter) are NOT encoded as rules.
+-- ---------------------------------------------------------------------------
+
+alter table signal_event_types
+    add column evaluation_status text not null default 'production'
+        check (evaluation_status in ('production', 'hypothesis', 'retired')),
+    add column hypothesis_source text;
+
+-- Provisional subtypes, all evaluation_status = 'hypothesis', all non-scoring:
+--   incentive_approval, zoning_variance, environmental_permit,
+--   utility_load_study, capacity_guidance, plant_specific_hiring,
+--   supplier_equipment_announcement, special_purpose_entity_formation
+
+create table ranking_hypotheses (
+    id uuid primary key default gen_random_uuid(),
+    name text not null unique,
+    description text not null,
+    component_event_types text[] not null,
+    proposed_by text not null,
+    evidence_basis text not null,
+    enabled boolean not null default false,   -- disabled until an evaluated corpus exists
+    evaluation_corpus_id uuid,
+    created_at timestamptz not null default now(),
+    check (enabled = false or evaluation_corpus_id is not null)
+);
+
+-- E15  Negative controls belong in the evaluation corpus: cancelled projects and
+--      lost-bid sites. A site-selection evaluation legitimately produces signals
+--      at several locations, only one of which becomes a project.
+create table evaluation_corpus_entries (
+    id uuid primary key default gen_random_uuid(),
+    corpus_id uuid not null,
+    entry_kind text not null check (entry_kind in ('positive', 'negative_control')),
+    subject text not null,
+    outcome text not null,
+    outcome_date date,
+    outcome_date_precision temporal_precision not null default 'unknown',
+    citation_url text,
+    citation_status text not null default 'uncited'
+        check (citation_status in ('uncited', 'cited', 'verified')),
+    check (citation_status = 'uncited' or citation_url is not null)
+);
+
+-- ---------------------------------------------------------------------------
+-- E26 / ADR 0011  RESEARCH-CLAIM STAGING. External research NEVER lands in a
+--      canonical table. Activation FAILS CLOSED.
+--
+--      The interchange contract and a worked example are in
+--      docs/design/14_EXTERNAL_RESEARCH_RECONCILIATION.md §6.
+-- ---------------------------------------------------------------------------
+
+create table research_batches (
+    id uuid primary key default gen_random_uuid(),
+    source_file text not null,
+    file_hash char(64),
+    tool_or_author text not null,
+    received_at timestamptz not null default now(),
+    record_count integer not null check (record_count >= 0),
+    notes text
+);
+
+create table research_claims (
+    research_claim_id text primary key,
+    batch_id uuid not null references research_batches(id) on delete cascade,
+    source_file text not null,
+    source_record_locator text not null,     -- JSONL line, table row, or heading
+    claim_type text not null check (claim_type in (
+        'entity', 'alias', 'facility', 'relationship', 'project', 'source', 'hypothesis'
+    )),
+    subject_ref text not null,
+    predicate text not null,
+    object_value jsonb not null,
+
+    -- valid time, same six-field temporal contract as canonical rows
+    valid_raw_expression text,
+    valid_start date,
+    valid_end date,
+    valid_precision temporal_precision not null default 'unknown',
+    valid_basis temporal_basis not null default 'unknown',
+    valid_inference_note text,
+
+    observed_at date not null,
+    evidence_urls text[] not null default '{}',
+    verification_status text not null check (verification_status in (
+        'unverified', 'corroborated', 'verified'
+    )),
+    source_authority text not null check (source_authority in (
+        'primary', 'official_secondary', 'secondary', 'unknown'
+    )),
+    scope_classification text not null check (scope_classification in (
+        'fnb_core', 'fnb_adjacent', 'non_fnb', 'unknown'
+    )),
+    activation_status text not null default 'staged' check (activation_status in (
+        'staged', 'validated', 'rejected', 'superseded', 'needs_evidence'
+    )),
+    rejection_reason text,
+    pilot_account_ref text,
+    normalized_target_id uuid,
+    created_at timestamptz not null default now(),
+
+    -- THE ACTIVATION GATE. Fails closed.
+    check (activation_status <> 'rejected'
+           or (rejection_reason is not null and length(trim(rejection_reason)) > 0)),
+    check (activation_status <> 'validated'
+           or (normalized_target_id is not null
+               and array_length(evidence_urls, 1) >= 1
+               and scope_classification <> 'unknown'
+               and (valid_start is null or valid_precision <> 'unknown')
+               and (valid_basis <> 'inferred' or valid_inference_note is not null))),
+    check (valid_basis <> 'inferred' or valid_inference_note is not null),
+    check (valid_end is null or valid_start is null or valid_end >= valid_start)
+);
+
+create index research_claims_activation_idx
+    on research_claims(activation_status, claim_type);
+create index research_claims_subject_idx on research_claims(subject_ref);
+create index research_claims_account_idx
+    on research_claims(pilot_account_ref) where pilot_account_ref is not null;
+
+-- 'unresolved' is a valid outcome that blocks activation without being an error
+-- (ADR 0005). A claim may sit in 'staged' or 'needs_evidence' indefinitely.
+--
+-- pilot_account_ref is required for any claim about a Highest Value account or
+-- its subsidiaries, so acquired and adjacent entities cannot silently become new
+-- pilot accounts. Enforced in application logic because it depends on subject
+-- resolution.
+
+-- ---------------------------------------------------------------------------
+-- E5  PERMANENTLY UNAVAILABLE SOURCES. Recorded so a future implementer does not
+--     rediscover the same dead end. The FDA food facility registration list and
+--     registration documents are not subject to FOIA disclosure, nor is derived
+--     information identifying a registered person (21 U.S.C. 350d(a)(5)).
+--     openFDA food enforcement remains useful for recalls and is NOT a facility
+--     registry.
+-- ---------------------------------------------------------------------------
+
+create table unavailable_sources (
+    id text primary key,
+    name text not null,
+    reason text not null check (reason in (
+        'statutorily_nonpublic', 'license_prohibits', 'tos_prohibits',
+        'no_machine_access', 'superseded_by_other_source'
+    )),
+    authority_citation text,
+    evaluated_at date not null,
+    substitute_source_id text references sources(id),
+    notes text
+);
 
 -- ---------------------------------------------------------------------------
 -- Deferred FKs, once evidence exists.

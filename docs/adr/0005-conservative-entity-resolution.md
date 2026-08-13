@@ -68,6 +68,22 @@ human effort compounds into durable rules rather than being spent repeatedly.
 Bad: coverage looks lower early on, and the unresolved queue is real work in Phase 1.
 That work is bounded and front-loaded, and it is the honest version of the number.
 
+## A rejected external proposal
+
+An adversarial automation review proposed a pilot exit criterion of "95% of conflicting
+entity data automatically resolved using confidence scoring/temporal decay without
+requiring a human review queue." **Rejected.** A resolution *percentage* can always be met
+by lowering the threshold, which makes a wrong merge cheaper than an honest unresolved
+record — the exact inversion this ADR exists to prevent. The cost is asymmetric: a missed
+match costs one opportunity, a bad merge corrupts an account timeline and every score
+computed from it.
+
+The metric is instead **zero incorrect merges** on the adversarial set, with unresolved
+rate reported but not targeted. The review's own worked example makes the case: in its
+scenario, a correction reattributes a facility expansion from PepsiCo to an independent
+bottler — and the correct automated behavior is to hold both hypotheses until the
+correction is processed, not to force a resolution within a quota.
+
 ## Revisit when
 
 Measured resolution accuracy on the adversarial set exceeds the approved threshold with

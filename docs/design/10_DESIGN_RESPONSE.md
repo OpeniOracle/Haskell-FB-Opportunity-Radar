@@ -2,7 +2,19 @@
 
 Prepared in response to `00_CLAUDE_MASTER_PROMPT.md`
 Baseline reviewed: package version 0.1 (2026-08-12)
-Response version: **0.2** · Status: **for stakeholder review**
+Response version: **0.3** · Status: **for stakeholder review**
+
+**Version 0.3 reconciles external research** (Gemini and Perplexity outputs supplied
+2026-08-13) against this design. Every external claim was treated as untrusted input
+requiring reconciliation; no external record entered a canonical table, and no migration
+was created or applied. Full dispositions — 12 accepted, 5 accepted with modification,
+4 already addressed, 8 rejected, 1 staging-only — are in
+`14_EXTERNAL_RESEARCH_RECONCILIATION.md`. The material deltas landing in this document
+are: a facility-identity source we had missed (FSIS MPI), a source that can never be built
+(the FOIA-exempt FDA registry), EPA/permits sequencing resolved, operability containment
+(§8.6) and a failure-injection suite (§8.7), evidence corrections as relationships rather
+than overwrites (§6.10), a four-value scope vocabulary (§7.5), and a Phase 2 exit
+criterion that no longer rests on a fixed 14-day window (§9).
 
 **Version 0.2 is a design-reconciliation pass over 0.1.** It corrects two findings that
 0.1 overstated, and deepens seven areas that were under-specified. Corrections:
@@ -29,6 +41,7 @@ Companion documents:
 | `12_PILOT_SOURCE_COVERAGE_MATRIX.md` | Verified per-account source coverage for all 15 Highest Value accounts |
 | `13_GATE_1_DECISION_PACKET.md` | Every unresolved decision with default, alternatives, consequence, cost, owner, and timing |
 | `11_SCHEMA_DELTA_PROPOSAL.sql` | Proposed schema delta. Not a migration; nothing has been applied |
+| `14_EXTERNAL_RESEARCH_RECONCILIATION.md` | Disposition of every material external research finding, the research-claim staging contract, and the change register |
 
 Every file in the package was read before this response was written: `README.md`,
 `01`–`06`, `schemas/platform.schema.json`, `schemas/database.sql`,
@@ -81,9 +94,10 @@ facilities worth a phone call — and can defend each one with a link.
 ## 2. Conflict and gap register
 
 The master prompt requires that conflicts and missing decisions be named explicitly
-rather than silently resolved. Twenty-five are listed — twenty-two from v0.1, of which
-C2, C4, C5, C6, C7, C8, and C22 are revised here, plus three added by the reconciliation
-pass (C23–C25). Each carries a proposed default; **none has been applied to the baseline
+rather than silently resolved. Twenty-nine are listed: twenty-two from v0.1, of which
+C2, C4, C5, C6, C7, C8, and C22 were revised in v0.2; three added by the v0.2 design
+reconciliation (C23–C25); and four added by the v0.3 external-research reconciliation
+(C26–C29). Each carries a proposed default; **none has been applied to the baseline
 files, and no migration has been run.**
 
 Severity: **B** = blocks implementation, **C** = correctness/compliance risk,
@@ -116,6 +130,10 @@ Severity: **B** = blocks implementation, **C** = correctness/compliance risk,
 | C23 | C | `05` §Acceptance metrics mixes connector reliability with intelligence quality, and Phase 2 exit leads with a 95% connector-success rate. Nothing in the package prevents "95% of runs succeeded" from being read as "we are covering the market." For four pilot accounts with no periodic filing coverage, both statements can be true while the account is effectively unmonitored. | `05` §Phase 2 exit, §Acceptance metrics | Separate **operational health** from **intelligence coverage** as independent metric families with independent thresholds, and require both in every exit gate. See §8.5. |
 | C24 | C | Ownership is modeled as a single current pointer (`facilities.organization_id`, `organizations.parent_organization_id`). Verification found **four completed corporate reorganizations across the pilot cohort in roughly twenty months, with two more in flight** — Mars/Kellanova, Nestlé Waters→BlueTriton→Primo Brands, Unilever's ice-cream demerger, KDP/JDE Peet's plus its planned split, and Kimberly-Clark/Kenvue pending. A current-state pointer silently misattributes projects after every one. | `12_PILOT_SOURCE_COVERAGE_MATRIX.md` vs `database.sql` | Time-bounded, evidence-backed relationships: `facility_organizations` and `organization_relationships` both carry `from_date`, `to_date`, and `evidence_id`. Attribute a project to the operator **as at the event date**, not as at query time. |
 | C25 | C | The replay cache proposed in v0.1 was keyed on content hash, prompt version, model, and schema version. That key is incomplete: taxonomy version, extractor version, system instructions, model parameters, and injected structured context all change the output while leaving the key unchanged, so a stale result would be served as if fresh. | v0.1 §4.3, ADR 0003 | Key on **every effective input**. A cache entry stores the full input fingerprint and its components. See §6.7 and ADR 0003. |
+| C26 | C | No way to record that **evidence itself** was corrected, retracted, or withdrawn. v0.2 handles negative *signals* (closures, cancellations) but not a source reissuing or retracting a document — so a corrected attribution or an expanded recall has nowhere to live. | External research E11 vs `database.sql` | Typed relationships — `corrects`, `retracts`, `withdraws`, `contradicts`, `supersedes`, `delays`, `cancels` — with the presented view **computed** from correction status, authority, specificity, and applicability. Never an overwrite. See §6.10, ADR 0012. |
+| C27 | C | Novelty and staleness anomalies are evaluated against trailing runs with no per-source expectation. A state incentive board that posts twice a quarter is judged like a news feed, so it looks broken when it is idle and healthy when it has silently died. | `03` §Required anomaly detection | Per-source `expected_cadence` and observed `baseline_yield`; anomalies evaluated against that source's own history. See §8.6. |
+| C28 | C | Nothing bounds *outbound* alert volume. The change ledger and dedupe key prevent duplicates, but a classifier regression produces alerts that are each well-formed, correctly deduplicated, and wrong — and all of them ship. | `04` §Alerts vs `10` §6.6 | Outbound-alert circuit breaker: quarantine the notification queue **before delivery** when volume exceeds a multiple of its moving average, and pin the inference version. See §8.6. |
+| C29 | D | No terminal state for a message that can never succeed. v0.2 has retries with jitter and per-document isolation, but a permanently malformed document retries until a human notices. | `03` §Retry, external research E10 | Bounded retries → **parked queue** → circuit-breaker state recorded on the source; parked messages drained by deliberate replay, never automatic redelivery. See §8.6. |
 
 ---
 
@@ -661,6 +679,32 @@ untouched, and the multipliers keep their values — they simply key off `confid
 (low / moderate / high) instead of a single overloaded enum. The promotion rules,
 corroboration rules, and the account-strategy cap of 10 in `02` are unchanged.
 
+### 6.10 Corrections, retractions, and supersession (C26)
+
+Sources correct themselves. A release is reissued attributing an expansion to an
+independent bottler rather than the brand owner; a recall is expanded; a 2027 project is
+delayed and then cancelled. v0.2 handled negative *signals* but had no way to record that
+**the evidence itself** changed status.
+
+Seven typed relationships carry it — `corrects`, `retracts`, `withdraws`, `contradicts`,
+`supersedes`, `delays`, `cancels` — and **claims stay immutable**. The presented view is
+computed in this order:
+
+1. **Correction status** — retracted or withdrawn claims leave the presented view while
+   remaining readable.
+2. **Source authority** — primary over official secondary over secondary.
+3. **Specificity** — a claim naming a facility outranks one naming a region.
+4. **Temporal applicability** — which claim applies at the event date (§7.1a).
+5. **Recency** — the final tiebreak, never the first test.
+
+The external automation review proposed the opposite: newer documents automatically
+overwriting older conflicting properties. That is rejected in both directions it fails.
+Overwriting destroys the audit trail the evidence-first principle exists to protect — the
+moment a user asks "why did you tell me this last month," the answer is gone. And recency
+is not authority: a syndicated aggregator publishing Thursday is newer and weaker than the
+company's own Tuesday release. See ADR 0012.
+
+
 ---
 
 ## 7. Source-coverage strategy for the pilot cohort
@@ -735,11 +779,13 @@ Cohort coverage counts are from `12_PILOT_SOURCE_COVERAGE_MATRIX.md`.
 | Company and subsidiary newsrooms | Feed → sitemap → structured HTML | 15 of 15 (**~25–30 endpoints** incl. bottlers, Nestlé USA, Purina, Danone NA, Kellanova, MICC) | **A** | **The only coverage for four accounts**; primary announcements can support authoritative evidence directly | Highest breakage rate; each is a bespoke selector — budget for this explicitly |
 | State & local incentives / economic development | API, feed, or approved adapter | Decisive for Mars, Nestlé, Danone, Niagara; strong for Tyson, KDP, P&G | **A (3–5 states)** | Site selection and Developing-stage evidence months before press | Fragmented, per-state formats |
 | FDA food enforcement (openFDA) | API | ~9 of 15 — **not applicable to KMB, PG, SHW** | A | Facility-level, named firms; negative and food-safety signals | Firm names need alias resolution; recalls ≠ opportunities |
-| USDA FSIS | API + feeds | Tyson primarily | A | Plant-level, authoritative | Narrow applicability |
+| USDA FSIS recalls and alerts | API + feeds | Tyson primarily | A | Plant-level, authoritative | Narrow applicability |
+| **USDA FSIS MPI establishment directory API** | API | Meat, poultry, egg establishments — Tyson-critical | **A** | **Facility-grade identity keyed by establishment number**, updated weekly. Added by the external-research pass; it was missing from v0.2 | Establishment-to-organization join quality unproven |
+| **EPA ECHO / FRS** | Web services | ~12 of 15 | **A — promoted from B** | **Facility Registry Service ID as a stable cross-program facility key.** Promoted for *identity*, not for its enforcement signal, which lags | Multiple sub-APIs with differing schemas |
 | Broad news discovery (GDELT) | API, **discovery-only** | All | A | Regional and trade reporting EDGAR never sees | Licensing and allowlist conflict — see §7.4 |
 | Permits & planning (ArcGIS / Socrata / Legistar) | API | Geography-dependent | **A for Niagara**, B otherwise | Earliest credible project formation | Highest per-source setup cost; sparse hit rate |
 | Water / wastewater permits | API or portal | Niagara, beverage, dairy, protein | **A for Niagara**, B otherwise | Distinctive early signal for bottling siting | Jurisdiction-specific; often PDF |
-| EPA ECHO | Web services | ~12 of 15 | B | Facility identifiers, permits, discharge; feeds water/wastewater capability | Weekly cadence; join keys are messy |
+| **Commercial permit / project feed** (Shovels, IIR, Dodge, BuildCentral, ConstructConnect) | Vendor API | Potentially all | **Evaluate in parallel (D21)** | One integration instead of dozens of municipal connectors | Coverage depth for F&B is unproven for every vendor; all are quote-only |
 | PACK EXPO / marketing import | Controlled import | Engagement only | A (one-time) | Account strategy dimension only | Never raises project maturity (`02`) |
 | Regulations.gov | API | Sector-wide | C | Regulatory-change trends | Deferred (C20) |
 | Licensed business news | Licensed feed | All | C | Full text under licence | Cost and retention terms (D6) |
@@ -767,6 +813,32 @@ the pilot — precisely the failure the platform exists to prevent.
 Every source still passes **dry run → sample review → enable**, per the
 `require_dry_run_before_enable` default already in the config. For sources marked
 *Unverified* in the coverage matrix, the dry run is also the endpoint-existence check.
+
+**The permits and environmental sequencing conflict, resolved (C6/E6).** The external
+source catalog placed EPA ECHO in a later phase while the external backtest argued that
+water, wastewater, utility, incentive, and local-approval actions are among the earliest
+indicators. Both are partly right, and the resolution turns on separating *identity* from
+*signal*:
+
+1. **EPA ECHO and FSIS MPI enter the pilot stack for facility identity.** FRS IDs and
+   establishment numbers are stable cross-program facility keys, and facility identity is
+   the load-bearing problem for the entire platform. Their enforcement and recall content
+   is a lagging indicator and is not why they are promoted.
+2. **Local permit and planning connectors stay narrow** — only jurisdictions around
+   *verified* pilot facilities and priority expansion geographies, and only where a
+   structured API (Legistar, Socrata, ArcGIS) is confirmed. A jurisdiction without one is
+   **out of scope**, not a candidate for scraping or for PDF board minutes requiring human
+   interpretation.
+3. **A commercial permit feed is evaluated in parallel** (D21), because one vendor
+   integration may replace dozens of municipal connectors — or may not cover F&B at all,
+   which is exactly what the evaluation is for.
+4. **No promise of comprehensive national industrial-permit coverage from public
+   sources.** It cannot be kept, and promising it at Gate G-3 would set an expectation the
+   pilot then fails against.
+
+The backtest's underlying insight survives even though its examples are largely uncited:
+sub-municipal actions genuinely do precede press releases. What changed is only *how* we
+propose to reach them.
 
 ### 7.4 Evidence access modes (C5)
 
@@ -807,33 +879,45 @@ Four Highest Value accounts are not core Food & Beverage. Version 0.1 framed thi
 list error, which was wrong — these accounts are on the list for commercial reasons.
 What was missing is vocabulary. Every monitored account carries a scope class:
 
-| Class | Meaning | Ontology treatment |
+| Value | Class | Ontology treatment |
 | --- | --- | --- |
-| **Core Food & Beverage** | F&B manufacturing or processing is the account's business | Full signal ontology; full alerting weight |
-| **Adjacent Consumer Products** | Manufacturer whose plants need the same Haskell capabilities, but not F&B | Suppress food-safety families; keep facility, process, packaging, automation, utilities, distribution |
-| **Strategic supplier or partner** | Sells into the same plants Haskell designs | Signals route to account intelligence and partner context, not the pursuit queue, unless the signal is about the account's *own* facilities |
-| **Scope confirmation required** | Commercial rationale is real but the F&B fit is unclear | Monitored, clearly labeled, excluded from relevance metrics until classified |
+| `fnb_core` | Core Food & Beverage | Full signal ontology; full alerting weight |
+| `fnb_adjacent` | Adjacent — consumer products, or a strategic supplier or partner | Suppress food-safety families; keep facility, process, packaging, automation, utilities, distribution. For supplier accounts, signals about *customers'* plants route to account intelligence rather than the pursuit queue; signals about the account's **own** facilities remain eligible |
+| `non_fnb` | Outside this platform's scope | Monitored only if a stakeholder directs it; excluded from F&B relevance metrics and from the pursuit queue |
+| `unknown` | Not yet classified | Monitored, clearly labeled, excluded from relevance metrics until classified. **A transient state, not a resting place** |
+
+The four values are the ones the external research recommended, and they replace the
+longer prose labels used in v0.2. `fnb_adjacent` deliberately covers both adjacent
+manufacturers and strategic suppliers, because the ontology treatment is the same and the
+routing difference is a property of *which facility a signal concerns*, not of the account
+class.
 
 Applied to the four:
 
-- **Kimberly-Clark** — *Adjacent Consumer Products.* Tissue and nonwovens plants are
+- **Kimberly-Clark** — `fnb_adjacent`. Tissue and nonwovens plants are
   water- and energy-intensive; industrial water and wastewater is a strong Haskell match.
   Food-safety families produce nothing and must be suppressed rather than left to look
   like silence.
-- **Procter & Gamble** — *Adjacent Consumer Products.* Large US plant network, and
+- **Procter & Gamble** — `fnb_adjacent`. Large US plant network, and
   historically incentive-announced site expansions, which suits the state-incentive
   connector well.
-- **Ecolab** — *Strategic supplier or partner.* Ecolab sells water, hygiene, and
+- **Ecolab** — `fnb_adjacent`, supplier routing. Ecolab sells water, hygiene, and
   sanitation programs into the same plants Haskell designs. Its own facility projects
   remain a legitimate but small opportunity surface; the larger value is as market
   intelligence and possible channel. Treating it as a pursuit target would generate
   confident, wrong recommendations against a Highest Value account.
-- **Sherwin-Williams** — **Scope confirmation required.** Coatings manufacturing and a
-  very large distribution network are genuine Haskell adjacency — process systems,
-  automation, material handling, industrial water and wastewater, large distribution
-  facilities. But the F&B signal ontology does not contain its vocabulary. **This is a
-  question for the market leader, not a data-quality defect**, and it is put to them as
-  D11 rather than resolved here.
+- **Sherwin-Williams** — **`non_fnb`, with stakeholder confirmation still required.** The
+  external research recommends classifying it out of Food & Beverage scope outright, and
+  on the evidence that is the right default: coatings manufacturing and a paint-store
+  distribution network share no vocabulary with the F&B signal ontology, and FDA and FSIS
+  produce nothing for it. Haskell adjacency is nonetheless real — process systems,
+  automation, material handling, industrial water and wastewater, and large distribution
+  facilities are all genuine Sherwin-Williams needs.
+
+  So the classification changes and the question does not go away. **`non_fnb` is the
+  default; whether the account belongs on a Food & Beverage radar at all is D11, and it is
+  a commercial-intent question for the market leader, not a data-quality defect.** If it is
+  confirmed in scope, a coatings vocabulary is required and that is real work.
 
 ---
 
@@ -948,6 +1032,66 @@ the account is not penalized for a source that was never going to fire.
 two families side by side and never substitute one for the other. An account with healthy
 connectors and no expected coverage is reported as **uncovered**, not as quiet.
 
+**One invariant, stated because an external review proposed violating it.** A stale source
+reduces **coverage assurance**; it must never mutate `evidence_strength`. The review
+suggested pausing confidence scoring for entities that depend on a stale source. A
+document retrieved and hashed six months ago is exactly as true today as it was then — the
+source going quiet says nothing about it. Degrade coverage, never the evidence.
+
+### 8.6 Operability containment (C27, C28, C29)
+
+Three containment mechanisms the v0.2 design lacked. Each closes a path by which the
+system degrades into manual work.
+
+**Per-source cadence and yield baselines (C27).** Every source declares an
+`expected_cadence` and accumulates an observed `baseline_yield`; novelty and staleness
+anomalies are evaluated against *that source's* history. An external review proposed a
+global rule — alert when new entities in seven days fall below the historical P99 — which
+fails twice over: a fixed seven-day window is meaningless for a board that meets
+quarterly, and a P99 band on a low-count series is mostly noise. A source that publishes
+twice a quarter must be judged as such, or it looks broken when idle and healthy when dead.
+
+**Outbound-alert circuit breaker (C28).** The change ledger and the dedupe key prevent
+*duplicate* alerts. Neither prevents a **legitimate-looking flood**: a classifier
+regression, or a silent provider-side model change, produces alerts that are individually
+well-formed, correctly deduplicated, and wrong. When outbound volume exceeds a configured
+multiple of its moving average, the notification queue is quarantined **before delivery**
+and the inference version in use is pinned. Perfect deduplication would have shipped the
+storm.
+
+**Poison-message isolation and parked queues (C29).** A message that can never succeed —
+a permanently malformed PDF, a document that always exceeds the context limit — currently
+retries until a human notices, burning model quota. Added: bounded retries → **parked
+queue** → circuit-breaker state recorded on the source. Parked messages are drained by a
+deliberate replay after a fix, never by automatic redelivery. Alerting is on
+oldest-parked-message age, retry-exhaustion rate, and depth relative to source volume —
+**not** on "parked queue is non-empty," which would page someone forever over one bad
+document and train them to ignore it.
+
+### 8.7 Failure-injection suite
+
+Ten chaos tests, adopted from the external automation review, each mapped to the control
+it exercises. They run in CI against staging, and passing them is part of automation exit
+(§9) rather than a separate exercise.
+
+| # | Injection | Control exercised | Asserted outcome |
+| --- | --- | --- | --- |
+| 1 | HTTP 403 on the five highest-yield sources | Circuit breaker, coverage reporting | Breaker trips; accounts show **uncovered**, not quiet |
+| 2 | Pagination loop — "next page" points to itself | Pagination-loop detection | Run bounded and marked `partial_success`; no duplicate evidence |
+| 3 | Valid JSON with an empty array **for two expected cadence cycles** | Per-source baseline (C27) | Source flagged stale against *its own* cadence, not a fixed 14 days |
+| 4 | A $50M project, then a syndicated copy citing $5M | Corrections model (§6.10) | **Both preserved with a contradiction relationship**; presented view resolved by authority and specificity — the newer value does not win |
+| 5 | "Coming this Fall" and "Q4" with no year | Temporal model (§6.2) | Stored with `precision` and no fabricated year; never an exact date |
+| 6 | Company A owns Facility X, then Company B acquires it | Time-bounded ownership (§7.1a) | **Both assertions retained with date bounds**; as-at-date attribution correct |
+| 7 | Kill the worker mid entity-merge transaction | Outbox and transaction boundaries (§4.5) | No orphaned rows; replay is idempotent |
+| 8 | Malformed JSON from the model on 10% of calls | Model gateway schema validation | Retry, then quarantine; never a silent write |
+| 9 | The same release from 50 URLs at once | Evidence families (C16) | One signal, one evidence family, 50 evidence rows, one alert |
+| 10 | A prompt that classifies every "water" mention as a facility | Outbound circuit breaker (C28) | Alerts quarantined before delivery; inference version pinned |
+
+Tests 3, 4, and 6 were **modified from the versions proposed**. The originals asserted a
+fixed 14-day window, that the newer value should win, and that ownership should be
+overwritten — all three of which this design rejects on the record (§6.10, ADR 0012,
+`14_EXTERNAL_RESEARCH_RECONCILIATION.md` §5).
+
 ---
 
 ## 9. Phased MVP backlog
@@ -1009,9 +1153,18 @@ unresolved.
 (§8.5). **Both must pass; neither substitutes for the other.**
 
 *Operational health* — ≥95% of scheduled **logical** runs end in `success`, `unchanged`,
-or `partial_success` over 14 days. The denominator is scheduled logical runs; retry
-attempts are excluded; `unchanged` counts as success; `action_required` does not. This
-definition is unstated in `05` and must be ratified at Gate G-6.
+or `partial_success`. The denominator is scheduled logical runs; retry attempts are
+excluded; `unchanged` counts as success; `action_required` does not. This definition is
+unstated in `05` and must be ratified at Gate G-6.
+
+*Measurement window* — **at least two expected collection cycles for every pilot source**,
+plus a production-like soak and a passing failure-injection suite (§8.7). Not a fixed
+14-day run. Both `05` and v0.2 inherited a 14-day window, and an external review proposed
+14 days of zero-touch operation as proof of automation. Fourteen days does not exercise a
+quarterly incentive board even once, so a green result would prove only that the frequent
+sources work. For the slowest pilot sources, two cycles is months — which is the honest
+answer, and it means **automation exit is a rolling criterion per source, not a single
+date for the whole pilot**.
 
 *Intelligence coverage* — every pilot account reaches ≥80% expected-source coverage with
 none below 50%; every account with zero signals over the window has a recorded
@@ -1037,8 +1190,9 @@ No new capability is proposed here beyond what `05` defines.
 
 ## 10. Decisions requiring stakeholder input
 
-`05` lists ten. All are restated with a recommended default, followed by ten surfaced by
-this review. Recommended default is what we will build if no other direction is given.
+`05` lists ten. All are restated with a recommended default, followed by fourteen surfaced
+by the v0.2 design reconciliation (D11–D20) and the v0.3 external-research reconciliation
+(D21–D24). Recommended default is what we will build if no other direction is given.
 
 **`docs/design/13_GATE_1_DECISION_PACKET.md` is the stakeholder-facing version of this
 table** — each decision with its alternatives, operational consequence, cost and
@@ -1066,6 +1220,10 @@ complexity impact, decision owner, and required timing. The table below is the i
 | **D18** | **Corporate-reorganization handling** — C24, §7.1a | Time-bounded, evidence-backed ownership; attribute to the operator as at the event date; add a reorganization watch for KDP's planned split and the pending Kimberly-Clark/Kenvue close | Four completed reorganizations in ~20 months across 15 accounts; two more in flight during the pilot |
 | **D19** | **Evidence access modes and promotion rules** — C5, §7.4 | Five modes; `reference_only` and `metadata_only` capped at `indicative` and barred from independently producing a Confirmed opportunity | Sets how fast the platform is allowed to become confident, and therefore its false-positive rate |
 | **D20** | **Kellanova connector retirement** — `12_…MATRIX.md` | Run the Kellanova EDGAR connector while it remains a filer, with a scheduled review at deregistration so it is retired rather than left failing | A connector that fails for a *correct* reason still degrades the health metric and consumes operator attention |
+| **D21** | **Build or buy local permit coverage** — §7.3, `14` E16 | **Evaluate before building.** Run a bounded vendor track (Shovels, Industrial Info Resources, Dodge, BuildCentral/Hubexo, ConstructConnect) in parallel with 2–3 API-exposed jurisdictions, and decide on evidence. Do not commit to dozens of municipal connectors first | Municipal connectors are the highest per-source cost in the plan and do not amortize. But every vendor's F&B depth is unproven — BuildCentral's advertised verticals do not list food and beverage — so buying blind is equally wrong |
+| **D22** | **Incident severity model** — `14` §5.7 | Severity by **consequence**, not by who acts: Sev-1 only when routine operation requires a human to extract documents, enter leads, re-key content, or repair source records, or when silent corruption is occurring. Business feedback, source approval, and dismissals are **not incidents** | An external review proposed classifying *any* non-engineering review state as Sev-1. That would make a business user dismissing a false positive an outage, and it contradicts `00`, which explicitly permits source approval and connector reauthorization |
+| **D23** | **Research-claim staging** — ADR 0011, `14` §6 | All external structured data enters staging behind an activation gate that fails closed; nothing reaches canonical tables without evidence, date precision, controlled values, and a resolved subject | Without it, each research batch gets its own normalization script and its own silent assumptions |
+| **D24** | **Corrections model** — §6.10, ADR 0012 | Immutable claims plus typed correction relationships; the presented view computed from correction status, authority, specificity, applicability, then recency | Determines whether the platform can answer "why did you tell me this last month." An overwrite model cannot |
 
 ---
 
@@ -1078,11 +1236,11 @@ in full in `docs/design/13_GATE_1_DECISION_PACKET.md`.
 | Gate | Timing | Attendees | Decides | Unblocks |
 | --- | --- | --- | --- | --- |
 | **G-1 Mission, users, and pilot cohort** | Week 1 | F&B market leader, BD lead, executive sponsor | §1 product statement; personas; **D11** scope classes incl. Sherwin-Williams; **D12** Ecolab semantics; **D9** success definition | Everything — the only gate that cannot run in parallel |
-| **G-2 Opportunity definition and scoring** | Week 1 | Market leader, BD, SMEs | Lifecycle unchanged; **D16** confidence decomposition; **D19** evidence access modes and promotion rules; the five dimensions and caps; negative-signal rules; **D8** ownership | E1, E10 |
-| **G-3 Source coverage, licensing, and confidentiality** | Week 2 | Platform admin, legal/commercial, marketing ops | §7 source plan and revised week-1 sequencing; **D5** geographies; **D6** subscriptions; **D7** retention; **D14** event-data licence review; **D17** coverage measurement; **D20** Kellanova retirement | E4, E5, E6 |
-| **G-4 Architecture and data model** | Week 2 | Engineering, IT security, data owner | **D1**, **D2**; §4 runtimes, transaction and queue boundaries; §6 model changes incl. **D15** temporal model, **D18** time-bounded ownership, C1 ingestion tables, C25 replay-cache key | E0, E2, E3 |
+| **G-2 Opportunity definition and scoring** | Week 1 | Market leader, BD, SMEs | Lifecycle unchanged; **D16** confidence decomposition; **D19** evidence access modes and promotion rules; **D24** corrections model; the five dimensions and caps; negative-signal rules; **D8** ownership | E1, E10 |
+| **G-3 Source coverage, licensing, and confidentiality** | Week 2 | Platform admin, legal/commercial, marketing ops | §7 source plan and revised week-1 sequencing; the EPA/permits resolution (§7.3); **D5** geographies; **D6** subscriptions; **D7** retention; **D14** event-data licence review; **D17** coverage measurement; **D20** Kellanova retirement; **D21** build-or-buy permits | E4, E5, E6 |
+| **G-4 Architecture and data model** | Week 2 | Engineering, IT security, data owner | **D1**, **D2**; §4 runtimes, transaction and queue boundaries; §6 model changes incl. **D15** temporal model, **D18** time-bounded ownership, **D23** research staging, C1 ingestion tables, C25 replay-cache key | E0, E2, E3 |
 | **G-5 Information architecture and visual direction** | Week 3 | Market leader, BD, design, accessibility reviewer | §5 page map; drawer-vs-page pattern; how inferred dates and coverage gaps are shown; **D10** brand; **D4** alert channels | E14 |
-| **G-6 MVP backlog and implementation authorization** | Week 3 | All of the above | §9 phasing; ratification of the **two-family Phase 2 exit definition** (§8.5); acceptance tests; Phase 1 start | Implementation begins |
+| **G-6 MVP backlog and implementation authorization** | Week 3 | All of the above | §9 phasing; ratification of the **two-family Phase 2 exit definition** (§8.5) and the two-cycle measurement window; **D22** severity model; the failure-injection suite (§8.7); Phase 1 start | Implementation begins |
 
 Gates G-2 through G-5 can run in parallel after G-1. The conflict register in §2 should
 be walked at whichever gate owns each row; no item should reach implementation unowned.

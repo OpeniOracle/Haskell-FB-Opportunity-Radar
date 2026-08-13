@@ -52,6 +52,29 @@ never going to fire.
 side by side. An account with healthy connectors and no expected coverage is reported as
 **uncovered**, never as quiet.
 
+## Three refinements from the external-research pass
+
+**Per-source cadence baselines, not a global window.** Each source declares an
+`expected_cadence` and accumulates an observed `baseline_yield`; novelty anomalies are
+evaluated against that source's own history. An adversarial review proposed a global
+"new entities in 7 days below the historical P99" rule — rejected, because a fixed
+seven-day window is meaningless for a board that posts quarterly, and a P99 band on a
+low-count series is dominated by noise.
+
+**Staleness must never mutate evidence strength.** The same review proposed pausing
+"downstream confidence scoring for entities exclusively relying on a stale source." That
+is the one thing coverage degradation must not do. A document retrieved and hashed six
+months ago is exactly as true today as it was then; the source going quiet says nothing
+about it. Staleness reduces **coverage assurance** in Family 2 and leaves
+`evidence_strength` untouched. This is now an invariant, not an implication.
+
+**An outbound-alert circuit breaker.** Neither family catches a *legitimate-looking*
+flood: a classifier regression that inflates confidence produces alerts that are each
+individually well-formed, correctly deduplicated, and wrong. When outbound volume exceeds
+a multiple of its moving average, the notification queue is quarantined **before
+delivery** and the inference version in use is pinned. Deduplication is not a defense
+against this — it would deliver the storm perfectly.
+
 ## Alternatives considered
 
 - **Keep the single acceptance-metric block.** Permits the most likely silent failure in

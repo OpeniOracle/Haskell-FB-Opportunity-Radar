@@ -1,6 +1,6 @@
 # Gate 1 Decision Packet
 
-Haskell Food & Beverage Opportunity Radar · Version 0.1 · **For stakeholder decision**
+Haskell Food & Beverage Opportunity Radar · Version 0.2 · **For stakeholder decision**
 
 Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.md`.
 
@@ -8,7 +8,8 @@ Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.m
 
 ## How to use this packet
 
-Twenty decisions are open. Each is presented with a **recommended default**, the
+Twenty-four decisions are open — twenty from the v0.2 design reconciliation and four
+added by the v0.3 external-research reconciliation (D21–D24). Each is presented with a **recommended default**, the
 **alternatives** actually considered, the **operational consequence** of choosing it, the
 **cost and complexity impact**, a proposed **decision owner**, and the **required
 timing**.
@@ -53,6 +54,10 @@ three weeks or a recurring commercial cost.
 | D4 | Alert channels | BD lead + IT | Before Phase 3 | S | G-5 |
 | D10 | Design system and brand assets | Design lead | Before Phase 3 | S | G-5 |
 | D3 | CRM linkage | BD lead + IT | Phase 4 | M | G-1 (informational) |
+| **D21** | Build or buy local permit coverage | Market leader + engineering | Before week 3 of Phase 2 | M–L | G-3 |
+| **D22** | Incident severity model | Engineering + executive sponsor | Before Phase 2 | S | G-6 |
+| **D23** | Research-claim staging | Platform engineering lead | Before any external batch is imported | M | G-4 |
+| **D24** | Corrections model | Market leader + engineering | Before Phase 2 scoring | M | G-2 |
 
 ---
 
@@ -61,8 +66,8 @@ three weeks or a recurring commercial cost.
 ### D15 — Temporal model
 
 **Recommended default.** Store six fields wherever a date can come from source text —
-raw expression, start, end, precision (`exact_day` / `month` / `quarter` / `half_year` /
-`year` / `range` / `relative` / `unknown`), basis (`stated` / `inferred`), and an
+raw expression, start, end, precision (`exact_day` / `month` / `quarter` / `season` /
+`half_year` / `year` / `range` / `relative` / `unknown`), basis (`stated` / `inferred`), and an
 inference note required when basis is `inferred`. "Production begins in 2027" is stored
 as the interval 2027-01-01 → 2027-12-31 at `year` precision with basis `stated`, and is
 rendered as "expected 2027."
@@ -83,6 +88,11 @@ either fabricates dates or is blind to early-stage projects.
 
 **Cost and complexity.** M. Six columns instead of one, plus interval-aware queries and
 render logic. The real cost is discipline: every date comparison must consider precision.
+
+**Validated against a real case.** An external research record stored Unilever's
+"expected to be fully operational by **spring 2029**" as `2029-03-31` — a fabricated month
+and day. Storing it correctly required adding `season` to the precision enum, which the
+v0.2 design had missed. The external record was wrong and improved the schema anyway.
 
 **Owner.** Platform engineering lead, ratified at G-4.
 
@@ -152,10 +162,14 @@ without it, Phase 2 can be demonstrated but not evaluated.
 
 | Account | Proposed class | Effect |
 | --- | --- | --- |
-| Kimberly-Clark | Adjacent Consumer Products | Full facility/process/packaging/automation/utilities ontology; food-safety families suppressed |
-| Procter & Gamble | Adjacent Consumer Products | Same |
-| Ecolab | Strategic supplier or partner | See D12 |
-| **Sherwin-Williams** | **Scope confirmation required** | Monitored and clearly labeled; excluded from relevance metrics until classified |
+| Kimberly-Clark | `fnb_adjacent` | Full facility/process/packaging/automation/utilities ontology; food-safety families suppressed |
+| Procter & Gamble | `fnb_adjacent` | Same |
+| Ecolab | `fnb_adjacent`, supplier routing | See D12 |
+| **Sherwin-Williams** | **`non_fnb`** | Out of Food & Beverage scope by default; excluded from the pursuit queue and from F&B relevance metrics — **but the commercial question stands** |
+
+The four-value vocabulary — `fnb_core`, `fnb_adjacent`, `non_fnb`, `unknown` — comes from
+the external research and replaces v0.2's longer prose labels. `unknown` is a transient
+state, not a resting place.
 
 **Alternatives.** *Treat all four as core F&B* — food-safety connectors fire never,
 which is indistinguishable from a broken connector without D17. *Remove them from the
@@ -163,12 +177,17 @@ pilot* — discards accounts the business deliberately prioritized. *Build a sep
 coatings/consumer-products ontology now* — real work, premature before the pilot proves
 the core.
 
-**Operational consequence.** Sherwin-Williams is the live question. Coatings
-manufacturing and its very large distribution network are genuine Haskell adjacency —
-process systems, automation, material handling, industrial water and wastewater — but the
-F&B signal vocabulary does not contain its terms. **This is a question about commercial
-intent, not a data-quality defect**, and the market leader is the only person who can
-answer it.
+**Operational consequence.** Sherwin-Williams is the live question, and v0.3 changes the
+recommended default rather than settling it. On the evidence, `non_fnb` is right: coatings
+manufacturing and a paint-store distribution network share no vocabulary with the F&B
+signal ontology, and FDA and FSIS produce nothing for the account. The external research
+reached the same conclusion independently.
+
+What does not change is that Haskell adjacency is real — process systems, automation,
+material handling, industrial water and wastewater, and large distribution facilities are
+all genuine Sherwin-Williams needs. **This is a question about commercial intent, not a
+data-quality defect**, and the market leader is the only person who can answer it. If the
+account is confirmed in scope, a coatings vocabulary is required, and that is real work.
 
 **Cost and complexity.** S for classification. M if Sherwin-Williams is confirmed in
 scope *and* a coatings vocabulary is required.
@@ -501,6 +520,99 @@ contrast before they are adopted wholesale.
 **Cost and complexity.** S, assuming tokens exist and are accessible. **Owner.** Design
 lead. **Timing.** Before Phase 3.
 
+
+### D21 — Build or buy local permit coverage
+
+**Recommended default.** Evaluate before building. Run a bounded vendor track — Shovels,
+Industrial Info Resources, Dodge, BuildCentral/Hubexo, ConstructConnect — in parallel with
+two or three API-exposed jurisdictions, and decide on evidence at the end of Phase 2.
+
+**Alternatives.** *Build municipal connectors now* — the highest per-source cost in the
+plan, and it does not amortize: each jurisdiction is its own format. *Buy a subscription
+now* — faster, and none of the five vendors has demonstrated F&B project coverage.
+*Neither* — leaves Niagara Bottling, which has no filings and limited press cadence,
+effectively unmonitored.
+
+**Operational consequence.** The v0.3 research pass corrected three vendor findings — the
+BuildCentral and ConstructConnect APIs do exist, and IIR's is real — so access is no longer
+the open question. **Coverage depth is.** ConstructionWire's advertised verticals are
+retail/CRE, hotels, multi-family and single-family residential, medical, and energy and
+mining; food and beverage is not among them. A vendor that does not cover F&B plants is
+worse than no vendor, because it looks like coverage.
+
+**Cost and complexity.** M for the evaluation; L either way for the decision — a vendor
+subscription is recurring, and a municipal build is multi-week per jurisdiction.
+
+**Owner.** Market leader (which geographies matter) with engineering (integration cost).
+**Timing.** Before week 3 of Phase 2, so the evaluation runs alongside the first
+jurisdictions rather than after them.
+
+### D22 — Incident severity model
+
+**Recommended default.** Severity by **consequence**, not by who acts:
+
+| Severity | Condition |
+| --- | --- |
+| **Sev-1** | Routine operation requires a human to extract documents, enter leads, re-key content, or repair source records; or silent data corruption is occurring |
+| **Sev-2** | A high-priority account's expected coverage is degraded beyond one cycle, or alerts are materially wrong |
+| **Sev-3** | A bounded Connector Care action is pending within SLA |
+| **Not an incident** | Business feedback, source approval, tier changes, dismissals with reason |
+
+**Alternatives.** *Treat any non-engineering review state as Sev-1* — proposed by the
+external automation review as a Gate 1 amendment, and rejected. It would make a business
+user dismissing a false positive an outage, and it contradicts `00`, which explicitly
+permits source approval, connector reauthorization, and operator-assisted CAPTCHA. *No
+severity model* — everything becomes urgent, which means nothing is.
+
+**Operational consequence.** The non-negotiable is preserved exactly — routine operation
+cannot depend on analysts — while business decisions are correctly treated as the product
+working rather than as an outage. Getting this wrong in the proposed direction would
+create pressure to remove the feedback controls `01` requires.
+
+**Cost and complexity.** S. **Owner.** Engineering with the executive sponsor.
+**Timing.** Before Phase 2, so on-call expectations are set before there is an on-call.
+
+### D23 — Research-claim staging
+
+**Recommended default.** All externally sourced structured data enters a staging layer
+behind an activation gate that fails closed. Nothing reaches a canonical table without
+resolvable evidence, date precision, controlled values, a resolved subject, a definite
+scope classification, and a pilot-account reference where one applies.
+
+**Alternatives.** *Normalize with a one-off script per batch* — each batch gets its own
+silent assumptions, and the link back to the research artifact is lost. *Reject external
+research entirely* — wasteful; this batch surfaced a facility-registry API we had missed
+and a real gap in our own date model.
+
+**Operational consequence.** Research can be ingested enthusiastically because ingestion
+stops being commitment. The cost is honest: of the 27 external graph records received,
+perhaps half would activate as-is — four carry no evidence reference at all, and the
+status vocabulary mixes provenance with workflow state.
+
+**Cost and complexity.** M. **Owner.** Platform engineering lead. **Timing.** Before any
+external batch is imported, which means before the pilot graph records are used at all.
+
+### D24 — Corrections model
+
+**Recommended default.** Claims are immutable; corrections are typed relationships
+(`corrects`, `retracts`, `withdraws`, `contradicts`, `supersedes`, `delays`, `cancels`);
+the presented view is computed from correction status, source authority, specificity,
+temporal applicability, then recency.
+
+**Alternatives.** *Overwrite on recency* — proposed by the external review and rejected:
+it destroys the audit trail, and a syndicated copy published Thursday would overturn the
+company's own Tuesday release. *Keep only the current view* — the retention window would
+always be shorter than someone's memory of the alert they received.
+
+**Operational consequence.** This decides whether the platform can answer "why did you
+tell me this last month." An overwrite model cannot. It also makes delay and cancellation
+first-class states rather than silence, which matters because a cancelled project is
+information, not an absence.
+
+**Cost and complexity.** M, plus a read-path cost that will eventually need a
+materialized projection. **Owner.** Market leader with engineering. **Timing.** Before
+Phase 2 scoring.
+
 ---
 
 ## What we are asking for at Gate 1
@@ -515,5 +627,7 @@ Everything else can follow at its own gate.
 4. **D15 and D18** — authorization to adopt the temporal model and time-bounded ownership
    ahead of their natural gate, because both are corpus-wide retrofits if taken late.
 5. **D14** — authorization to begin the event-data licence review.
+6. **D23** — authorization to build the staging layer before any external research batch
+   is imported, since the alternative is a one-off script that nobody can review.
 
-Items 4 and 5 are the only ones that block Phase 1 work starting.
+Items 4, 5, and 6 are the only ones that block Phase 1 work starting.

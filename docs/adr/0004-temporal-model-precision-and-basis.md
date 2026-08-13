@@ -31,8 +31,8 @@ Six fields replace one, on `evidence`, `signals`, and facility open/close dates:
 temporal_raw_expression  text   -- verbatim: "in the second half of 2027"
 temporal_start           date   -- interval start, not "the date"
 temporal_end             date   -- interval end
-temporal_precision       enum   -- exact_day | month | quarter | half_year
-                                -- | year | range | relative | unknown
+temporal_precision       enum   -- exact_day | month | quarter | season
+                                -- | half_year | year | range | relative | unknown
 temporal_basis           enum   -- stated | inferred | unknown
 temporal_inference_note  text   -- REQUIRED when basis = 'inferred'
 ```
@@ -40,6 +40,15 @@ temporal_inference_note  text   -- REQUIRED when basis = 'inferred'
 **Storing an interval is the part that does the work.** "In 2027" becomes
 2027-01-01 → 2027-12-31 at `year` precision. The query "what might start in 2027?" is an
 interval overlap, and the record answers it without ever claiming January 1.
+
+**`season` was added by the external-research pass.** An external record stored
+Unilever's "expected to be fully operational by **spring 2029**" as `2029-03-31` — a
+fabricated month *and* day, and precisely the failure this ADR exists to prevent. Working
+out how to store it correctly showed the enum was incomplete: "spring" is neither a
+quarter nor a half-year, but a named period whose calendar boundaries are conventional and
+hemisphere-dependent. It is stored as an interval with `precision = 'season'` and the raw
+expression preserved, so the reader sees "spring 2029" rather than a boundary we chose.
+See `14_EXTERNAL_RESEARCH_RECONCILIATION.md` §4.4.
 
 **`relative` handles anchored timing** — "within eighteen months of closing" — where the
 anchor is another event rather than a calendar position. The raw expression is preserved;
