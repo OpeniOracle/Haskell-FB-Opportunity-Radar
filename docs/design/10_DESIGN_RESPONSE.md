@@ -759,7 +759,7 @@ time-bounded ownership (C24):
 | --- | --- | --- |
 | Mars completes the Kellanova acquisition | 11 Dec 2025 | A private, filing-free account absorbs a large US snack-plant footprint; Kellanova's own filings (CIK 0000055067) end as a source at deregistration |
 | Nestlé Waters NA → BlueTriton (2021) → **Primo Brands** (CIK 0002042694) | merger closed 8 Nov 2024 | Poland Spring, Deer Park, Ozarka, Ice Mountain, Pure Life activity is **not Nestlé** — attributing it there is a resolution error against a Highest Value account |
-| Unilever demerges ice cream as **The Magnum Ice Cream Company** | trading from 8 Dec 2025 | Ben & Jerry's, Magnum, Cornetto, Wall's plants leave Unilever |
+| Unilever separates ice cream as **The Magnum Ice Cream Company** | operational separation 1 Jul 2025; **legal demerger 6 Dec 2025**; listing and trading 8 Dec 2025 | Ben & Jerry's, Magnum, Cornetto, Wall's plants leave Unilever. Unilever **retained ~19.85%** — a minority interest, not a termination |
 | KDP acquires JDE Peet's, then plans a tax-free split into two US-listed companies | acquisition ~Apr 2026; separation readiness targeted year-end 2026 | **KDP will likely become two accounts during the pilot** — and separations generate capital projects |
 | Kimberly-Clark / Kenvue | approved Jan–Feb 2026, expected 2H 2026 | A sixth structural change may land inside the pilot window |
 
@@ -1197,6 +1197,13 @@ by the v0.2 design reconciliation (D11–D20) and the v0.3 external-research rec
 **`docs/design/13_GATE_1_DECISION_PACKET.md` is the stakeholder-facing version of this
 table** — each decision with its alternatives, operational consequence, cost and
 complexity impact, decision owner, and required timing. The table below is the index.
+
+**Six decisions are approved:** **D15** temporal model · **D18** time-bounded ownership ·
+**D21** permit build-versus-buy, with vendor evaluation before contracting · **D22**
+consequence-based severity · **D23** external-research staging, as a Phase 1 requirement ·
+**D24** correction and supersession relationships. Eighteen remain open. The two
+corpus-wide retrofits — D15 and D18 — are settled, so Phase 1 can start without a dating or
+ownership retrofit pending.
 
 | ID | Decision | Recommended default | Consequence of deferring |
 | --- | --- | --- | --- |

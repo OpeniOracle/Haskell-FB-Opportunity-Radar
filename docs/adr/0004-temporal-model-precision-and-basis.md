@@ -1,6 +1,6 @@
 # ADR 0004 — Dates are intervals with precision and basis
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** C2, D15
+**Status: Accepted** · **Approved via:** D15 (ahead of Gate G-4) · **Relates to:** C2, D15
 **Supersedes:** the narrower "date precision" formulation in response v0.1
 
 ## Context

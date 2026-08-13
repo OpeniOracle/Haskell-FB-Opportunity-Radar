@@ -371,11 +371,58 @@ Everything below applies to both files unless stated:
   entities — into their parent. Two Mars facility assertions also cite
   `mars.com/about/history`, a corporate history page, which is weak provenance for a
   facility claim regardless of whether the claim is true.
-- **One internal contradiction.** The Unilever→MICC ownership record sets
-  `valid_to: 2025-12-07` while its own `evidence_quote` says "demerged 8 Dec 2025," and
-  independent verification put completion at 6 December with trading from 8 December. Three
-  dates, one relationship. It also has `valid_from: null`, so the ownership interval is
-  open at the start.
+- **One internal contradiction — now resolved, see §4.4b.** The Unilever→MICC ownership
+  record sets `valid_to: 2025-12-07` while its own `evidence_quote` says "demerged 8 Dec
+  2025." Neither is right, and the disagreement turned out to be diagnostic rather than
+  sloppy: the record was collapsing **three distinct events** into one date field. It also
+  has `valid_from: null`, so the interval is open at the start.
+
+### 4.4b Unilever → MICC: three events, not three conflicting dates (V16, closed)
+
+The apparent contradiction resolves cleanly against primary sources. The record was not
+wrong about *a* date; it was trying to store a sequence in a single field.
+
+| Date | Event | What it is |
+| --- | --- | --- |
+| **1 July 2025** | The Magnum Ice Cream Company began standalone operations | **Operational separation.** Not an ownership change |
+| **6 December 2025** | Unilever completed the legal demerger of its Ice Cream business | **The control event.** This is what ends the parent relationship |
+| **8 December 2025** | MICC listing and trading commenced | **The market event.** Not a control event |
+
+And the fact that changes the shape of the record: **Unilever retained a minority interest
+of approximately 19.85%**, to be sold down over time. This was not a clean break.
+
+**Interval convention, stated explicitly.** `from_date`/`to_date` pairs in this schema are
+**half-open `[from_date, to_date)`** — `from_date` inclusive, `to_date` exclusive, so
+`to_date` is the first day on which the relationship no longer holds. Consecutive intervals
+are then adjacent with no gap and no overlap, and as-at-date resolution is
+`from_date <= :as_at and (to_date is null or to_date > :as_at)`.
+
+Under that convention the controlling relationship ends at **`to_date = 2025-12-06`** — the
+legal demerger, not the listing. Unilever controlled MICC through 5 December inclusive. Had
+the convention been inclusive, the correct value would have been 2025-12-05; it is stated
+in `11_SCHEMA_DELTA_PROPOSAL.sql` so the two can never be silently confused.
+
+```text
+organization_relationships
+  (unilever_plc, micc, 'parent_subsidiary', pct NULL,  from …,          to 2025-12-06)
+  (unilever_plc, micc, 'minority_interest', pct 19.85, from 2025-12-06, to NULL)
+```
+
+**Two edges, not one ended edge.** Recording only the terminated parent relationship would
+assert a complete separation that did not occur, and would drop a stake large enough to
+matter commercially. `minority_interest` and `ownership_percent` were added to the schema
+for exactly this case; a demerger with a retained stake is common enough that the model has
+to express it.
+
+The 1 July 2025 operational separation is **not an ownership edge at all**. It belongs on
+the facility and operational timeline — and it is the date that explains why a mid-2025
+plant record might already name MICC as operator while Unilever still legally controlled the
+business. That is directly relevant to V17, which stays open: the Sikeston evidence is a
+Unilever page describing an ice cream factory, and it does not by itself establish who
+operates that plant today.
+
+Sources: Unilever's demerger page and its 2026 performance release, and MICC's own investor
+demerger-information page (all three listed in §9).
 
 ### 4.4a Staging dry run — accounts 6–10
 
@@ -711,8 +758,8 @@ Named, not filled. None is a blocker for design approval; each blocks a specific
 | V2 | **No external graph records exist for accounts 1–5** — PepsiCo, The Coca-Cola Company, Nestlé, Kroger, Tyson Foods. **Still open.** Not fabricated | Staging import for accounts 1–5 |
 | ~~V3~~ | **Closed in v0.2.** All handoff aggregates independently recomputed and confirmed: 53 records, 19 facilities, 6 projects, 11 without evidence | — |
 | V15 | 11 of 53 records need an evidence locator before activation; 7 are CIK-bearing entity records where one is readily available | Staging activation |
-| V16 | Unilever→MICC ownership carries three conflicting dates (`valid_to` 2025-12-07, quote "8 Dec 2025", verified completion 6 Dec 2025) | Staging activation |
-| V17 | Operator of `fac:sikeston_ice_cream_mo` post-demerger is unresolved by the source itself | Staging activation |
+| ~~V16~~ | **Closed.** Not conflicting dates but three distinct events — operational separation 1 Jul 2025, legal demerger 6 Dec 2025, listing 8 Dec 2025 — plus a retained ~19.85% minority interest. Modeled as two edges under a stated half-open interval convention. See §4.4b | — |
+| V17 | **Still open.** The operator of `fac:sikeston_ice_cream_mo` after the separation is not established by the supplied evidence, which is a Unilever page. The 1 Jul 2025 operational-separation date makes the ambiguity explicable but does not resolve it | Staging activation |
 | V4 | BuildCentral **F&B/industrial coverage depth** — advertised verticals do not list food and beverage | Vendor decision D21 |
 | V5 | ConstructConnect API entitlement, coverage, pricing, licensing | Vendor decision D21 |
 | V6 | IIR IDB API version, F&B depth (portal presents an energy-oriented database), pricing, redistribution and model-processing rights | Vendor decision D21 |
@@ -776,3 +823,19 @@ Claim class: **F** = verified fact, **V** = vendor claim, **H** = hypothesis, **
 | Vendor track before municipal connectors | T | Handoff §6.10 | `13` D21 |
 | Four-value scope vocabulary | F→design | Handoff §6.11 | `10` §7.5; `11`; `13` D11 |
 | Research-claim staging contract | F→design | Handoff §8 | `11`; `14` §6; ADR 0011 |
+
+---
+
+## 10. Primary sources for the V16 resolution
+
+- [Unilever — The Magnum Ice Cream Company demerger](https://www.unilever.com/investors/the-magnum-ice-cream-company-demerger/)
+- [The Magnum Ice Cream Company — demerger information](https://corporate.magnumicecream.com/en/investors/demerger-information.html)
+- [Unilever — Sharper focus and disciplined execution driving competitive performance (2026)](https://www.unilever.com/news/press-and-media/press-releases/2026/sharper-focus-and-disciplined-execution-driving-competitive-performance/)
+
+These were supplied as primary sources with the correction. Consistent with the
+verification limits stated in §3, **they were not fetched in-session** — this
+environment's egress proxy blocks corporate domains — so the three-event sequence and the
+~19.85% retained interest are recorded as **stated by primary sources, not reproduced
+here**. They should be re-confirmed at connector dry-run time along with the other
+Unverified endpoints.
+

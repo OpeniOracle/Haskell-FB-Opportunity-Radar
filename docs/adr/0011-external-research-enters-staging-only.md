@@ -1,6 +1,6 @@
 # ADR 0011 — External research enters staging, never canonical tables
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** E26, D23
+**Status: Accepted** · **Approved via:** D23, as a **Phase 1 requirement** · **Relates to:** E26, D23
 
 ## Context
 

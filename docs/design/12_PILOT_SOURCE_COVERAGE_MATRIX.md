@@ -100,7 +100,7 @@ Verified during this pass, and material to entity modeling:
 | --- | --- | --- |
 | Mars completes acquisition of **Kellanova** ($36B) | **11 Dec 2025** | Mars — a private company with no SEC coverage — absorbs a large US plant footprint (Pringles, Cheez-It, Pop-Tarts). Kellanova's periodic filings (CIK 0000055067) end as a coverage source at deregistration |
 | **Nestlé Waters NA** → BlueTriton (2021) → merged with Primo Water into **Primo Brands** (PRMB, CIK 0002042694) | merger closed **8 Nov 2024** | Poland Spring, Deer Park, Ozarka, Ice Mountain, Pure Life plant activity is **not Nestlé**. Attributing it to Nestlé would be a resolution error against a Highest Value account |
-| Unilever demerges ice cream as **The Magnum Ice Cream Company** (MICC) | trading from **8 Dec 2025** | Ben & Jerry's, Magnum, Cornetto, Wall's plants leave Unilever |
+| Unilever separates ice cream as **The Magnum Ice Cream Company** (MICC) | operational separation **1 Jul 2025**; **legal demerger completed 6 Dec 2025**; listing and trading **8 Dec 2025** | Ben & Jerry's, Magnum, Cornetto, Wall's plants leave Unilever. **Unilever retained ~19.85%**, to be sold down over time — a minority interest, not a clean break |
 | **KDP completes the JDE Peet's acquisition** (96.22%), then plans a tax-free split into two US-listed companies | completed **1 Apr 2026**; separation date **undetermined** | KDP will likely become two accounts *during the pilot* |
 | **Kimberly-Clark / Kenvue** merger pending (shareholders approved 29 Jan 2026; HSR expired 4 Feb 2026) | expected **Q4 2026** | A sixth structural change is likely to land inside the pilot window |
 
@@ -322,7 +322,8 @@ will silently misattribute projects every time one of these closes.
 - **Newsroom:** `unilever.com/news/press-and-media/press-releases` — **Corroborated**
 - **IR:** `unilever.com/investors` — **Corroborated**
 - **Subsidiaries / operators:** Unilever United States; Ben & Jerry's, Breyers, Hellmann's,
-  Knorr historically. **The Magnum Ice Cream Company (MICC) demerged 8 Dec 2025**, taking
+  Knorr historically. **The Magnum Ice Cream Company (MICC) legal demerger completed
+  6 Dec 2025, with listing and trading from 8 Dec 2025**, taking
   Magnum, Ben & Jerry's, Cornetto, and Wall's — `corporate.magnumicecream.com` is
   **Corroborated** and should be registered as a separate organization and source
 - **Priority state / permit / regulatory / utility:** NJ, CT, MO, IA, VA, NC; FDA

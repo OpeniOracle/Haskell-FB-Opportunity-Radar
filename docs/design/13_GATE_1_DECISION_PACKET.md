@@ -1,6 +1,10 @@
 # Gate 1 Decision Packet
 
-Haskell Food & Beverage Opportunity Radar · Version 0.2 · **For stakeholder decision**
+Haskell Food & Beverage Opportunity Radar · Version 0.3 · **For stakeholder decision**
+
+**Six decisions have been approved** — D15, D18, D21, D22, D23, D24. Eighteen remain open.
+Approved decisions keep their full entry below so the reasoning stays on the record; each
+is marked **Approved** in the index and at its heading.
 
 Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.md`.
 
@@ -8,8 +12,9 @@ Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.m
 
 ## How to use this packet
 
-Twenty-four decisions are open — twenty from the v0.2 design reconciliation and four
-added by the v0.3 external-research reconciliation (D21–D24). Each is presented with a **recommended default**, the
+Twenty-four decisions are tracked — twenty from the v0.2 design reconciliation and four
+added by the v0.3 external-research reconciliation (D21–D24). **Six are now approved and
+eighteen remain open.** Each is presented with a **recommended default**, the
 **alternatives** actually considered, the **operational consequence** of choosing it, the
 **cost and complexity impact**, a proposed **decision owner**, and the **required
 timing**.
@@ -19,8 +24,9 @@ Three things are worth saying plainly before the list:
 1. **Silence is a decision.** Each recommended default is what will be built if no other
    direction is given. Nothing here blocks on a meeting; the packet exists so that
    defaults are chosen deliberately rather than by drift.
-2. **Only two decisions are genuinely urgent.** D15 (temporal model) and D18
-   (time-bounded ownership) are corpus-wide retrofits if taken late. Everything else can
+2. **The two urgent decisions are settled.** D15 (temporal model) and D18 (time-bounded
+   ownership) were the corpus-wide retrofits, and both are **Approved**. Phase 1 can now
+   begin without a dating or ownership retrofit hanging over it. Everything still open can
    be reversed at moderate cost.
 3. **Nothing has been implemented.** No migration has been applied, no connector built,
    no code written. The schema delta in `11_SCHEMA_DELTA_PROPOSAL.sql` is a proposal.
@@ -32,38 +38,40 @@ three weeks or a recurring commercial cost.
 
 ## Decision index
 
-| ID | Decision | Owner | Required by | Cost | Gate |
-| --- | --- | --- | --- | --- | --- |
-| **D15** | Temporal model | Platform engineering lead | **Before the first signal is written** | M | G-4 |
-| **D18** | Corporate-reorganization handling | Platform engineering lead | **Before the first facility link is written** | M | G-4 |
-| D1 | Hub-embedded or separate application | Executive sponsor + engineering | Before Phase 1 start | L if reversed late | G-4 |
-| D2 | Approved platform services | IT / engineering | Before Phase 1 start | S to select, L to change | G-4 |
-| D9 | Definition of pilot success | Executive sponsor + market leader | Before Phase 1 start | S | G-1 |
-| D11 | Scope class for four non-core accounts | F&B market leader | Before Phase 1 import | S | G-1 |
-| D12 | Ecolab account semantics | BD lead | Before Phase 2 scoring | S | G-1 |
-| D13 | Bottler and subsidiary networks | Market leader + engineering | Before connector enablement | M | G-3 |
-| D14 | Event-data licence and governance | Legal / commercial + marketing ops | Before Phase 1 import | S (review), M if restrictive | G-3 |
-| D17 | Coverage measurement model | Market leader + engineering | Before Phase 2 exit review | M | G-3 |
-| D19 | Evidence access modes and promotion | Market leader + BD | Before Phase 2 scoring | M | G-2 |
-| D16 | Confidence decomposition | Market leader + SMEs | Before Phase 3 UI build | S now, L later | G-2 |
-| D5 | Priority permitting geographies | Market leader + BD | Before week 2 of Phase 2 | M | G-3 |
-| D6 | Paid news / market-data subscriptions | Executive sponsor | Before Phase 2 | L (recurring) | G-3 |
-| D7 | Licensed-content retention and display | Legal / commercial | Before source enablement | S | G-3 |
-| D20 | Kellanova connector retirement | Platform admin | Before Phase 4 | S | G-3 |
-| D8 | Ownership of tier changes and overrides | Market leader | Before Phase 3 | S | G-2 |
-| D4 | Alert channels | BD lead + IT | Before Phase 3 | S | G-5 |
-| D10 | Design system and brand assets | Design lead | Before Phase 3 | S | G-5 |
-| D3 | CRM linkage | BD lead + IT | Phase 4 | M | G-1 (informational) |
-| **D21** | Build or buy local permit coverage | Market leader + engineering | Before week 3 of Phase 2 | M–L | G-3 |
-| **D22** | Incident severity model | Engineering + executive sponsor | Before Phase 2 | S | G-6 |
-| **D23** | Research-claim staging | Platform engineering lead | Before any external batch is imported | M | G-4 |
-| **D24** | Corrections model | Market leader + engineering | Before Phase 2 scoring | M | G-2 |
+| ID | Decision | Status | Owner | Required by | Cost | Gate |
+| --- | --- | --- | --- | --- | --- | --- |
+| **D15** | Temporal model | **Approved** | Platform engineering lead | **Before the first signal is written** | M | G-4 |
+| **D18** | Corporate-reorganization handling | **Approved** | Platform engineering lead | **Before the first facility link is written** | M | G-4 |
+| D1 | Hub-embedded or separate application | Open | Executive sponsor + engineering | Before Phase 1 start | L if reversed late | G-4 |
+| D2 | Approved platform services | Open | IT / engineering | Before Phase 1 start | S to select, L to change | G-4 |
+| D9 | Definition of pilot success | Open | Executive sponsor + market leader | Before Phase 1 start | S | G-1 |
+| D11 | Scope class for four non-core accounts | Open | F&B market leader | Before Phase 1 import | S | G-1 |
+| D12 | Ecolab account semantics | Open | BD lead | Before Phase 2 scoring | S | G-1 |
+| D13 | Bottler and subsidiary networks | Open | Market leader + engineering | Before connector enablement | M | G-3 |
+| D14 | Event-data licence and governance | Open | Legal / commercial + marketing ops | Before Phase 1 import | S (review), M if restrictive | G-3 |
+| D17 | Coverage measurement model | Open | Market leader + engineering | Before Phase 2 exit review | M | G-3 |
+| D19 | Evidence access modes and promotion | Open | Market leader + BD | Before Phase 2 scoring | M | G-2 |
+| D16 | Confidence decomposition | Open | Market leader + SMEs | Before Phase 3 UI build | S now, L later | G-2 |
+| D5 | Priority permitting geographies | Open | Market leader + BD | Before week 2 of Phase 2 | M | G-3 |
+| D6 | Paid news / market-data subscriptions | Open | Executive sponsor | Before Phase 2 | L (recurring) | G-3 |
+| D7 | Licensed-content retention and display | Open | Legal / commercial | Before source enablement | S | G-3 |
+| D20 | Kellanova connector retirement | Open | Platform admin | Before Phase 4 | S | G-3 |
+| D8 | Ownership of tier changes and overrides | Open | Market leader | Before Phase 3 | S | G-2 |
+| D4 | Alert channels | Open | BD lead + IT | Before Phase 3 | S | G-5 |
+| D10 | Design system and brand assets | Open | Design lead | Before Phase 3 | S | G-5 |
+| D3 | CRM linkage | Open | BD lead + IT | Phase 4 | M | G-1 (informational) |
+| **D21** | Build or buy local permit coverage | **Approved** | Market leader + engineering | Before week 3 of Phase 2 | M–L | G-3 |
+| **D22** | Incident severity model | **Approved** | Engineering + executive sponsor | Before Phase 2 | S | G-6 |
+| **D23** | Research-claim staging | **Approved** | Platform engineering lead | Before any external batch is imported | M | G-4 |
+| **D24** | Corrections model | **Approved** | Market leader + engineering | Before Phase 2 scoring | M | G-2 |
 
 ---
 
 ## The two urgent decisions
 
 ### D15 — Temporal model
+
+> **Status: Approved.** The entry below is retained as the decision record.
 
 **Recommended default.** Store six fields wherever a date can come from source text —
 raw expression, start, end, precision (`exact_day` / `month` / `quarter` / `season` /
@@ -100,6 +108,8 @@ v0.2 design had missed. The external record was wrong and improved the schema an
 entire evidence corpus and re-running every classification.
 
 ### D18 — Corporate-reorganization handling
+
+> **Status: Approved.** The entry below is retained as the decision record.
 
 **Recommended default.** Ownership relationships — facility-to-organization and
 organization-to-organization — carry `from_date`, `to_date`, and `evidence_id`. Projects
@@ -523,6 +533,8 @@ lead. **Timing.** Before Phase 3.
 
 ### D21 — Build or buy local permit coverage
 
+> **Status: Approved, with vendor evaluation completed before any contract is signed.** The entry below is retained as the decision record.
+
 **Recommended default.** Evaluate before building. Run a bounded vendor track — Shovels,
 Industrial Info Resources, Dodge, BuildCentral/Hubexo, ConstructConnect — in parallel with
 two or three API-exposed jurisdictions, and decide on evidence at the end of Phase 2.
@@ -549,6 +561,8 @@ jurisdictions rather than after them.
 
 ### D22 — Incident severity model
 
+> **Status: Approved.** The entry below is retained as the decision record.
+
 **Recommended default.** Severity by **consequence**, not by who acts:
 
 | Severity | Condition |
@@ -574,6 +588,8 @@ create pressure to remove the feedback controls `01` requires.
 
 ### D23 — Research-claim staging
 
+> **Status: Approved as a Phase 1 requirement.** The entry below is retained as the decision record.
+
 **Recommended default.** All externally sourced structured data enters a staging layer
 behind an activation gate that fails closed. Nothing reaches a canonical table without
 resolvable evidence, date precision, controlled values, a resolved subject, a definite
@@ -593,6 +609,8 @@ status vocabulary mixes provenance with workflow state.
 external batch is imported, which means before the pilot graph records are used at all.
 
 ### D24 — Corrections model
+
+> **Status: Approved.** The entry below is retained as the decision record.
 
 **Recommended default.** Claims are immutable; corrections are typed relationships
 (`corrects`, `retracts`, `withdraws`, `contradicts`, `supersedes`, `delays`, `cancels`);
@@ -624,10 +642,11 @@ Everything else can follow at its own gate.
 2. **D11** — scope classes, and specifically **whether Sherwin-Williams is intended to be
    in the Food & Beverage radar**.
 3. **D12** — whether Ecolab is a pursuit target or a partner lens.
-4. **D15 and D18** — authorization to adopt the temporal model and time-bounded ownership
-   ahead of their natural gate, because both are corpus-wide retrofits if taken late.
+4. ~~**D15 and D18**~~ — **approved**. The temporal model and time-bounded ownership are
+   adopted ahead of their natural gate, as requested.
 5. **D14** — authorization to begin the event-data licence review.
-6. **D23** — authorization to build the staging layer before any external research batch
-   is imported, since the alternative is a one-off script that nobody can review.
+6. ~~**D23**~~ — **approved**; the staging layer is a Phase 1 requirement.
 
-Items 4, 5, and 6 are the only ones that block Phase 1 work starting.
+Items 4 and 6 are now settled. **Item 5 (D14, the event-data licence review) is the
+remaining blocker on Phase 1 work starting**, together with items 1–3, which are scope and
+success-definition questions rather than build blockers.

@@ -1,6 +1,6 @@
 # ADR 0012 — Corrections supersede; they do not overwrite
 
-**Status:** Proposed · **Ratified at:** Gate G-2 · **Relates to:** E11, E19, D24
+**Status: Accepted** · **Approved via:** D24 · **Relates to:** E11, E19, D24
 
 ## Context
 

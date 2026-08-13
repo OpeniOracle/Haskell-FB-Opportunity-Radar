@@ -202,6 +202,22 @@ alter table evidence
 --     Attribution rule: a project belongs to the operator AS AT THE EVENT DATE.
 -- ---------------------------------------------------------------------------
 
+-- INTERVAL CONVENTION -- stated once, applies to every from_date/to_date pair
+-- in this schema:
+--
+--     [from_date, to_date)  -- HALF-OPEN. from_date INCLUSIVE, to_date EXCLUSIVE.
+--
+-- to_date is the first day on which the relationship no longer holds. Chosen so
+-- that consecutive intervals are adjacent without gaps or overlaps: an interval
+-- ending 2025-12-06 and the next beginning 2025-12-06 describe an uninterrupted
+-- succession, with no ambiguity about who held the relationship on the 6th.
+-- to_date IS NULL means open-ended (still in force).
+-- A zero-length interval is meaningless under half-open semantics, so the check
+-- requires to_date > from_date rather than >=.
+--
+-- As-at-date resolution is therefore:
+--     where from_date <= :as_at and (to_date is null or to_date > :as_at)
+
 create table facility_organizations (
     facility_id uuid not null references facilities(id) on delete cascade,
     organization_id uuid not null references organizations(id) on delete cascade,
@@ -210,11 +226,11 @@ create table facility_organizations (
         'former_owner', 'unknown'
     )),
     evidence_id uuid,                    -- FK added after evidence exists
-    from_date date,
-    to_date date,
+    from_date date,                      -- inclusive
+    to_date date,                        -- EXCLUSIVE; null = open-ended
     created_at timestamptz not null default now(),
     primary key (facility_id, organization_id, relationship),
-    check (to_date is null or from_date is null or to_date >= from_date)
+    check (to_date is null or from_date is null or to_date > from_date)
 );
 
 create table organization_relationships (
@@ -222,16 +238,49 @@ create table organization_relationships (
     child_organization_id uuid not null references organizations(id) on delete cascade,
     relationship text not null check (relationship in (
         'parent_subsidiary', 'brand_owner', 'division', 'joint_venture',
-        'franchise_bottler', 'co_manufacturer', 'former_parent'
+        'franchise_bottler', 'co_manufacturer', 'former_parent',
+        'minority_interest'          -- a retained stake after a demerger or partial sale
     )),
+    ownership_percent numeric(6,3) check (
+        ownership_percent is null or ownership_percent between 0 and 100
+    ),
+    ownership_percent_basis text check (ownership_percent_basis is null
+        or ownership_percent_basis in ('stated', 'approximate', 'inferred')),
     evidence_id uuid,                    -- FK added after evidence exists
-    from_date date,
-    to_date date,
+    from_date date,                      -- inclusive
+    to_date date,                        -- EXCLUSIVE; null = open-ended
     created_at timestamptz not null default now(),
     primary key (parent_organization_id, child_organization_id, relationship),
     check (parent_organization_id <> child_organization_id),
-    check (to_date is null or from_date is null or to_date >= from_date)
+    check (to_date is null or from_date is null or to_date > from_date),
+    check (relationship <> 'minority_interest' or ownership_percent is not null)
 );
+
+-- WORKED EXAMPLE -- Unilever / The Magnum Ice Cream Company.
+--
+-- Three distinct events, which the external research record collapsed into one
+-- and got wrong (see 14_EXTERNAL_RESEARCH_RECONCILIATION.md V16):
+--   2025-07-01  MICC began standalone operations   -- operational separation
+--   2025-12-06  legal demerger completed           -- the CONTROL event
+--   2025-12-08  listing and trading commenced      -- the MARKET event
+--
+-- Control ends at the legal demerger, not at the listing. Under half-open
+-- semantics that is to_date = 2025-12-06 (exclusive), so Unilever controlled
+-- MICC through 5 December inclusive.
+--
+--   organization_relationships:
+--     (unilever, micc, 'parent_subsidiary',  pct null,  from ...,        to 2025-12-06)
+--     (unilever, micc, 'minority_interest',  pct 19.85, from 2025-12-06, to null)
+--
+-- The second row is why 'minority_interest' exists. A demerger is NOT a clean
+-- termination: Unilever retained approximately 19.85% to be sold down over time.
+-- Recording only the ended parent edge would assert a complete separation that
+-- did not happen, and would lose a stake large enough to matter commercially.
+--
+-- The operational-separation milestone (2025-07-01) is not an ownership edge at
+-- all. It belongs on the facility/operational timeline, and it is the date that
+-- actually explains why a mid-2025 plant record may already name MICC as
+-- operator while Unilever still legally controlled the business.
 
 -- facilities.organization_id is retained as the denormalized current operator.
 -- organizations.parent_organization_id is retained as the current parent.

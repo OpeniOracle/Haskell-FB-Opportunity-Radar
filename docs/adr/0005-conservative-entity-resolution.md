@@ -1,6 +1,8 @@
 # ADR 0005 — Unresolved is a valid terminal state for entity resolution
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** C1, C12, C13, D13
+**Status: Accepted in part** · **Approved via:** D18 — the time-bounded, evidence-backed
+ownership corollary is approved. The conservative-resolution ladder itself remains
+**Proposed** pending Gate G-4. · **Relates to:** C1, C12, C13, D13, D18
 
 ## Context
 
