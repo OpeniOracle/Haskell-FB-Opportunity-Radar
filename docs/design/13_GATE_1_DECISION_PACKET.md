@@ -294,7 +294,12 @@ cheap to accommodate before import and expensive afterwards.
 **Cost and complexity.** S for the review; M if terms prove restrictive.
 
 **Owner.** Legal or commercial contracts, with marketing operations. **Timing.** Before
-Phase 1 import.
+the PACK EXPO data is imported or used.
+
+**Scope of the block.** D14 gates **activation and use of the event data in Phase 1** —
+the import, the engagement layer, and anything derived from it. It does not gate Phase 1
+generally, and it does not gate review, approval, or merge of the design-only pull request
+carrying this packet. Design review and the licence review can run in parallel.
 
 **Conditional trigger.** If contact names, email addresses, phone numbers, badge-holder
 or scan records, individual job titles, or person-level campaign engagement are ever
@@ -647,6 +652,11 @@ Everything else can follow at its own gate.
 5. **D14** — authorization to begin the event-data licence review.
 6. ~~**D23**~~ — **approved**; the staging layer is a Phase 1 requirement.
 
-Items 4 and 6 are now settled. **Item 5 (D14, the event-data licence review) is the
-remaining blocker on Phase 1 work starting**, together with items 1–3, which are scope and
-success-definition questions rather than build blockers.
+Items 4 and 6 are now settled. **Item 5 (D14) remains open**, and its scope is narrow:
+the event-data licence review **blocks activation and use of the PACK EXPO data in
+Phase 1** — the import itself, the engagement layer built on it, and anything derived from
+it. It does **not** block Phase 1 as a whole, and it does **not** block review, approval,
+or merge of the design-only pull request that carries this packet. Phase 1 work that does
+not touch the event data may proceed while the review is outstanding.
+
+Items 1–3 are scope and success-definition questions rather than build blockers.

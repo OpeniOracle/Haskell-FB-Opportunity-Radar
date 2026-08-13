@@ -278,9 +278,14 @@ create table organization_relationships (
 -- did not happen, and would lose a stake large enough to matter commercially.
 --
 -- The operational-separation milestone (2025-07-01) is not an ownership edge at
--- all. It belongs on the facility/operational timeline, and it is the date that
--- actually explains why a mid-2025 plant record may already name MICC as
--- operator while Unilever still legally controlled the business.
+-- all. It is an ORGANIZATION-LEVEL contextual event: it belongs to MICC as a
+-- company, and it is stored against the organization, never against any
+-- individual plant. Facility timelines MAY DISPLAY it for context -- it is the
+-- date that explains why a mid-2025 plant record might already name MICC as
+-- operator while Unilever still legally controlled the business -- but the
+-- platform must not assert it as a facility-specific event. No source states
+-- that any particular site changed hands on 2025-07-01, and writing it per
+-- facility would manufacture that claim once per plant.
 
 -- facilities.organization_id is retained as the denormalized current operator.
 -- organizations.parent_organization_id is retained as the current parent.

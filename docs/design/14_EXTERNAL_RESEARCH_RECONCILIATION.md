@@ -414,10 +414,13 @@ matter commercially. `minority_interest` and `ownership_percent` were added to t
 for exactly this case; a demerger with a retained stake is common enough that the model has
 to express it.
 
-The 1 July 2025 operational separation is **not an ownership edge at all**. It belongs on
-the facility and operational timeline — and it is the date that explains why a mid-2025
-plant record might already name MICC as operator while Unilever still legally controlled the
-business. That is directly relevant to V17, which stays open: the Sikeston evidence is a
+The 1 July 2025 operational separation is **not an ownership edge at all**, and it is not a
+facility event either. It is an **organization-level contextual event**, stored against
+MICC as a company. Facility timelines **may display it** for context — it is the date that
+explains why a mid-2025 plant record might already name MICC as operator while Unilever
+still legally controlled the business — but it **must not be stored or asserted as a
+facility-specific event**. No source says any particular site changed hands on 1 July 2025;
+writing the milestone per facility would manufacture that claim once per plant. That is directly relevant to V17, which stays open: the Sikeston evidence is a
 Unilever page describing an ice cream factory, and it does not by itself establish who
 operates that plant today.
 
