@@ -1,0 +1,724 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://haskell.com/schemas/food-beverage-opportunity-radar/platform.schema.json",
+  "title": "Haskell Food & Beverage Opportunity Radar",
+  "description": "Canonical interchange schema for organizations, facilities, sources, evidence, signals, opportunities, and market trends.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "exported_at"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "exported_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "organizations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/organization" }
+    },
+    "facilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/facility" }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "source_runs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourceRun" }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "signals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/signal" }
+    },
+    "opportunities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/opportunity" }
+    },
+    "market_trends": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/marketTrend" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "nullableDateTime": {
+      "oneOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
+    },
+    "nullableDate": {
+      "oneOf": [
+        { "type": "string", "format": "date" },
+        { "type": "null" }
+      ]
+    },
+    "targetTier": {
+      "type": "string",
+      "enum": ["tier_1", "tier_2", "tier_3", "discovery", "not_targeted"]
+    },
+    "organizationRole": {
+      "type": "string",
+      "enum": [
+        "manufacturer_brand",
+        "parent_company",
+        "subsidiary_division",
+        "co_manufacturer_private_label",
+        "retailer",
+        "distributor_logistics",
+        "ingredient_supplier",
+        "packaging_supplier",
+        "equipment_oem",
+        "engineering_contractor_consultant",
+        "competitor",
+        "investor_lender",
+        "government_regulator",
+        "economic_development",
+        "academic_research",
+        "media_trade_publication",
+        "other",
+        "unknown"
+      ]
+    },
+    "sector": {
+      "type": "string",
+      "enum": [
+        "snacks_baking",
+        "candy_chocolate",
+        "pet_food_treats",
+        "protein_ready_to_eat",
+        "alternative_protein",
+        "coffee",
+        "agri_science_ingredients",
+        "frozen_prepared_condiments",
+        "cold_storage_distribution",
+        "beverage",
+        "dairy",
+        "beer_wine_spirits",
+        "consumer_products",
+        "other"
+      ]
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "planning_consulting",
+        "architecture_facility_design",
+        "engineering",
+        "design_build_epc",
+        "process_systems",
+        "packaging_systems",
+        "material_handling",
+        "automation_controls",
+        "utilities_refrigeration",
+        "cold_storage_asrs",
+        "system_analytics_modeling",
+        "industrial_water_wastewater",
+        "construction_commissioning"
+      ]
+    },
+    "geoPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "precision": {
+          "type": "string",
+          "enum": ["rooftop", "parcel", "street", "city", "region", "country", "unknown"]
+        }
+      }
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "line_1": { "type": ["string", "null"] },
+        "line_2": { "type": ["string", "null"] },
+        "city": { "type": ["string", "null"] },
+        "region": { "type": ["string", "null"] },
+        "postal_code": { "type": ["string", "null"] },
+        "country_code": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[A-Z]{2}$" },
+            { "type": "null" }
+          ]
+        },
+        "geo": {
+          "oneOf": [
+            { "$ref": "#/$defs/geoPoint" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "externalIdentifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "value"],
+      "properties": {
+        "system": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "source_url": { "type": ["string", "null"], "format": "uri" },
+        "verified_at": { "$ref": "#/$defs/nullableDateTime" }
+      }
+    },
+    "organization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "canonical_name",
+        "organization_role",
+        "target_tier",
+        "highest_value",
+        "sectors",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "canonical_name": { "type": "string", "minLength": 1 },
+        "legal_name": { "type": ["string", "null"] },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "organization_role": { "$ref": "#/$defs/organizationRole" },
+        "parent_organization_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        },
+        "target_tier": { "$ref": "#/$defs/targetTier" },
+        "highest_value": { "type": "boolean" },
+        "sectors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sector" },
+          "uniqueItems": true
+        },
+        "official_website": { "type": ["string", "null"], "format": "uri" },
+        "headquarters": {
+          "oneOf": [
+            { "$ref": "#/$defs/address" },
+            { "type": "null" }
+          ]
+        },
+        "external_identifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/externalIdentifier" }
+        },
+        "engagement": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pack_expo_records": { "type": "integer", "minimum": 0 },
+            "campaign_engagement_level": {
+              "type": "string",
+              "enum": ["high", "moderate", "limited", "none", "unknown"]
+            },
+            "last_engagement_at": { "$ref": "#/$defs/nullableDateTime" }
+          }
+        },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "facility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "organization_id",
+        "canonical_name",
+        "facility_types",
+        "operating_status",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "organization_id": { "$ref": "#/$defs/uuid" },
+        "canonical_name": { "type": "string", "minLength": 1 },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "facility_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "manufacturing",
+              "processing",
+              "packaging",
+              "cold_storage",
+              "warehouse",
+              "distribution",
+              "laboratory",
+              "headquarters",
+              "mixed_use",
+              "proposed_site",
+              "other",
+              "unknown"
+            ]
+          }
+        },
+        "operating_status": {
+          "type": "string",
+          "enum": ["proposed", "planning", "under_construction", "active", "expanding", "idled", "closing", "closed", "unknown"]
+        },
+        "address": {
+          "oneOf": [
+            { "$ref": "#/$defs/address" },
+            { "type": "null" }
+          ]
+        },
+        "products_processes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "capabilities_relevant": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability" },
+          "uniqueItems": true
+        },
+        "external_identifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/externalIdentifier" }
+        },
+        "opened_at": { "$ref": "#/$defs/nullableDate" },
+        "closed_at": { "$ref": "#/$defs/nullableDate" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "source_type",
+        "collection_method",
+        "base_url",
+        "allowed_domains",
+        "enabled",
+        "health_status",
+        "schedule"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$" },
+        "name": { "type": "string", "minLength": 1 },
+        "source_type": {
+          "type": "string",
+          "enum": [
+            "company",
+            "government",
+            "regulatory",
+            "news",
+            "trade_publication",
+            "economic_development",
+            "permit_planning",
+            "event_marketing",
+            "licensed_data",
+            "other"
+          ]
+        },
+        "collection_method": {
+          "type": "string",
+          "enum": ["api", "webhook", "licensed_feed", "rss_atom", "json_feed", "sitemap", "structured_html", "static_html", "pdf", "browser_worker", "controlled_import"]
+        },
+        "base_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "allowed_domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 3 }
+        },
+        "redirect_policy": {
+          "type": "string",
+          "enum": ["deny", "same_domain", "allowlist_only"]
+        },
+        "authentication_mode": {
+          "type": "string",
+          "enum": ["none", "api_key", "oauth", "service_account", "operator_session"]
+        },
+        "schedule": { "type": "string", "minLength": 1 },
+        "freshness_sla_hours": { "type": "integer", "minimum": 1 },
+        "enabled": { "type": "boolean" },
+        "health_status": {
+          "type": "string",
+          "enum": ["healthy", "degraded", "action_required", "disabled", "unsupported"]
+        },
+        "terms_reviewed_at": { "$ref": "#/$defs/nullableDateTime" },
+        "license_notes": { "type": ["string", "null"] },
+        "query_scope": { "type": "object", "additionalProperties": true },
+        "extraction_config": { "type": "object", "additionalProperties": true },
+        "operator_intervention": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "permitted_actions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["oauth_reauthorize", "replace_api_key", "approve_domain", "complete_permitted_captcha", "approve_selector_change"]
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "sourceRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source_id", "status", "started_at", "metrics"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "source_id": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "running", "success", "partial_success", "unchanged", "failed", "action_required"]
+        },
+        "started_at": { "type": "string", "format": "date-time" },
+        "completed_at": { "$ref": "#/$defs/nullableDateTime" },
+        "checkpoint": { "type": ["string", "null"] },
+        "error_code": { "type": ["string", "null"] },
+        "error_summary": { "type": ["string", "null"] },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["discovered", "fetched", "extracted", "rejected", "duplicates"],
+          "properties": {
+            "discovered": { "type": "integer", "minimum": 0 },
+            "fetched": { "type": "integer", "minimum": 0 },
+            "extracted": { "type": "integer", "minimum": 0 },
+            "rejected": { "type": "integer", "minimum": 0 },
+            "duplicates": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source_id",
+        "source_run_id",
+        "original_url",
+        "resolved_url",
+        "title",
+        "retrieved_at",
+        "content_hash",
+        "mime_type",
+        "extraction_status"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "source_id": { "type": "string" },
+        "source_run_id": { "$ref": "#/$defs/uuid" },
+        "original_url": { "type": "string", "format": "uri" },
+        "resolved_url": { "type": "string", "format": "uri" },
+        "title": { "type": "string", "minLength": 1 },
+        "publisher": { "type": ["string", "null"] },
+        "published_at": { "$ref": "#/$defs/nullableDateTime" },
+        "event_date": { "$ref": "#/$defs/nullableDate" },
+        "retrieved_at": { "type": "string", "format": "date-time" },
+        "content_hash": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "mime_type": { "type": "string", "minLength": 1 },
+        "raw_storage_uri": { "type": ["string", "null"] },
+        "extracted_text_uri": { "type": ["string", "null"] },
+        "extraction_status": {
+          "type": "string",
+          "enum": ["pending", "success", "partial", "failed", "unsupported"]
+        },
+        "extraction_method": {
+          "type": ["string", "null"],
+          "enum": ["api_json", "feed", "html", "structured_data", "pdf_native", "ocr", "browser", "controlled_import", null]
+        },
+        "extractor_version": { "type": ["string", "null"] },
+        "evidence_excerpt": { "type": ["string", "null"], "maxLength": 2000 },
+        "evidence_locator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "page": { "type": ["integer", "null"], "minimum": 1 },
+            "section": { "type": ["string", "null"] },
+            "selector": { "type": ["string", "null"] },
+            "record_key": { "type": ["string", "null"] }
+          }
+        },
+        "display_restrictions": { "type": ["string", "null"] }
+      }
+    },
+    "signalFamily": {
+      "type": "string",
+      "enum": [
+        "facility_capacity",
+        "process_systems",
+        "packaging_systems",
+        "automation_controls",
+        "food_safety_compliance",
+        "utilities_sustainability",
+        "distribution_supply_chain",
+        "corporate_capital",
+        "market_demand"
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["possible", "probable", "confirmed"]
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "summary",
+        "signal_family",
+        "event_type",
+        "confidence",
+        "evidence_ids",
+        "capability_alignment",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "organization_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        },
+        "facility_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "signal_family": { "$ref": "#/$defs/signalFamily" },
+        "event_type": { "type": "string", "minLength": 1 },
+        "event_date": { "$ref": "#/$defs/nullableDate" },
+        "first_observed_at": { "type": "string", "format": "date-time" },
+        "last_observed_at": { "type": "string", "format": "date-time" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "independent_source_count": { "type": "integer", "minimum": 1 },
+        "capability_alignment": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability" },
+          "uniqueItems": true
+        },
+        "amount": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["value", "currency"],
+              "properties": {
+                "value": { "type": "number", "minimum": 0 },
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+                "qualifier": { "type": "string", "enum": ["exact", "approximately", "at_least", "up_to", "unknown"] }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "negative_signal": { "type": "boolean" },
+        "model_metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": { "type": "string" },
+            "model": { "type": "string" },
+            "prompt_version": { "type": "string" },
+            "schema_version": { "type": "string" },
+            "processed_at": { "type": "string", "format": "date-time" }
+          }
+        },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "scoreComponents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["haskell_fit", "project_maturity", "potential_scope", "timing_momentum", "account_strategy", "raw_score", "confidence_multiplier", "final_score"],
+      "properties": {
+        "haskell_fit": { "type": "integer", "minimum": 0, "maximum": 30 },
+        "project_maturity": { "type": "integer", "minimum": 0, "maximum": 25 },
+        "potential_scope": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "timing_momentum": { "type": "integer", "minimum": 0, "maximum": 15 },
+        "account_strategy": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "raw_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "confidence_multiplier": { "type": "number", "enum": [0.6, 0.8, 1.0] },
+        "final_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "explanation": { "type": "string" }
+      }
+    },
+    "opportunity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "organization_id",
+        "title",
+        "stage",
+        "status",
+        "confidence",
+        "forecast_horizon",
+        "capability_alignment",
+        "supporting_signal_ids",
+        "why_it_matters",
+        "scores",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "organization_id": { "$ref": "#/$defs/uuid" },
+        "facility_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "executive_summary": { "type": "string" },
+        "stage": { "type": "string", "enum": ["emerging", "developing", "confirmed"] },
+        "status": {
+          "type": "string",
+          "enum": ["new", "watching", "pursue", "assigned", "on_hold", "dismissed", "closed_won", "closed_lost", "cancelled", "expired"]
+        },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "forecast_horizon": {
+          "type": "string",
+          "enum": ["0_6_months", "6_12_months", "12_24_months", "24_36_months", "36_plus_months", "unknown"]
+        },
+        "sectors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sector" },
+          "uniqueItems": true
+        },
+        "capability_alignment": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/capability" },
+          "uniqueItems": true
+        },
+        "supporting_signal_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "why_it_matters": { "type": "string", "minLength": 1 },
+        "recommended_next_action": { "type": ["string", "null"] },
+        "scores": { "$ref": "#/$defs/scoreComponents" },
+        "momentum": { "type": "string", "enum": ["new", "increasing", "stable", "declining"] },
+        "last_material_change_at": { "$ref": "#/$defs/nullableDateTime" },
+        "assigned_to": { "type": ["string", "null"] },
+        "manual_override": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reason", "overridden_at", "overridden_by"],
+              "properties": {
+                "stage": { "type": ["string", "null"], "enum": ["emerging", "developing", "confirmed", null] },
+                "status": { "type": ["string", "null"] },
+                "final_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+                "reason": { "type": "string", "minLength": 1 },
+                "overridden_at": { "type": "string", "format": "date-time" },
+                "overridden_by": { "type": "string", "minLength": 1 }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "marketTrend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "summary",
+        "direction",
+        "velocity",
+        "sectors",
+        "capability_alignment",
+        "supporting_signal_ids",
+        "independent_organization_count",
+        "first_observed_at",
+        "last_updated_at"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "direction": { "type": "string", "enum": ["growing", "stable", "declining", "mixed"] },
+        "velocity": { "type": "number", "minimum": -1, "maximum": 1 },
+        "sectors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sector" },
+          "uniqueItems": true
+        },
+        "capability_alignment": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability" },
+          "uniqueItems": true
+        },
+        "supporting_signal_ids": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "independent_organization_count": { "type": "integer", "minimum": 2 },
+        "facility_count": { "type": "integer", "minimum": 0 },
+        "geographies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "first_observed_at": { "type": "string", "format": "date-time" },
+        "last_updated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

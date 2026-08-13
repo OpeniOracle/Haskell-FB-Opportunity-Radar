@@ -1,0 +1,257 @@
+{
+  "schema_version": "0.1.0",
+  "exported_at": "2026-08-12T20:00:00Z",
+  "organizations": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "canonical_name": "Example Beverage Company",
+      "legal_name": "Example Beverage Company, Inc.",
+      "aliases": [
+        "Example Beverage"
+      ],
+      "organization_role": "manufacturer_brand",
+      "parent_organization_id": null,
+      "target_tier": "tier_1",
+      "highest_value": true,
+      "sectors": [
+        "beverage"
+      ],
+      "official_website": "https://www.example.com",
+      "headquarters": {
+        "line_1": null,
+        "line_2": null,
+        "city": "Atlanta",
+        "region": "GA",
+        "postal_code": null,
+        "country_code": "US",
+        "geo": null
+      },
+      "external_identifiers": [
+        {
+          "system": "sec_cik",
+          "value": "0000000001",
+          "source_url": "https://www.sec.gov/edgar/browse/?CIK=1",
+          "verified_at": "2026-08-12T12:00:00Z"
+        }
+      ],
+      "engagement": {
+        "pack_expo_records": 2,
+        "campaign_engagement_level": "high",
+        "last_engagement_at": "2025-10-23T16:00:00Z"
+      },
+      "created_at": "2026-08-12T12:00:00Z",
+      "updated_at": "2026-08-12T19:30:00Z"
+    }
+  ],
+  "facilities": [
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "canonical_name": "Example Beverage Southeast Plant",
+      "aliases": [],
+      "facility_types": [
+        "manufacturing",
+        "processing",
+        "packaging",
+        "distribution"
+      ],
+      "operating_status": "expanding",
+      "address": {
+        "line_1": null,
+        "line_2": null,
+        "city": "Macon",
+        "region": "GA",
+        "postal_code": null,
+        "country_code": "US",
+        "geo": {
+          "latitude": 32.8407,
+          "longitude": -83.6324,
+          "precision": "city"
+        }
+      },
+      "products_processes": [
+        "ready_to_drink_beverages",
+        "aseptic_filling"
+      ],
+      "capabilities_relevant": [
+        "process_systems",
+        "packaging_systems",
+        "automation_controls",
+        "utilities_refrigeration"
+      ],
+      "external_identifiers": [],
+      "opened_at": null,
+      "closed_at": null,
+      "created_at": "2026-08-12T12:10:00Z",
+      "updated_at": "2026-08-12T19:30:00Z"
+    }
+  ],
+  "sources": [
+    {
+      "id": "company.newsroom.example",
+      "name": "Example Beverage Company Newsroom",
+      "source_type": "company",
+      "collection_method": "structured_html",
+      "base_url": "https://www.example.com/news",
+      "allowed_domains": [
+        "www.example.com"
+      ],
+      "redirect_policy": "allowlist_only",
+      "authentication_mode": "none",
+      "schedule": "37 */4 * * *",
+      "freshness_sla_hours": 12,
+      "enabled": true,
+      "health_status": "healthy",
+      "terms_reviewed_at": "2026-08-01T14:00:00Z",
+      "license_notes": null,
+      "query_scope": {
+        "organization_ids": [
+          "11111111-1111-4111-8111-111111111111"
+        ]
+      },
+      "extraction_config": {
+        "adapter": "structured_company_news_v1"
+      },
+      "operator_intervention": {
+        "allowed": true,
+        "permitted_actions": [
+          "approve_domain",
+          "approve_selector_change"
+        ]
+      }
+    }
+  ],
+  "source_runs": [
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "source_id": "company.newsroom.example",
+      "status": "success",
+      "started_at": "2026-08-12T16:37:00Z",
+      "completed_at": "2026-08-12T16:37:08Z",
+      "checkpoint": "2026-08-12T16:37:08Z",
+      "error_code": null,
+      "error_summary": null,
+      "metrics": {
+        "discovered": 1,
+        "fetched": 1,
+        "extracted": 1,
+        "rejected": 0,
+        "duplicates": 0
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "source_id": "company.newsroom.example",
+      "source_run_id": "33333333-3333-4333-8333-333333333333",
+      "original_url": "https://www.example.com/news/southeast-capacity-expansion",
+      "resolved_url": "https://www.example.com/news/southeast-capacity-expansion",
+      "title": "Example Beverage Company Announces Southeast Capacity Expansion",
+      "publisher": "Example Beverage Company",
+      "published_at": "2026-08-12T13:00:00Z",
+      "event_date": "2026-08-12",
+      "retrieved_at": "2026-08-12T16:37:05Z",
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mime_type": "text/html",
+      "raw_storage_uri": "evidence://company.newsroom.example/2026/08/12/aaaaaaaa",
+      "extracted_text_uri": "evidence-text://44444444-4444-4444-8444-444444444444",
+      "extraction_status": "success",
+      "extraction_method": "structured_data",
+      "extractor_version": "structured_company_news_v1.2.0",
+      "evidence_excerpt": "The company announced an expansion of its Southeast production facility, including a new aseptic filling line and supporting warehouse automation.",
+      "evidence_locator": {
+        "page": null,
+        "section": "Expansion details",
+        "selector": "article .press-release-body",
+        "record_key": null
+      },
+      "display_restrictions": null
+    }
+  ],
+  "signals": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "facility_id": "22222222-2222-4222-8222-222222222222",
+      "title": "Southeast plant capacity and aseptic line expansion",
+      "summary": "The company announced added production capacity, a new aseptic filling line, and warehouse automation at its Southeast facility.",
+      "signal_family": "facility_capacity",
+      "event_type": "plant_expansion",
+      "event_date": "2026-08-12",
+      "first_observed_at": "2026-08-12T16:37:05Z",
+      "last_observed_at": "2026-08-12T16:37:05Z",
+      "confidence": "confirmed",
+      "evidence_ids": [
+        "44444444-4444-4444-8444-444444444444"
+      ],
+      "independent_source_count": 1,
+      "capability_alignment": [
+        "architecture_facility_design",
+        "process_systems",
+        "packaging_systems",
+        "automation_controls",
+        "material_handling"
+      ],
+      "amount": null,
+      "negative_signal": false,
+      "model_metadata": {
+        "provider": "approved_model_provider",
+        "model": "approved_extraction_model",
+        "prompt_version": "signal_extract_0.1.0",
+        "schema_version": "0.1.0",
+        "processed_at": "2026-08-12T16:38:00Z"
+      },
+      "created_at": "2026-08-12T16:38:00Z",
+      "updated_at": "2026-08-12T16:38:00Z"
+    }
+  ],
+  "opportunities": [
+    {
+      "id": "66666666-6666-4666-8666-666666666666",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "facility_ids": [
+        "22222222-2222-4222-8222-222222222222"
+      ],
+      "title": "Southeast beverage plant capacity, filling, and automation expansion",
+      "executive_summary": "A Tier 1 beverage producer has confirmed an expansion involving production capacity, aseptic filling, and warehouse automation at a named Southeast facility.",
+      "stage": "confirmed",
+      "status": "new",
+      "confidence": "confirmed",
+      "forecast_horizon": "0_6_months",
+      "sectors": [
+        "beverage"
+      ],
+      "capability_alignment": [
+        "architecture_facility_design",
+        "process_systems",
+        "packaging_systems",
+        "automation_controls",
+        "material_handling"
+      ],
+      "supporting_signal_ids": [
+        "55555555-5555-4555-8555-555555555555"
+      ],
+      "why_it_matters": "The announced scope directly aligns with Haskell's beverage facility, process, packaging, automation, and material-handling capabilities.",
+      "recommended_next_action": "Confirm relationship ownership and determine whether design, integration, or execution partners have been selected.",
+      "scores": {
+        "haskell_fit": 29,
+        "project_maturity": 23,
+        "potential_scope": 16,
+        "timing_momentum": 14,
+        "account_strategy": 10,
+        "raw_score": 92,
+        "confidence_multiplier": 1.0,
+        "final_score": 92,
+        "explanation": "The project is officially announced, involves multiple Haskell-aligned systems, concerns a Highest Value Tier 1 account, and appears near term. Scope value is not stated and is not inferred."
+      },
+      "momentum": "new",
+      "last_material_change_at": "2026-08-12T16:38:00Z",
+      "assigned_to": null,
+      "manual_override": null,
+      "created_at": "2026-08-12T16:38:00Z",
+      "updated_at": "2026-08-12T16:38:00Z"
+    }
+  ],
+  "market_trends": []
+}

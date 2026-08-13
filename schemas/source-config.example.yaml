@@ -1,0 +1,144 @@
+schema_version: "0.1.0"
+
+defaults:
+  https_only: true
+  redirect_policy: allowlist_only
+  timeout_seconds: 30
+  max_response_bytes: 25000000
+  retry:
+    max_attempts: 4
+    initial_backoff_seconds: 30
+    maximum_backoff_seconds: 1800
+    jitter: true
+  archive_original: true
+  content_hash: sha256
+  unchanged_is_success: true
+  document_isolation: true
+  require_dry_run_before_enable: true
+
+sources:
+  - id: sec.edgar.submissions
+    name: SEC EDGAR Company Submissions
+    source_type: government
+    collection_method: api
+    base_url: https://data.sec.gov
+    allowed_domains:
+      - data.sec.gov
+      - www.sec.gov
+    redirect_policy: allowlist_only
+    authentication_mode: none
+    schedule: "17 * * * *"
+    freshness_sla_hours: 6
+    enabled: false
+    health_status: disabled
+    terms_reviewed_at: null
+    license_notes: Automated access must comply with SEC fair-access requirements.
+    query_scope:
+      account_selection: highest_value_and_tier_1
+      filing_types:
+        - 8-K
+        - 10-K
+        - 10-Q
+        - 20-F
+        - 6-K
+      keywords:
+        - facility
+        - plant
+        - expansion
+        - manufacturing
+        - packaging
+        - automation
+        - distribution center
+        - capital expenditures
+    extraction_config:
+      adapter: sec_edgar_v1
+      require_company_cik: true
+      preserve_filing_accession: true
+      minimum_records: 0
+    operator_intervention:
+      allowed: true
+      permitted_actions:
+        - approve_domain
+
+  - id: fda.food.enforcement
+    name: openFDA Food Enforcement
+    source_type: regulatory
+    collection_method: api
+    base_url: https://api.fda.gov/food/enforcement.json
+    allowed_domains:
+      - api.fda.gov
+      - open.fda.gov
+    redirect_policy: allowlist_only
+    authentication_mode: api_key
+    schedule: "27 4 * * *"
+    freshness_sla_hours: 192
+    enabled: false
+    health_status: disabled
+    terms_reviewed_at: null
+    license_notes: Confirm API-key ownership, usage limits, attribution, and retention.
+    query_scope:
+      account_selection: all_monitored_accounts
+      use_aliases: true
+      include_unmatched_discovery: true
+    extraction_config:
+      adapter: openfda_food_enforcement_v1
+      pagination: skip_limit
+      page_size: 100
+      required_fields:
+        - recall_number
+        - recalling_firm
+        - product_description
+        - report_date
+    operator_intervention:
+      allowed: true
+      permitted_actions:
+        - replace_api_key
+
+  - id: company.newsroom.example
+    name: Example Target Company Newsroom
+    source_type: company
+    collection_method: sitemap
+    base_url: https://www.example.com/news
+    allowed_domains:
+      - www.example.com
+      - example.com
+    redirect_policy: allowlist_only
+    authentication_mode: none
+    schedule: "37 */4 * * *"
+    freshness_sla_hours: 12
+    enabled: false
+    health_status: disabled
+    terms_reviewed_at: null
+    license_notes: Replace this placeholder only after validating the exact HTTPS sitemap or feed.
+    query_scope:
+      organization_ids:
+        - 11111111-1111-4111-8111-111111111111
+      path_allowlist:
+        - /news/
+        - /investors/
+        - /press-releases/
+    extraction_config:
+      adapter: structured_company_news_v1
+      discover_from_sitemap: true
+      use_json_ld: true
+      require_title: true
+      require_published_at: false
+      minimum_text_characters: 400
+    operator_intervention:
+      allowed: true
+      permitted_actions:
+        - approve_domain
+        - approve_selector_change
+
+health_policy:
+  consecutive_failures_to_degraded: 2
+  consecutive_failures_to_action_required: 4
+  zero_result_anomaly:
+    enabled: true
+    compare_trailing_runs: 10
+  record_count_change_threshold_percent: 80
+  freshness_grace_percent: 20
+  alert_channels:
+    - in_app
+    - email
+
