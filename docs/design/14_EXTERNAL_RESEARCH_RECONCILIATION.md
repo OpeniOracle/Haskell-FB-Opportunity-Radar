@@ -2,7 +2,12 @@
 
 Disposition of the Gemini and Perplexity research outputs against the v0.2 design.
 
-Version 0.1 · Prepared 2026-08-13 · Status: **for stakeholder review at Gates G-2 and G-3**
+Version 0.2 · Prepared 2026-08-13 · Status: **for stakeholder review at Gates G-2 and G-3**
+
+**v0.2 is an attachment-recovery pass.** `pilot_accounts_6_10_graph_records.jsonl`, missing
+from the original upload, was supplied and has been validated. External graph coverage is
+now **accounts 6 through 15**. Accounts 1 through 5 remain absent. No other finding in
+this document was reopened.
 
 Companion to `10_DESIGN_RESPONSE.md`, `12_PILOT_SOURCE_COVERAGE_MATRIX.md`, and
 `Haskell_FB_External_Research_Reconciliation.md` (the handoff document).
@@ -34,22 +39,34 @@ Disposition vocabulary, used on every finding in §4:
 | `FB_Capital_Project_Signal_Backtest.md` | Yes | 20 projects, 10 negative controls | — |
 | `Adversarial_Automation_Review_Findings.md` | Yes | 4 findings, 10 tests | — |
 | `pilot_accounts_11_15_graph_records.jsonl` | Yes | **27** | Parses as valid JSON Lines |
-| `pilot_accounts_6_10_graph_records.jsonl` | **No — not supplied** | — | Referenced by the handoff document as 26 records for Mars, Hershey, Kimberly-Clark, Unilever, and P&G, but **it was not among the attached files** |
+| `pilot_accounts_6_10_graph_records.jsonl` | **Yes — recovered in v0.2** | **26** | Parses as valid JSON Lines; Mars, Hershey, Kimberly-Clark, Unilever, P&G |
 
-**Consequence.** The handoff document's aggregate figures — 53 pilot records, 19 facility
-records, six project records, eleven records lacking evidence — **could not be verified**,
-because they span a file that was not received. What was verified, from the one graph file
-in hand:
+**Recomputed aggregates.** With both graph files in hand, every figure below was counted
+independently rather than taken from the handoff document. **All of the handoff's
+aggregates check out.**
 
-- 27 records: 9 `entity`, 8 `facility`, 4 `relationship`, 3 `project`, 2 `alias`,
-  1 `network_assertion`.
-- **4 records carry neither `sources` nor `evidence_url`** (lines 2, 4, 10, 16).
+| Measure | 6–10 | 11–15 | Total | Handoff said | Agrees |
+| --- | ---: | ---: | ---: | ---: | :---: |
+| Records | 26 | 27 | **53** | 53 | ✓ |
+| Facility records | 11 | 8 | **19** | 19 | ✓ |
+| Project records | 3 (`capital_project`) | 3 (`project`) | **6** | 6 | ✓ |
+| Records with no evidence locator | 7 | 4 | **11** | 11 | ✓ |
+| Entity records | 8 | 9 | 17 | — | — |
+| Ownership / relationship records | 3 | 4 | 7 | — | — |
 
-External graph coverage is therefore **accounts 11–15 only** as received, not 6–15.
-Accounts 1–5 (PepsiCo, The Coca-Cola Company, Nestlé, Kroger, Tyson Foods) and 6–10 (Mars,
-Hershey, Kimberly-Clark, Unilever, Procter & Gamble) have **no external graph records
-available to this pass**. Nothing has been fabricated to fill either gap; both are
-recorded as verification tasks in §7.
+Record types in the recovered file: **8 `entity`, 3 `ownership`, 11 `facility`,
+3 `capital_project`, 1 `claim` = 26** — matching the expected characteristics exactly.
+
+**Referential integrity: clean.** All 26 records parse, and **every internal reference
+resolves** — `operator_entity_id`, `from_entity_id`, `to_entity_id`, `subject_entity_id`,
+`facility_id`, and the nested `historic_relationship.entity_id`. Zero dangling
+identifiers. This is the strongest structural property of either file and is worth saying
+plainly: the file is internally coherent. Its problems are contract problems, not
+integrity problems.
+
+External graph coverage is therefore **accounts 6 through 15**. **Accounts 1 through 5 —
+PepsiCo, The Coca-Cola Company, Nestlé, Kroger, and Tyson Foods — remain absent**, and
+nothing has been fabricated to fill that gap. It is recorded as V2 in §7.
 
 ### 1.2 One epistemic caution about `sources.jsonl`
 
@@ -123,7 +140,7 @@ SEC-controlled URLs. Every item below states what was actually checked.
 | FDA food facility registration list is FOIA-exempt | **Verified** | FDA guidance: the list of registered facilities and registration documents are not subject to FOIA, nor is derived information identifying a registered person — **21 U.S.C. 350d(a)(5)**. (One third-party index cites §350d(a)(4); the citation differs, the effect does not) |
 | BuildCentral offers an API | **Verified** | A published datasheet, "BuildCentral API — Power your business and digital assets with real-time access," at `constructionwire.com/Content/pdf/buildcentral_api.pdf`. The external research's "no genuine machine-callable API" finding is **wrong** |
 | ConstructConnect official developer portal | **Verified** | `developer.io.constructconnect.com/overview` — REST, `x-api-key` auth, project and company search. Access appears gated to authorized subscribers |
-| Industrial Info Resources IDB API | **Verified (existence)**; version claim **not confirmed** | `api.industrialinfo.com/idb/` — REST, OpenAPI 3.0, JWT auth, add-on to a subscription. Sources reviewed describe **v2.6, released 17 Mar 2026**; the handoff document's "v2.7, released 28 July 2026" was not confirmed |
+| Industrial Info Resources IDB API | **Verified (existence)**; version **externally observed, not reproduced in-session** | `api.industrialinfo.com/idb/` — REST, OpenAPI 3.0, JWT auth, add-on to a subscription. The official documentation portal reports **v2.7, released 28 July 2026**. That page is **blocked by this session's egress proxy**, so the version was not reproduced here; search results reviewed in-session surfaced only an older v2.6 reference, which is **stale, not authoritative**. Treat v2.7 as current |
 | Unilever New Haven timing | **Handoff document is correct; the JSONL is wrong** | Announced 28 May 2026; $270M; 2 College Street, New Haven; **"slated to open by spring 2029"**; replaces the Trumbull R&D campus; ~300 employees |
 
 ---
@@ -151,10 +168,15 @@ remains **rejected** on terms-of-service grounds — that part of the external r
 right and is unchanged. Entitlement, coverage, and licensing require a vendor conversation.
 
 **E3 — Industrial Info Resources. Accepted with modification.** The API is real: REST,
-OpenAPI 3.0, JWT. Two modifications: the **version claim is unconfirmed** (sources
-reviewed describe v2.6 of March 2026, not v2.7 of July 2026), and the portal presents the
-service as access to **IIR Energy's** market-intelligence database. IIR's F&B/process
-depth is a vendor-demo question, not an established fact.
+OpenAPI 3.0, JWT. The official documentation portal reports **v2.7, released 28 July
+2026**; `api.industrialinfo.com/idb/` is blocked by this session's egress proxy, so that
+version is **externally observed but not reproduced in-session**. An in-session search
+surfaced an older v2.6 reference — that is a stale secondary result, not evidence that
+v2.6 is current, and it should not be cited as such.
+
+The modification that stands is a different one: the portal presents the service as access
+to **IIR Energy's** market-intelligence database. IIR's F&B and process depth is a
+vendor-demo question, not an established fact.
 
 **E4 — FSIS MPI establishment API. Accepted.** This is the most valuable single addition
 from the external research. The catalog carried FSIS *recalls* but omitted the
@@ -281,36 +303,110 @@ a project. They are staged as evaluation-corpus candidates requiring citation be
 
 ### 4.4 Pilot graph records (E26, E27)
 
-**E26 — Staging only.** The 27 records received are not import-ready, for the reasons the
-handoff document gives and this pass confirmed:
+**E26 — Staging only.** All 53 records across both files are not import-ready.
 
-- **Schema divergence.** The received file uses `id`, `entity_type`, `project`,
-  `relationship`, `sources`, `city`; the handoff document reports the unreceived 6–10 file
-  uses `entity_id`/`facility_id`/`project_id`, `entity_class`, `capital_project`,
-  `ownership`, `evidence_url`, `locality`. Two incompatible shapes.
-- **Uncontrolled status values.** `evidence_status` alone carries seven distinct values
-  mixing provenance, confidence, currency, and workflow state:
-  `verified`, `verified_primary`, `verified_primary_corporate`,
-  `verified_primary_government`, `corroborated`, `primary_historical_not_current`,
-  `requires_closing_release_for_graph_activation`. The last is not an evidence status at
-  all — it is an activation gate. Similar mixing appears in `operational_status`,
-  `status`, `relationship_status`, `sec_coverage`, and `tenure`
-  (`owned_historical_2021` fuses tenure, currency, and a year).
-- **Missing provenance.** 4 of 27 records carry no evidence reference: two aliases, the
-  `danone_sa → whitewave` relationship, and the `ghost_lifestyle` entity — the last marked
-  `verified` with nothing to verify against.
+**Schema divergence, now confirmed from both sides rather than inferred.** The two files
+were produced against different implicit schemas, and the incompatibility runs deeper than
+the handoff document's field table showed — it reaches the record-type vocabulary itself:
+
+| Concept | Accounts 6–10 | Accounts 11–15 |
+| --- | --- | --- |
+| Record identifier | `entity_id`, `facility_id`, `project_id`, `claim_id` | `id` |
+| Entity type | `entity_class` | `entity_type` |
+| SEC data | nested `sec: {cik, coverage}` | flat `cik`, `sec_coverage` |
+| Project record type | `capital_project` | `project` |
+| Ownership record type | `ownership` (`from_entity_id`/`to_entity_id`) | `relationship` (`subject_id`/`predicate`/`object_id`) |
+| Evidence | `evidence_url` (single string) | `sources` (array) |
+| Locality | `locality`, `county`, `state` | `city`, optional `county`, `state` |
+| Money | `amount_usd`, `capex_usd` | `capital_usd_m` |
+| Area | `size_sqft` | `square_feet` |
+| Scope | free-text `sector` | `fnb_scope` |
+| Facility types | `facility_types` (array) | `facility_type` (string) |
+| **Record types unique to the file** | `capital_project`, `ownership`, `claim` | `project`, `relationship`, `alias`, `network_assertion` |
+
+**22 field names appear only in the 6–10 file and 37 only in the 11–15 file.** Neither file
+can be read by a parser written for the other. This confirms and strengthens the v0.1
+finding rather than reopening it: staging normalization is not optional tidying, it is the
+only way both files can coexist.
+
+Everything below applies to both files unless stated:
+- **Uncontrolled status values, in both files.** The 11–15 file's `evidence_status` carries
+  seven distinct values; the 6–10 file carries **six more, none of which overlap**:
+  `confirmed`, `confirmed_adjacent`, `confirmed_nonfood`,
+  `confirmed_company_level_not_site_roster`, `corroborated`, `historic_only_for_unilever`.
+  Four of those six fuse provenance with *scope* — "adjacent," "nonfood,"
+  "company_level_not_site_roster," and an entity name embedded in a status value. Thirteen
+  distinct evidence-status values across 53 records, one of which
+  (`requires_closing_release_for_graph_activation`) is not an evidence status at all but an
+  activation gate.
+
+  The same mixing runs through `operational_status`, where the 6–10 file has six values
+  including three compounds — `operating_upgrading`,
+  `plant_operating_distribution_center_planned`, and
+  `operating_historic_unilever_relationship`. The middle one encodes **two facilities'
+  states in one string**: an operating plant and a planned distribution centre.
+  `sector` is free text with five spellings across eight entities.
+- **Missing provenance.** **11 of 53 records carry no evidence reference** — 4 in the 11–15
+  file (two aliases, the `danone_sa → whitewave` relationship, the `ghost_lifestyle`
+  entity) and **7 in the 6–10 file, all of them `entity` records**: Kellanova, Hershey,
+  LesserEvil, Kimberly-Clark, Unilever, MICC, and P&G. Every one is marked `confirmed`
+  with nothing to confirm it against. Note the pattern: in the 6–10 file the *unevidenced*
+  records are precisely the entity records, while every facility, project, and ownership
+  record carries a URL. Entity existence was treated as self-evident. For Hershey or P&G
+  that is defensible; as a contract rule it is not, and CIK-bearing entities have an
+  obvious evidence locator available.
 - **Raw URLs as evidence.** Graph assertions embed publisher URLs directly. A URL is
   evidence *metadata*; assertions must reference normalized evidence IDs.
 - **Date strings without precision.** `2017-04`, `2024-Q3`, `2025`, `2024-early`,
   `announced_construction_expected_early_2025` — five different temporal grains in
   ordinary strings, exactly what ADR 0004 exists to prevent.
-- **No pilot-account mapping.** No record carries the Highest Value row it belongs to, so
-  subsidiaries and acquired companies could silently become separate pilot accounts.
+- **No pilot-account mapping.** No record in either file carries the Highest Value row it
+  belongs to, so subsidiaries and acquired companies could silently become separate pilot
+  accounts. The 6–10 file makes the risk concrete: Kellanova, LesserEvil, and The Magnum
+  Ice Cream Company are all first-class entities with no marker tying them to Mars,
+  Hershey, and Unilever respectively.
+- **Facilities attributed to absent entities.** `fac:natures_bakery_salt_lake_city_ut` and
+  `fac:royal_canin_lewisburg_oh` are operated by `org:mars_incorporated`, which is
+  referentially valid but flattens Nature's Bakery and Royal Canin — real operating
+  entities — into their parent. Two Mars facility assertions also cite
+  `mars.com/about/history`, a corporate history page, which is weak provenance for a
+  facility claim regardless of whether the claim is true.
+- **One internal contradiction.** The Unilever→MICC ownership record sets
+  `valid_to: 2025-12-07` while its own `evidence_quote` says "demerged 8 Dec 2025," and
+  independent verification put completion at 6 December with trading from 8 December. Three
+  dates, one relationship. It also has `valid_from: null`, so the ownership interval is
+  open at the start.
 
-**E27 — Unilever New Haven. Rejected and corrected.** The unreceived 6–10 file reportedly
-stores `2029-03-31` for a source that says **"by spring 2029."** That is a fabricated day
-and a fabricated month, and it is the exact failure ADR 0004 was written to prevent. Under
-the temporal model it is stored as:
+### 4.4a Staging dry run — accounts 6–10
+
+The recovered file was run against the activation gate in §6.3. **Not one record reaches
+`validated`**, because every record in the file lacks a scope classification, a
+pilot-account reference, and any temporal precision or basis field.
+
+| Verdict | Count | Cause |
+| --- | ---: | --- |
+| `rejected` | **1** | `proj:unilever_new_haven_2026` — unsupported exactness (see below) |
+| `needs_evidence` | **9** | 7 entity records with no evidence locator; the Unilever→MICC ownership record with no `valid_from`; `fac:sikeston_ice_cream_mo` with an unresolved operator |
+| `staged` | 16 | Structurally sound, still blocked on scope, account mapping, and temporal precision |
+| `validated` | **0** | — |
+
+`fac:sikeston_ice_cream_mo` deserves a note as a case the gate handles *well*. Its
+`relationship_type` is literally `current_operator_unverified`, its `operator_entity_id`
+points at MICC, its `historic_relationship` points at Unilever with a `valid_to`, and its
+evidence URL is a Unilever page. The research tool was being honest about not knowing who
+operates the plant post-demerger. Under ADR 0005 that is a **correct terminal state**, not
+a defect — the record sits in `needs_evidence` and nothing is guessed.
+
+**E27 — Unilever New Haven. Rejected and corrected. Now confirmed from the file itself.**
+`proj:unilever_new_haven_2026` line 24 carries
+`"expected_operational_date": "2029-03-31"` against a source that says the centre is
+**"expected to be fully operational by spring 2029."** That is a fabricated day *and* a
+fabricated month, and it is the exact failure ADR 0004 was written to prevent.
+
+**The staging gate rejects it** — this is the one `rejected` verdict in the dry run above.
+It is not silently repaired: a rejected claim carries a `rejection_reason`, and the
+normalized form below must be re-staged as a new claim with its own evidence. Under the
+temporal model that form is:
 
 ```text
 temporal_raw_expression : "expected to be fully operational by spring 2029"
@@ -555,7 +651,7 @@ validation of this document (§8).
 {
   "research_claim_id": "rc_2026_08_13_unilever_new_haven_timing",
   "source_file": "pilot_accounts_6_10_graph_records.jsonl",
-  "source_record_locator": "not received; claim taken from handoff document §4.4",
+  "source_record_locator": "line 24",
   "claim_type": "project",
   "subject_ref": "Unilever New Haven Global Innovation Centre",
   "predicate": "expected_operational_date",
@@ -611,9 +707,12 @@ Named, not filled. None is a blocker for design approval; each blocks a specific
 
 | # | Gap | Blocks |
 | --- | --- | --- |
-| V1 | **`pilot_accounts_6_10_graph_records.jsonl` was not supplied.** Mars, Hershey, Kimberly-Clark, Unilever, and P&G have no external graph records in hand | Staging import for accounts 6–10 |
-| V2 | **No external graph records exist for accounts 1–5** — PepsiCo, Coca-Cola, Nestlé, Kroger, Tyson. Not fabricated | Staging import for accounts 1–5 |
-| V3 | Handoff aggregates (53 records, 19 facilities, 6 projects, 11 without evidence) unverifiable without V1 | Nothing; recorded for accuracy |
+| ~~V1~~ | **Closed in v0.2.** `pilot_accounts_6_10_graph_records.jsonl` was supplied and validated: 26 records, all references resolving. Accounts 6–10 now have external graph records | — |
+| V2 | **No external graph records exist for accounts 1–5** — PepsiCo, The Coca-Cola Company, Nestlé, Kroger, Tyson Foods. **Still open.** Not fabricated | Staging import for accounts 1–5 |
+| ~~V3~~ | **Closed in v0.2.** All handoff aggregates independently recomputed and confirmed: 53 records, 19 facilities, 6 projects, 11 without evidence | — |
+| V15 | 11 of 53 records need an evidence locator before activation; 7 are CIK-bearing entity records where one is readily available | Staging activation |
+| V16 | Unilever→MICC ownership carries three conflicting dates (`valid_to` 2025-12-07, quote "8 Dec 2025", verified completion 6 Dec 2025) | Staging activation |
+| V17 | Operator of `fac:sikeston_ice_cream_mo` post-demerger is unresolved by the source itself | Staging activation |
 | V4 | BuildCentral **F&B/industrial coverage depth** — advertised verticals do not list food and beverage | Vendor decision D21 |
 | V5 | ConstructConnect API entitlement, coverage, pricing, licensing | Vendor decision D21 |
 | V6 | IIR IDB API version, F&B depth (portal presents an energy-oriented database), pricing, redistribution and model-processing rights | Vendor decision D21 |
@@ -632,7 +731,12 @@ Named, not filled. None is a blocker for design approval; each blocks a specific
 
 | Check | Result |
 | --- | --- |
-| All three JSONL inputs parse as JSON Lines | Pass — 21 + 27 records; the 6–10 file was absent, not malformed |
+| All four JSONL inputs parse as JSON Lines | Pass — 21 + 27 + 26 records |
+| Recovered 6–10 file matches expected characteristics | Pass — 26 records: 8 entity, 3 ownership, 11 facility, 3 capital_project, 1 claim |
+| Referential integrity of the 6–10 file | Pass — **0 dangling references** across `operator_entity_id`, `from_entity_id`, `to_entity_id`, `subject_entity_id`, `facility_id`, `historic_relationship.entity_id` |
+| Aggregates recomputed from both graph files rather than taken from the handoff | Pass — 53 / 19 / 6 / 11, all matching |
+| Staging dry run of the 6–10 file against §6.3 | Pass — 0 validated, 16 staged, 9 needs_evidence, 1 rejected |
+| Unilever `2029-03-31` is rejected, not silently normalized | Pass |
 | Markdown tables in all changed files: column-count consistency | Pass — 0 mismatches |
 | Code fences balanced in all changed files | Pass |
 | JSON Schema in §6.1 parses | Pass |

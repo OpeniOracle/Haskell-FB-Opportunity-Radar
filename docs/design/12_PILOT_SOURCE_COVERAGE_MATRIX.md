@@ -560,7 +560,7 @@ suitability**, which is F&B coverage depth.
 | --- | --- | --- | --- |
 | **BuildCentral / Hubexo** | No genuine machine-callable API | **Wrong.** A published API datasheet exists (`constructionwire.com/Content/pdf/buildcentral_api.pdf`) | API exists. **But ConstructionWire's advertised verticals are retail/CRE, hotels, multi-family and single-family residential, medical, and energy & mining — food and beverage is not among them.** Coverage is now the open question, not access |
 | **ConstructConnect** | No credible official API documentation | **Wrong.** An official developer portal exists (`developer.io.constructconnect.com/overview`), REST with `x-api-key` | Access appears gated to subscribers. The unofficial third-party scraper wrapper remains **rejected** on ToS grounds — that part was right |
-| **Industrial Info Resources** | Vendor marketing claims only | **Partly wrong.** A real API exists: REST, OpenAPI 3.0, JWT (`api.industrialinfo.com/idb/`) | Version claim unconfirmed — sources reviewed describe **v2.6 of 17 Mar 2026**, not v2.7 of July 2026. The portal presents an **energy-oriented** database; F&B depth is a demo question |
+| **Industrial Info Resources** | Vendor marketing claims only | **Partly wrong.** A real API exists: REST, OpenAPI 3.0, JWT (`api.industrialinfo.com/idb/`) | Official documentation reports **v2.7, released 28 July 2026** — externally observed, **not reproduced in-session** (the portal is blocked by this environment's egress proxy). The portal presents an **energy-oriented** database; F&B depth is a demo question |
 | **Dodge Construction Network** | Vendor marketing claims only | Unchanged | Quote-only; F&B depth unverified |
 | **Shovels.ai** | Corroborated; best build-vs-buy alternative | Unchanged | Free tier exists (250 requests); jurisdictional overlap with pilot geographies unverified |
 
@@ -568,6 +568,35 @@ suitability**, which is F&B coverage depth.
 API-exposed jurisdictions, and decide on evidence. Building dozens of municipal connectors
 before knowing whether one vendor covers the same ground is the expensive mistake; buying
 a subscription before knowing whether it contains any F&B projects is the other one.
+
+---
+
+## Staged facility geographies from the recovered accounts 6–10 records
+
+The recovered `pilot_accounts_6_10_graph_records.jsonl` contributes 11 facility records and
+3 capital-project records for accounts 6–10. **These are staged research claims, not
+verified coverage findings** — none has passed the activation gate — but several name
+states that this matrix's priority-geography lists did not, and D5 (priority permitting and
+incentive geographies) should be decided with them visible.
+
+| Account | Staged facility locations | Already in the matrix's priority list? |
+| --- | --- | --- |
+| Mars | Hackettstown NJ ($70M, 2024); Salt Lake City UT (Nature's Bakery, $240M); Topeka KS; Lewisburg OH (Royal Canin) | NJ, KS yes · **UT, OH new** |
+| Hershey | Hershey PA — Reese Chocolate Processing (250,000 sq ft, opened 2025) and West Hershey | PA yes |
+| Kimberly-Clark | Warren OH (advanced manufacturing, planned/under construction); Beech Island SC (automated distribution centre planned at an operating plant) | **OH, SC both new** |
+| Unilever | Kilbourn IL (Knorr/Hellmann's); Sikeston MO (ice cream — **operator unresolved post-demerger**); New Haven CT (R&D, planned) | MO, CT yes · **IL new** |
+| Procter & Gamble | **None.** The file carries a company-level claim — "24 manufacturing plants in 18 states" — and no site roster | — |
+
+Five states appear that no priority list contained: **UT and OH for Mars, OH and SC for
+Kimberly-Clark, IL for Unilever.** Two of them are Kimberly-Clark sites, which matters
+because that account's strongest Haskell match is industrial water and wastewater, and both
+records describe capital activity — a facility under construction and a planned automated
+distribution centre.
+
+The P&G row is the informative negative. The strongest external-research signal for that
+account is a count with no sites attached, which is precisely why `network_assertion`
+exists as a staged claim type: "24 plants in 18 states" is true, useful for expected-coverage
+modelling, and must not be allowed to invent 24 facility records.
 
 ---
 

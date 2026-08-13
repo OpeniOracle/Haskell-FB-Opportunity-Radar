@@ -10,12 +10,13 @@ specific sense that matters here: they carry claims without uniform provenance, 
 controlled and free-text status values, embed raw URLs as if they were evidence, and
 express dates at four different grains inside ordinary strings.
 
-The single received graph file demonstrates every one of these. `evidence_status` alone
-carries seven distinct values that mix provenance, confidence, currency, and workflow
-state — including `requires_closing_release_for_graph_activation`, which is not an
-evidence status at all but an activation gate. Four of twenty-seven records carry no
-evidence reference, one of them marked `verified`. And the two graph files use
-incompatible field names for the same concepts, so even self-consistency is absent.
+Both graph files demonstrate every one of these, and between them they carry **thirteen
+distinct `evidence_status` values with no overlap between the files** — mixing provenance,
+confidence, currency, scope, and workflow state. One of them,
+`requires_closing_release_for_graph_activation`, is not an evidence status at all but an
+activation gate. **11 of 53 records carry no evidence reference.** The two files also use
+incompatible field names and even incompatible *record-type vocabularies* for the same
+concepts, so cross-file consistency is absent by construction.
 
 The tempting shortcut is a one-off normalization script. That is a mistake, because more
 research will arrive — from these tools, from vendors during evaluation, from Haskell's
@@ -65,9 +66,15 @@ overwrites.
 
 Bad: a staging layer is real schema and real code for data that may never activate. There
 is a standing queue of `needs_evidence` claims that will not clear itself, and someone
-must decide periodically whether an unactivatable claim is worth pursuing. Expect the
-staged-to-activated ratio to be low — the received graph file would activate perhaps half
-its records as-is.
+must decide periodically whether an unactivatable claim is worth pursuing.
+
+The staged-to-activated ratio is not merely low — a dry run of the accounts 6–10 file
+against the gate produced **0 validated, 16 staged, 9 needs_evidence, and 1 rejected**.
+Nothing activates, because no record in either file carries a scope classification, a
+pilot-account reference, or temporal precision. That is the gate working, not the gate
+misconfigured, but it means **external research is a starting point for enrichment rather
+than a shortcut to a populated graph**, and the plan should say so before anyone budgets
+against it.
 
 ## Revisit when
 

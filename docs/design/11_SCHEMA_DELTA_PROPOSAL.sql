@@ -928,8 +928,14 @@ create table research_claims (
     source_file text not null,
     source_record_locator text not null,     -- JSONL line, table row, or heading
     claim_type text not null check (claim_type in (
-        'entity', 'alias', 'facility', 'relationship', 'project', 'source', 'hypothesis'
+        'entity', 'alias', 'facility', 'relationship', 'project', 'source',
+        'hypothesis', 'network_assertion'
     )),
+    -- 'network_assertion' added after both graph files were reviewed: each carries a
+    -- record type asserting a COUNT rather than an instance -- "24 manufacturing plants
+    -- in 18 states" for P&G, "7 owned and 17 leased production facilities" for KDP.
+    -- These are true, useful, and not facility records. Forcing them into 'facility'
+    -- would invent sites that the source explicitly declined to enumerate.
     subject_ref text not null,
     predicate text not null,
     object_value jsonb not null,
