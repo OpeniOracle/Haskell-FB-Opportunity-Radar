@@ -19,12 +19,19 @@ Nothing here is implemented.
 | --- | --- | --- | --- |
 | [0001](0001-modular-monolith-deployment-shape.md) | Modular monolith over microservices for the pilot | Proposed | G-4 |
 | [0002](0002-egress-gateway-as-sole-network-path.md) | A single egress gateway is the only outbound network path | Proposed | G-3 / G-4 |
-| [0003](0003-model-gateway-and-replay-cache.md) | All model calls go through a gateway with a replay cache | Proposed | G-4 |
-| [0004](0004-date-precision-is-first-class.md) | Dates carry explicit precision | Proposed | G-4 |
-| [0005](0005-conservative-entity-resolution.md) | Unresolved is a valid terminal state for entity resolution | Proposed | G-4 |
-| [0006](0006-two-tier-evidence-for-broad-news.md) | Two-tier evidence resolves broad news discovery against the allowlist | Proposed | G-3 |
-| [0007](0007-change-ledger-as-single-source-of-delta.md) | One change ledger powers Pulse, alerts, and briefs | Proposed | G-4 |
+| [0003](0003-model-gateway-and-replay-cache.md) | All model calls go through a gateway with a replay cache | Proposed · **revised** | G-4 |
+| [0004](0004-temporal-model-precision-and-basis.md) | Dates are intervals with precision and basis | Proposed · **revised** | G-4 |
+| [0005](0005-conservative-entity-resolution.md) | Unresolved is a valid terminal state for entity resolution | Proposed · **revised** | G-4 |
+| [0006](0006-evidence-access-modes.md) | Five evidence access modes, with promotion rules | Proposed · **revised** | G-2 / G-3 |
+| [0007](0007-change-ledger-as-single-source-of-delta.md) | One change ledger powers Pulse, alerts, and briefs | Proposed · **revised** | G-4 |
 | [0008](0008-ontology-and-scoring-as-versioned-config.md) | Ontology and scoring live in versioned config, not constraints | Proposed | G-2 / G-4 |
+| [0009](0009-three-axis-confidence.md) | Confidence is three questions, not one | Proposed | G-2 |
+| [0010](0010-health-and-coverage-are-separate-metrics.md) | Operational health and intelligence coverage are separate metrics | Proposed | G-3 / G-6 |
+
+Records marked **revised** were changed by the version 0.2 design-reconciliation pass.
+ADR 0004 and ADR 0006 were renamed as well as rewritten, because their scope widened; each
+states what it supersedes. No record has yet been ratified, so nothing was superseded by a
+stakeholder decision — the revisions are self-corrections.
 
 ## Format
 

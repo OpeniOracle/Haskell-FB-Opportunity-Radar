@@ -35,11 +35,22 @@ recorded as a successful outcome rather than an error. Unresolved candidates acc
 in `organization_candidates` and surface in an admin queue, where a human approval
 becomes a durable rule that improves every future run.
 
-Two corollaries. The global unique index on `lower(canonical_name)` is dropped (C12):
+Three corollaries. The global unique index on `lower(canonical_name)` is dropped (C12):
 two legitimately distinct entities may share a name, and forcing a merge at the storage
-layer is the failure this ADR exists to prevent. And related-entity structure is modeled
-explicitly (D13) — bottlers, co-manufacturers, and NA subsidiaries are separate
-organizations with typed relationships, not aliases of the brand owner.
+layer is the failure this ADR exists to prevent. Source verification produced a live
+example — searching for Niagara Bottling surfaces several unrelated registrants whose
+names begin "Niagara", none of which is the bottler.
+
+Related-entity structure is modeled explicitly (D13) — bottlers, co-manufacturers, and
+North American subsidiaries are separate organizations with typed relationships, not
+aliases of the brand owner. Coca-Cola Consolidated is not an alias of The Coca-Cola
+Company; it is the entity that operates the plants.
+
+And relationships are **time-bounded and evidence-backed** (C24, D18). Verification found
+four completed corporate reorganizations across the fifteen pilot accounts in roughly
+twenty months, with two more in flight. Resolution therefore takes an as-at date: a 2023
+Poland Spring project resolves to Nestlé Waters North America, a 2026 one to Primo
+Brands. A current-state pointer would silently reattribute the first to the second.
 
 ## Alternatives considered
 

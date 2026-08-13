@@ -38,8 +38,27 @@ facility resolution, a new independent evidence family, and negative-signal arri
 material. Score drift within a band, re-observation of known evidence, and cosmetic
 re-summarization are not.
 
-Alert deduplication moves to the **recipient**, not the subscription (C7): one user
-matching an event through three saved views receives one alert.
+Alert deduplication moves to the **recipient**, not the subscription (C7), on a key that
+is non-null and self-sufficient:
+
+```text
+alert_dedupe_key = hash(recipient_key, delivery_channel, target_type, target_id,
+                        material_change_fingerprint)
+
+material_change_fingerprint = hash(change_type, from_state_digest, to_state_digest,
+                                   scoring_version)
+```
+
+Each component earns its place. **Recipient** rather than subscription, so one user
+matching an event through three saved views is told once. **Channel**, because a Teams
+alert now and an appearance in tomorrow's email digest are not duplicates. **Scoring
+version**, so a deliberate rescoring run may legitimately re-notify while an unchanged
+recomputation may not.
+
+The v0.1 schema keyed on `(subscription_id, material_change_key)` with `subscription_id`
+nullable — and because `NULL` values are distinct in PostgreSQL, system-generated alerts
+could duplicate without bound. Making the key non-null removes the hole rather than
+patching it with a partial index.
 
 ## Alternatives considered
 

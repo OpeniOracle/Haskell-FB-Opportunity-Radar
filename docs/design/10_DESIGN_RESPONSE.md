@@ -2,7 +2,33 @@
 
 Prepared in response to `00_CLAUDE_MASTER_PROMPT.md`
 Baseline reviewed: package version 0.1 (2026-08-12)
-Response version: 0.1 · Status: **for stakeholder review**
+Response version: **0.2** · Status: **for stakeholder review**
+
+**Version 0.2 is a design-reconciliation pass over 0.1.** It corrects two findings that
+0.1 overstated, and deepens seven areas that were under-specified. Corrections:
+
+1. **The PACK EXPO governance finding was wrong in kind.** The supplied "Pack Expo 2025
+   Email List" sheet carries a Company column only — 519 populated rows, 183 unique
+   company strings — and no names, email addresses, or other direct personal
+   identifiers. The supplied XPressLeads export likewise contains no populated contact
+   fields. Version 0.1 described this as "519 rows of personal data." It is not. It is
+   **proprietary company-level engagement data**, which raises confidentiality and
+   licensing obligations rather than privacy ones. Personal-data controls are retained as
+   **conditional requirements** that activate if contact-level, badge-holder, email, or
+   individual campaign data is ever ingested. See §2 C6 and §6.5.
+2. **The EDGAR coverage count was unsupported.** Version 0.1 asserted that five of the
+   fifteen pilot accounts file nothing with the SEC. That number was not verified.
+   `docs/design/12_PILOT_SOURCE_COVERAGE_MATRIX.md` replaces it with a per-account matrix
+   built from confirmed CIKs, with an explicit confidence label on every cell. The
+   corrected finding is materially different and is summarized in §7.
+
+Companion documents:
+
+| Document | Contains |
+| --- | --- |
+| `12_PILOT_SOURCE_COVERAGE_MATRIX.md` | Verified per-account source coverage for all 15 Highest Value accounts |
+| `13_GATE_1_DECISION_PACKET.md` | Every unresolved decision with default, alternatives, consequence, cost, owner, and timing |
+| `11_SCHEMA_DELTA_PROPOSAL.sql` | Proposed schema delta. Not a migration; nothing has been applied |
 
 Every file in the package was read before this response was written: `README.md`,
 `01`–`06`, `schemas/platform.schema.json`, `schemas/database.sql`,
@@ -55,8 +81,10 @@ facilities worth a phone call — and can defend each one with a link.
 ## 2. Conflict and gap register
 
 The master prompt requires that conflicts and missing decisions be named explicitly
-rather than silently resolved. Twenty-two are listed. Each carries a proposed default;
-none has been applied to the baseline files.
+rather than silently resolved. Twenty-five are listed — twenty-two from v0.1, of which
+C2, C4, C5, C6, C7, C8, and C22 are revised here, plus three added by the reconciliation
+pass (C23–C25). Each carries a proposed default; **none has been applied to the baseline
+files, and no migration has been run.**
 
 Severity: **B** = blocks implementation, **C** = correctness/compliance risk,
 **D** = design decision that can be deferred but not ignored.
@@ -64,13 +92,13 @@ Severity: **B** = blocks implementation, **C** = correctness/compliance risk,
 | # | Sev | Conflict or gap | Where | Proposed default |
 | --- | --- | --- | --- | --- |
 | C1 | B | `06` requires raw import records, organization *candidates*, engagement observations, and facility *candidates*. `database.sql` has none of these tables. There is no legal place to put an unresolved PACK EXPO row. | `06` §Required ingestion model vs `schemas/database.sql` | Add `import_batches`, `import_records`, `organization_candidates`, `engagement_observations`, `facility_candidates`. See §6.1. |
-| C2 | B | "Missing dates must remain missing" vs `event_date date`. A source saying "in 2027" or "second half of next year" cannot be stored without inventing a month and day. | `README` non-negotiables vs `database.sql`, `platform.schema.json` | Add `event_date_precision` (`day`/`month`/`quarter`/`year`/`range`/`unknown`) and optional `event_date_end`. See §6.2. |
+| C2 | B | "Missing dates must remain missing" vs `event_date date`. A source saying "in 2027" or "second half of next year" cannot be stored without inventing a month and day. The schema also cannot distinguish a date the source stated from one the system inferred. | `README` non-negotiables vs `database.sql`, `platform.schema.json` | Full temporal model: raw expression, start, end, precision (`exact_day`/`month`/`quarter`/`half_year`/`year`/`range`/`relative`/`unknown`), basis (`stated`/`inferred`), and an inference explanation when inferred. See §6.2. |
 | C3 | B | `facilities.organization_id` is `not null` and singular, but `01` requires "Link multiple companies or brands to a facility when supported by evidence" (co-manufacturing, JV plants, multi-tenant cold storage). | `01` §Facility intelligence vs `database.sql` | Add `facility_organizations` (facility, org, role, evidence, dates). Keep a denormalized `primary_organization_id`. |
-| C4 | C | Stage `confirmed` and confidence `confirmed` are different concepts with the same word. Users and code will conflate them; "Confirmed / Possible" is a legitimate and confusing combination. | `02` §Opportunity stages, §Confidence | Rename confidence to `single_source` / `corroborated` / `authoritative`. Keep stage labels — they are the plain-language ones users want. |
-| C5 | C | Broad news discovery (GDELT) vs "allowlisted HTTPS destinations." GDELT returns arbitrary publisher URLs; fetching their bodies is by definition off-allowlist. | `00` constraints vs `03` §Initial source families | Two-tier evidence: GDELT is **discovery-only** (metadata + link, `evidence_mode = 'reference'`); full text fetched only from an allowlisted publisher set or a licensed feed. See §7.4. |
-| C6 | C | The PACK EXPO email list is 519 rows of **personal contact data**. No package file addresses personal data, consent, retention, or access control for it. | `06` Workbook 1 | Ingest at organization grain only. Personal fields land in a restricted `contact_records` store, are never surfaced in the Radar UI, and carry their own retention clock. Legal review before Phase 1. See §10.D9. |
-| C7 | C | `alerts` uniqueness is `(subscription_id, material_change_key)`, and `subscription_id` is nullable. In PostgreSQL, `NULL` values are distinct, so system-generated alerts can duplicate without limit. | `database.sql` | Partial unique index for `subscription_id is null`, plus a `recipient_key` column. Also dedupe per user, not per subscription — one user with three matching saved views should get one alert. |
-| C8 | C | No idempotency key on `source_runs`. A scheduler retry or a duplicate worker lease produces two runs for the same slot, double-counting metrics and success rates. | `database.sql` | `unique (source_id, scheduled_for)` where `scheduled_for is not null`. |
+| C4 | C | Stage `confirmed` and confidence `confirmed` are different concepts with the same word. Worse, the single confidence enum conflates three independent questions: how good is the evidence, what kind of claim is this, and how sure are we. | `02` §Opportunity stages, §Confidence | Keep the lifecycle **Emerging / Developing / Confirmed** unchanged. Replace the confidence enum with three fields: **evidence strength** (indicative/corroborated/authoritative), **assessment type** (observed fact/inference/hypothesis), **confidence level** (low/moderate/high). See §6.4. |
+| C5 | C | Broad news discovery (GDELT) vs "allowlisted HTTPS destinations." GDELT returns arbitrary publisher URLs; fetching their bodies is by definition off-allowlist. The model also has no way to record *how much* of a document we actually hold. | `00` constraints vs `03` §Initial source families | Five **evidence access modes**: structured primary, archived full text, licensed full text, reference-only, metadata-only. Promotion rules bar the last two from independently establishing authoritative evidence or a Confirmed opportunity. See §7.4. |
+| C6 | D | **Corrected in v0.2.** The supplied event data is **proprietary company-level engagement data**, not personal data: the "Pack Expo 2025 Email List" sheet has a Company column only (519 rows, 183 unique strings), and the XPressLeads export's `UserAccount` and `DeviceLabel` columns are empty. No package file addresses confidentiality, licensing, or access control for third-party event data — nor does any file define what happens if contact-level data arrives later. | `06` Workbooks 1 and 2 | Govern as confidential third-party business data: access-controlled, licence-bounded, retention-bounded, not redistributable. Add **conditional** personal-data requirements that activate on first ingestion of contact, badge-holder, email, or individual campaign data. See §6.5. |
+| C7 | C | `alerts` uniqueness is `(subscription_id, material_change_key)`, and `subscription_id` is nullable. In PostgreSQL, `NULL` values are distinct, so system-generated alerts can duplicate without limit. The key also omits recipient and channel, so the same person cannot be deduplicated across subscriptions or told once per channel. | `database.sql` | A **non-null** `alert_dedupe_key` composed of recipient + channel + target object + material-change fingerprint, unique on its own. See §6.6. |
+| C8 | C | No idempotency key on `source_runs`, and no separation between a logical collection cycle and the retry attempts inside it. A scheduler retry or duplicate worker lease produces two runs for one slot; retries inflate run counts and corrupt the success rate that Phase 2 exit depends on. | `database.sql` | A **logical run** keyed `(source_id, collection_window_start)`, with `source_run_attempts` as child rows. Metrics computed per logical run; attempt counts reported separately. See §6.6. |
 | C9 | C | `sources.schedule` is a bare cron string with no timezone. Freshness SLAs and "one scheduled cycle" become ambiguous across DST. | `database.sql`, `source-config.example.yaml` | All schedules UTC. Add `schedule_timezone` defaulting to `UTC`; render local time only in the UI. |
 | C10 | D | `signals` can be org-less and facility-less only for `market_demand`, yet have no geography column. A regional demand signal has nowhere to record its region. | `database.sql` check constraint | Add `geo_scope` (`country_code`, `region`, `metro`) to `signals`. |
 | C11 | D | `organizations.engagement jsonb` flattens PACK EXPO engagement into an untraceable blob, contradicting `06`'s requirement that every derived value trace to an import record. | `database.sql` vs `06` §Data-quality rules | Replace with `engagement_observations` rows; keep the jsonb only as a materialized rollup. |
@@ -84,7 +112,10 @@ Severity: **B** = blocks implementation, **C** = correctness/compliance risk,
 | C19 | D | `market_trends.velocity` is constrained to [-1, 1] with no definition of how it is computed or over what window. Two implementations would produce different numbers. | `database.sql`, `04` §Trend card | Define velocity as the normalized change in independent-organization-weighted signal rate over a 30-day window vs the prior 90-day baseline; store `velocity_method` and `window_days`. |
 | C20 | D | Pilot scope says 15 Highest Value accounts; the SEC source config ships `account_selection: highest_value_and_tier_1`; `03` lists Regulations.gov, which never appears in Phase 2. | `00`, `05` §Phase 2 vs `source-config.example.yaml`, `03` | Pilot = 15 accounts; Tier 1 loaded but not alerting. Regulations.gov deferred to Phase 4. |
 | C21 | D | Robots/ToS handling is never mentioned. Neither is a crawl-delay or user-agent policy. | all | Add `robots_policy` and `user_agent` to the source contract; default to honoring robots for non-API methods and identifying the collector honestly. |
-| C22 | D | Four of the fifteen Highest Value accounts (Kimberly-Clark, Procter & Gamble, Sherwin-Williams, and arguably Ecolab) are not Food & Beverage manufacturers. The F&B signal ontology partially misfires on them. | `05` §Pilot cohort vs `01` §Market coverage | Confirm intent (§10.D3). Default: keep them, tag `consumer_products`, and suppress food-safety signal families for them rather than generating noise. |
+| C22 | D | Four of the fifteen Highest Value accounts are not Food & Beverage manufacturers, and the package has no vocabulary for saying so. Treating them as list errors would be wrong — they are on the list for commercial reasons — but treating them as core F&B produces misfiring signal families and unexplainable silence. | `05` §Pilot cohort vs `01` §Market coverage | Add an **account scope classification**: Core Food & Beverage / Adjacent Consumer Products / Strategic supplier or partner / Scope confirmation required. Applied in §7.5; Sherwin-Williams is flagged for confirmation, not assumed to be an artifact. |
+| C23 | C | `05` §Acceptance metrics mixes connector reliability with intelligence quality, and Phase 2 exit leads with a 95% connector-success rate. Nothing in the package prevents "95% of runs succeeded" from being read as "we are covering the market." For four pilot accounts with no periodic filing coverage, both statements can be true while the account is effectively unmonitored. | `05` §Phase 2 exit, §Acceptance metrics | Separate **operational health** from **intelligence coverage** as independent metric families with independent thresholds, and require both in every exit gate. See §8.5. |
+| C24 | C | Ownership is modeled as a single current pointer (`facilities.organization_id`, `organizations.parent_organization_id`). Verification found **four completed corporate reorganizations across the pilot cohort in roughly twenty months, with two more in flight** — Mars/Kellanova, Nestlé Waters→BlueTriton→Primo Brands, Unilever's ice-cream demerger, KDP/JDE Peet's plus its planned split, and Kimberly-Clark/Kenvue pending. A current-state pointer silently misattributes projects after every one. | `12_PILOT_SOURCE_COVERAGE_MATRIX.md` vs `database.sql` | Time-bounded, evidence-backed relationships: `facility_organizations` and `organization_relationships` both carry `from_date`, `to_date`, and `evidence_id`. Attribute a project to the operator **as at the event date**, not as at query time. |
+| C25 | C | The replay cache proposed in v0.1 was keyed on content hash, prompt version, model, and schema version. That key is incomplete: taxonomy version, extractor version, system instructions, model parameters, and injected structured context all change the output while leaving the key unchanged, so a stale result would be served as if fresh. | v0.1 §4.3, ADR 0003 | Key on **every effective input**. A cache entry stores the full input fingerprint and its components. See §6.7 and ADR 0003. |
 
 ---
 
@@ -106,7 +137,9 @@ is testable; rows without a test are not in the MVP.
 | G9 | Keep negative news | Negative signals reduce or close, never delete | `signals.negative_signal`, `opportunity_signals.signal_role`, `opportunity_status_history` | Seeded closure/layoff evidence demonstrably lowers momentum and can move status to `on_hold`/closed, with the evidence still visible |
 | G10 | Don't merge the wrong companies | Conservative entity resolution with durable approved mappings | `organization_identifiers`, `organization_aliases`, `organization_candidates`, resolution confidence | Ambiguous candidates remain unresolved; adversarial name set (Mars, Nestlé, Coca-Cola bottlers) resolves correctly or not at all |
 | G11 | Reuse the kernel for other Haskell markets | Ingestion/evidence/resolution/observability separated from F&B ontology | Module boundary; ontology in reference tables, not code | A second market can be configured by adding sources + vocabularies, with no change to collection or evidence modules |
-| G12 | Stay inside licensing and privacy limits | License mode and retention per source; personal data segregated | `sources.license_notes` → `license_mode`, `retention_days`, `evidence_mode`, `contact_records` | Reference-mode evidence never stores or renders full text; retention job proven on a licensed-source fixture |
+| G12 | Stay inside licensing and confidentiality limits | Access mode, licence mode, and retention per source; conditional controls if contact-level data ever arrives | `sources.license_mode`, `retention_days`, `evidence.access_mode`, `data_sensitivity_class` | Reference-only and metadata-only evidence never store or render full text; retention job proven on a licensed-source fixture; ingesting a contact-level field without an approved lawful basis fails closed |
+| G13 | Know what we are *not* covering | Expected-coverage model per account and source family, reported beside connector health | `account_source_expectations`, coverage and discovery-yield metrics | An account with healthy connectors but zero expected-source coverage is reported as **uncovered**, not as quiet; verified against the four no-filing-coverage pilot accounts |
+| G14 | Survive corporate reorganization | Time-bounded, evidence-backed ownership | `facility_organizations`, `organization_relationships` with `from_date`/`to_date`/`evidence_id` | Replaying the Mars–Kellanova and Nestlé Waters–Primo Brands transitions attributes each project to the operator as at the event date, not as at query time |
 
 ---
 
@@ -202,6 +235,90 @@ together. At pilot volume this removes an entire class of "the row exists but th
 never ran" bugs, and removes a broker from the operational surface. Revisit if sustained
 throughput exceeds roughly 50 documents per second, which the pilot will not approach.
 
+### 4.4 Runtime responsibilities in detail
+
+#### Runtime A — Application
+
+Owns HTTP request/response for users, session and authorization, read models, and
+write-side commands for *human* decisions (status change, assignment, dismissal with
+reason, saved views, subscriptions, source approval, Connector Care completion).
+
+It performs **no collection, no extraction, no scoring**. Its only writes are
+user-intent writes plus their audit events. This is what keeps a slow model call or a
+runaway extraction from ever degrading page latency.
+
+#### Runtime B — Workers
+
+Owns everything scheduled or event-driven. Internally partitioned into **queue classes**
+with separate concurrency limits, so one saturated stage cannot starve the others:
+
+| Queue class | Work | Concurrency posture | Failure isolation |
+| --- | --- | --- | --- |
+| `collect` | Connector runs and attempts | Bounded per source *and* per host | One attempt fails, the logical run continues |
+| `extract` | HTML, PDF, OCR | Bounded by CPU; OCR on its own sub-queue | **Per-document isolation** — one malformed PDF fails one document |
+| `resolve` | Entity resolution | Moderate | Unresolved is a success, not a retry |
+| `classify` | Model-backed classification | Bounded by model-gateway rate limit and budget | Schema violation → retry → quarantine, never a silent write |
+| `score` | Promotion, scoring, change events | Low concurrency, ordered per opportunity | Serialized per object to avoid lost updates |
+| `notify` | Alerts, digests, briefs | Low | Dedupe key makes retry safe |
+| `maintain` | Retention, rollups, health rollups, reprocessing | Lowest priority | Preemptible |
+
+#### Runtime C — Egress and browser sandbox
+
+Owns all outbound network access and nothing else. It holds no application database
+credentials and cannot write evidence; it returns bytes and telemetry to Runtime B.
+
+### 4.5 Transaction and queue boundaries
+
+The rule is one sentence: **a database transaction never spans a network call, and a job
+is never enqueued outside the transaction that produced its cause.**
+
+```text
+  connector attempt completes
+        │
+        ▼
+  ┌─────────────────────────────────────────── single transaction ──┐
+  │ insert evidence row (idempotent on source_id + content_hash)     │
+  │ update source_run_attempt + logical run metrics                  │
+  │ insert outbox row: evidence.captured                             │
+  └──────────────────────────────────────────────────────────────────┘
+        │  commit
+        ▼
+  outbox relay (at-least-once) ──▶ extract queue ──▶ … ──▶ score ──▶ notify
+```
+
+**Outbox behavior.** The relay polls committed outbox rows, publishes to the queue, and
+marks them dispatched. Delivery is at-least-once, so every consumer is idempotent on a
+natural key — evidence on `(source_id, content_hash)`, signals on cluster key, change
+events on `(object_type, object_id, dedupe_key)`, alerts on `alert_dedupe_key`. Ordering
+is guaranteed only per object, which is why the `score` queue serializes per opportunity.
+
+Raw bytes go to object storage **before** the transaction commits, and the row references
+them. A crash between the two leaves an orphaned object, which the `maintain` queue
+reaps — the safe direction. The reverse order would leave a row pointing at nothing.
+
+**Failure isolation summary.** An attempt failure degrades a logical run to
+`partial_success`. A logical-run failure degrades a source to `degraded`, then
+`action_required` at the configured thresholds, and backs off its schedule so a dead
+source stops consuming the shared per-host rate budget. A model-gateway outage stalls the
+`classify` queue while `collect` and `extract` keep filling the corpus — collection never
+depends on inference availability.
+
+### 4.6 How one gateway serves five collection modes
+
+The egress gateway is not an HTTP client wrapper; it is a policy engine with five
+execution profiles over one audited contract.
+
+| Mode | Gateway behavior | Returns | Notes |
+| --- | --- | --- | --- |
+| **API / structured** | Signed or keyed request, pagination cursor honored, JSON size cap, schema pre-validation before hand-back | Parsed records + raw response | Credentials injected at the gateway, never held by the connector |
+| **Reference-mode discovery** | Fetches only the *discovery* endpoint (e.g. GDELT). **Publisher URLs discovered inside the payload are not fetched** unless independently allowlisted | Metadata + link + provided snippet | This is the mechanism, not a convention — the connector cannot fetch what the gateway refuses |
+| **Document** | Conditional GET, MIME allowlist, byte cap, streams to object storage, hashes in flight | Storage URI + hash + headers | Content-type mismatch is a rejection, not a warning |
+| **OCR path** | Same as document, then the sandboxed OCR worker runs with **no network at all** | Text + page locators | Native PDF text is always attempted before OCR |
+| **Constrained browser** | Approved sources only, fixed navigation budget, no long-lived credentials, no third-party requests off the allowlist, full navigation trace recorded | Rendered DOM snapshot + trace | Never a generic fallback; a permitted CAPTCHA routes to an operator, never to an automated solver |
+
+Every mode emits the same telemetry envelope, so Source Health treats a browser-rendered
+page and an API call identically for reliability accounting.
+
 ---
 
 ## 5. Information architecture and page map
@@ -262,66 +379,266 @@ Opportunity/Trend separation is correct, the seven-state run enum is right, scor
 components are stored alongside the result, and score snapshots are versioned. The
 recommended changes fall into three groups.
 
-### 6.1 Group 1 — Missing tables that block Phase 1 (C1, C3, C11, C17, C18)
+### 6.1 Group 1 — Missing tables that block Phase 1 (C1, C3, C11, C17, C18, C24)
 
 `06` specifies an ingestion model the SQL cannot express. Phase 1 cannot start without
 these.
 
 ```text
-import_batches(id, source_filename, file_hash, imported_at, imported_by, row_count)
+import_batches(id, source_filename, sheet_inventory, file_hash, row_count,
+               imported_at, imported_by, transformation_version)
 import_records(id, batch_id, sheet_name, source_row_number, original_values jsonb,
-               record_hash)                                     -- raw row, never edited
+               record_hash)                       -- raw row JSON, never edited
 organization_candidates(id, import_record_id, original_string, normalized_string,
-               resolved_organization_id NULL, resolution_confidence,
-               resolution_method, resolved_at, resolved_by)     -- may stay unresolved forever
+               resolved_organization_id NULL, resolution_state, resolution_confidence,
+               resolution_method, transformation_version, resolved_at, resolved_by)
+                                                  -- may stay unresolved forever
+approved_entity_mappings(id, normalized_string, scope, organization_id, facility_id,
+               approved_by, approved_at, evidence_id, active)
+                                                  -- durable rule; survives re-import
 engagement_observations(id, organization_candidate_id, organization_id NULL,
                event_name, event_year, declared_interests text[], industry_response,
                company_role_response, address_candidate jsonb, repeat_count,
-               import_record_id)
+               import_record_id, transformation_version)
 facility_candidates(id, address jsonb, organization_candidate_id, source_kind,
-               corroboration_status, promoted_facility_id NULL)
-facility_organizations(facility_id, organization_id, role, evidence_id, from_date,
-               to_date)                                          -- C3: multi-tenant sites
+               corroboration_status, corroborating_evidence_id, promoted_facility_id NULL)
+                                                  -- event address stays a candidate
+facility_organizations(facility_id, organization_id, relationship, evidence_id,
+               from_date, to_date)                -- C3 + C24: time-bounded operators
+organization_relationships(parent_id, child_id, relationship, evidence_id,
+               from_date, to_date)                -- C24: reorganizations
 change_events(id, object_type, object_id, change_type, from_state jsonb, to_state jsonb,
-              materiality, dedupe_key, occurred_at)              -- C17: powers Pulse+alerts
+              materiality, dedupe_key, occurred_at)   -- C17: powers Pulse + alerts
 user_read_state(user_id, surface, last_seen_at)
 opportunity_status_history(id, opportunity_id, from_status, to_status, actor_type,
               actor_id, reason_code, reason_text, occurred_at)   -- C18
-evidence_families(id, family_key, origin_evidence_id, method)    -- C16: syndication
-contact_records(...)  -- C6, restricted schema, separate access control and retention
+evidence_families(id, family_key, origin_evidence_id, detection_method)  -- C16
 ```
+
+Two properties matter more than the table list. **Every derived row carries
+`transformation_version`**, so a normalization-rule change is a versioned reprocessing
+event and `06`'s requirement that every derived value trace to its import record and
+transformation version becomes checkable. And **`approved_entity_mappings` is the durable
+rule store** — a human resolution decision must survive re-import, re-normalization, and
+extractor upgrades, or the unresolved queue regenerates the same work forever.
+
+**Event addresses never become facilities directly.** A `facility_candidate` promotes to
+a `facility` only when a company, regulatory, permit, mapping, or official facility source
+corroborates it, and the corroborating evidence is recorded on the promotion.
 
 `change_events` deserves emphasis: it is one table that simultaneously satisfies "what
 changed since my last visit" (Pulse), "material change summary" (card), alert
 deduplication, and the daily brief. Without it, three features each grow their own
 half-correct diffing logic.
 
-### 6.2 Group 2 — Correctness changes (C2, C7, C8, C9, C10, C12, C15, C16)
+### 6.2 Group 2 — The temporal model (C2)
 
-The most important is **C2, date precision**, because it is a stated non-negotiable that
-the current schema cannot honor:
+This is the change with the widest blast radius, because it is a stated non-negotiable
+the current schema cannot honor. `event_date date` forces "production begins in 2027"
+to be stored as `2027-01-01`, and offers no way to tell a date the source stated from one
+the system worked out.
+
+Six fields replace one, on `evidence`, `signals`, and facility open/close dates:
 
 ```sql
--- current: event_date date            -- forces "2027" to become 2027-01-01
--- proposed:
-event_date            date,
-event_date_end        date,
-event_date_precision  text not null default 'unknown'
-  check (event_date_precision in ('day','month','quarter','year','range','unknown')),
-check (event_date is null or event_date_precision <> 'unknown')
+temporal_raw_expression  text,     -- verbatim: "in the second half of 2027"
+temporal_start           date,     -- 2027-07-01  (interval start, not "the date")
+temporal_end             date,     -- 2027-12-31  (interval end)
+temporal_precision       text not null default 'unknown',
+temporal_basis           text not null default 'unknown',
+temporal_inference_note  text      -- required when basis = 'inferred'
 ```
 
-The UI then renders "expected 2027" rather than "January 1, 2027," and the timing score
-uses the precision to widen its uncertainty instead of pretending to a day. A model that
-cannot represent "sometime in 2027" will either fabricate a date or drop the signal;
-both are failures of the stated requirement.
+**Precision** — `exact_day`, `month`, `quarter`, `half_year`, `year`, `range`,
+`relative`, `unknown`. `relative` covers "within eighteen months of closing," where the
+anchor is another event rather than a calendar position; the raw expression is preserved
+and the interval is only computed once the anchor resolves.
 
-The remaining items are one-line fixes with real consequences: the alert uniqueness hole
-(C7) causes duplicate notifications, which is the fastest way to lose daily users; the
-missing run idempotency key (C8) silently corrupts the 95%-success acceptance metric
-that Phase 2 exit depends on.
+**Basis** — `stated` when the source gives the timing, `inferred` when the platform
+derived it. Inference is permitted; **silent inference is not**. When basis is
+`inferred`, `temporal_inference_note` must say what it was inferred from, and the UI
+labels it as an inference rather than a source fact.
 
-### 6.3 Group 3 — Ontology and configuration (C4, C13, C14, C19, C22)
+The three consequences that make this worth the cost:
+
+1. **Queryable without fabrication.** "What might start in 2027?" is
+   `temporal_start <= '2027-12-31' and temporal_end >= '2027-01-01'` — an interval
+   overlap. The record answers the query without ever claiming January 1.
+2. **The UI renders the truth.** "Expected 2027" and "expected H2 2027 (inferred from
+   the announced eighteen-month build)" are different strings, and a user pursuing a
+   project can see which one they are relying on.
+3. **Scoring stops being falsely precise.** Timing and momentum consume interval width
+   and basis; a year-precision inferred date cannot score like a stated, dated
+   groundbreaking.
+
+Storing an interval rather than a point is the part that does the work. A point plus a
+precision label still tempts every consumer to read the point.
+
+### 6.3 Group 3 — Correctness changes (C9, C10, C12, C15, C16)
+
+Timezone-explicit schedules; geographic scope on market-demand signals; removal of the
+global unique index on lowercased company name; scoring multipliers moved out of a check
+constraint; and the evidence-family model that makes corroboration count independent
+publishers rather than syndicated copies. Each is small; each is load-bearing for a
+stated requirement. Idempotency (C7, C8) is treated separately in §6.6.
+
+### 6.4 The three axes that replace `confidence` (C4)
+
+`02` uses one enum — Possible / Probable / Confirmed — to answer three questions at
+once, and reuses the word "Confirmed" for a lifecycle stage. Splitting it costs one
+column and removes a permanent source of confusion.
+
+**The lifecycle is unchanged: Emerging → Developing → Confirmed.** It describes the
+*project*: does one credible leading indicator exist, is it forming, or has an
+authoritative source established it. It is a property of the world, and it stays the
+plain-language vocabulary users already have.
+
+The three new fields describe our *knowledge* of that project:
+
+| Field | Values | Answers | Set by |
+| --- | --- | --- | --- |
+| **Evidence strength** | `indicative` · `corroborated` · `authoritative` | How good is the record? | Deterministic rules over evidence: access mode, source authority, count of independent evidence families and organizations |
+| **Assessment type** | `observed_fact` · `inference` · `hypothesis` | What kind of claim is this? | The classifier, from whether the evidence states the claim, supports it indirectly, or merely suggests it |
+| **Confidence level** | `low` · `moderate` · `high` | How sure are we, all things considered? | Derived from the first two, plus corroboration, recency, and resolution confidence — overridable with a reason |
+
+**How they interact without duplicating meaning.** Evidence strength is a property of
+*documents*; it can be computed without reading the claim. Assessment type is a property
+of the *claim's relationship to those documents*; the same authoritative filing supports
+an observed fact ("capex of $X is allocated") and an inference ("therefore a plant
+project is likely") at very different reliability. Confidence level is the *composite*,
+and it is the only one of the three that scoring consumes directly.
+
+The combinations that are individually legal but jointly meaningful are the point:
+
+- *Authoritative + observed fact + high* — a company announced the project. Promote.
+- *Authoritative + inference + moderate* — the filing is unimpeachable, our reading of it
+  is not. This is the combination that most often produces a false Confirmed today.
+- *Indicative + hypothesis + low* — a lead. Real, worth watching, must never page anyone.
+- *Corroborated + observed fact + high* — two independent publishers report the same
+  stated fact. The workhorse combination.
+
+**Guardrails.** Confidence level is capped at `moderate` when assessment type is
+`inference`, and at `low` when it is `hypothesis` — regardless of evidence strength. An
+opportunity cannot reach the **Confirmed** stage without at least one supporting signal
+that is `authoritative` + `observed_fact`. The confidence multiplier in the scoring
+formula keys off confidence level, so `02`'s 0.60 / 0.80 / 1.00 semantics carry over
+intact with `low` / `moderate` / `high` in place of Possible / Probable / Confirmed.
+
+### 6.5 Event-data governance, corrected (C6)
+
+The supplied workbooks contain **no personal data**. The engagement sheet has a Company
+column only; the XPressLeads export's person-oriented columns (`UserAccount`,
+`DeviceLabel`) are empty, and `TerminalID` holds two manual-import identifiers that are
+provenance, not people.
+
+What the data *is*: **proprietary, third-party, company-level engagement information**,
+obtained through event participation and a lead-retrieval product. The obligations that
+attach to it are confidentiality, licensing, and access control — not privacy:
+
+- **Confidentiality.** It reveals Haskell's targeting and campaign strategy. It is
+  internal-only, not redistributable, and must not appear in any exported briefing that
+  could leave the organization.
+- **Licensing.** Event lead-retrieval data typically carries contractual restrictions
+  from the event organizer on retention, resale, and use. This is a real review item and
+  it replaces the privacy review v0.1 called for.
+- **Provenance.** Declared interests are self-reported at a trade show. `02` already
+  says PACK EXPO activity raises account relevance but never project maturity; that rule
+  stands unchanged and is the substantive control.
+- **Retention.** Bounded by whatever the event agreement permits, tracked per import
+  batch.
+
+Sources and evidence therefore carry a `data_sensitivity_class`
+(`public` · `licensed` · `confidential_internal` · `restricted_personal`), and the event
+imports land as `confidential_internal`.
+
+**Conditional personal-data requirements.** These are specified now and dormant until
+triggered. Any of the following activates them: contact names, email addresses, phone
+numbers, badge-holder or scan records, job titles tied to a named individual, or
+individual-level campaign engagement (opens, clicks, video completions attributed to a
+person).
+
+On trigger, and *before* the first such row is stored:
+
+1. Personal fields are stored only in a `contact_records` table classified
+   `restricted_personal`, encrypted at rest, with access control independent of the
+   Radar's own roles.
+2. A lawful basis and a retention expiry are recorded per record; ingestion **fails
+   closed** without them.
+3. No personal field is reachable from any Radar API surface, briefing, export, or
+   model prompt. Engagement continues to be modeled at organization grain.
+4. Deletion and subject-access paths exist before ingestion, not after.
+5. Legal and marketing-operations review is a gating step, not a follow-up.
+
+The distinction matters practically: today's obligation is a contract review, and it
+should not be presented to stakeholders as a privacy incident.
+
+### 6.6 Idempotency, repaired (C7, C8)
+
+Two defects, both of which corrupt numbers the pilot is judged on.
+
+**Alerts.** The dedupe key becomes non-null and self-sufficient, composed of every
+dimension that makes two notifications genuinely the same notification:
+
+```text
+alert_dedupe_key = hash(recipient_key, delivery_channel, target_type, target_id,
+                        material_change_fingerprint)
+
+material_change_fingerprint = hash(change_type, from_state_digest, to_state_digest,
+                                   scoring_version)
+```
+
+Recipient rather than subscription, so one user matching through three saved views is
+told once. Channel included, so the same person may legitimately get a Teams alert and
+appear in tomorrow's email digest. Scoring version included, so a deliberate rescoring
+run can re-notify without a schema change, while an unchanged recomputation cannot.
+
+**Source runs.** A **logical run** is one collection cycle for one source and one
+scheduled window; **attempts** are the tries inside it:
+
+```text
+source_runs(id, source_id, collection_window_start, collection_window_end, status, …)
+  unique (source_id, collection_window_start)
+source_run_attempts(id, source_run_id, attempt_number, started_at, completed_at,
+                    status, error_code, http_status_distribution, …)
+```
+
+Metrics are computed **per logical run**: the success rate that Phase 2 exit depends on
+counts logical runs, never attempts, so a source that succeeds on its third try is one
+success, not two failures and a success. Attempt-level metrics are reported separately
+and are the more useful reliability signal — *attempts per successful run* is what tells
+an administrator a source is degrading before it starts failing outright.
+
+### 6.7 Replay cache key, corrected (C25)
+
+The v0.1 key — content hash, prompt version, model, schema version — was incomplete, and
+an incomplete cache key is worse than no cache: it serves stale output as if it were
+fresh. The key covers **every effective input**:
+
+```text
+replay_key = hash(
+    content_hash,                -- the evidence bytes
+    preprocessing_version,       -- extractor/OCR version that produced the text
+    task,                        -- extract | classify | align | summarize | cluster
+    provider, model,             -- provider-side identity
+    model_parameters,            -- temperature, top_p, max_tokens, seed, tool config
+    system_instructions_hash,    -- the system prompt, not just its label
+    prompt_version,              -- the task prompt template version
+    schema_version,              -- the output contract
+    taxonomy_version,            -- sectors, capabilities, families, event types
+    structured_context_digest    -- injected account/facility/prior-signal context
+)
+```
+
+`structured_context_digest` is the one most easily forgotten and the most dangerous:
+classification prompts include resolved account and facility context, so the same article
+legitimately classifies differently once a facility resolves. Without it in the key, the
+cache would pin the pre-resolution answer forever.
+
+Each cache row stores the components as well as the hash, so a version bump can be scoped
+precisely — "reprocess everything affected by taxonomy v3" is a query, not a full
+recompute.
+
+### 6.8 Ontology and configuration (C13, C14, C19, C22)
 
 Move sectors, capabilities, signal families, event types, and scoring configuration out
 of `check` constraints and into versioned reference tables with FK enforcement. Three
@@ -331,100 +648,192 @@ currently free text with no vocabulary at all, which will produce dozens of spel
 "plant expansion" within a month; and scoring weights will change during the pilot —
 that must be a config version bump with recomputable snapshots, not a migration.
 
-### 6.4 What I recommend keeping unchanged
+### 6.9 What I recommend keeping unchanged
 
 Named explicitly, because `README` asks that defined requirements not be silently
-replaced: the seven run statuses, the three-stage lifecycle, the five scoring dimensions
-and their caps, the confidence multipliers (0.60 / 0.80 / 1.00), the ten opportunity
-statuses, the nine signal families, and the eighteen organization roles are all
-sensible. My only change to any of them is the C4 *renaming* of confidence values — the
-semantics stay exactly as written in `02`.
+replaced: the seven run statuses, **the three-stage Emerging / Developing / Confirmed
+lifecycle**, the five scoring dimensions and their caps, the confidence multipliers
+(0.60 / 0.80 / 1.00), the ten opportunity statuses, the nine signal families, and the
+eighteen organization roles all stand.
+
+The C4 change is **additive, not a replacement of the lifecycle**: stage names are
+untouched, and the multipliers keep their values — they simply key off `confidence_level`
+(low / moderate / high) instead of a single overloaded enum. The promotion rules,
+corroboration rules, and the account-strategy cap of 10 in `02` are unchanged.
 
 ---
 
 ## 7. Source-coverage strategy for the pilot cohort
 
-### 7.1 The finding that should drive the plan
+### 7.1 The corrected finding
 
-SEC EDGAR is listed first in every source discussion in the package. Against the actual
-15-account pilot cohort, **EDGAR covers at most two-thirds of it**:
+**Version 0.1 claimed that five of the fifteen pilot accounts file nothing with the SEC.
+That number was asserted, not verified. It is replaced here.**
 
-| Account | Role for our purposes | US SEC filer? | Where the capital-project evidence actually lives |
-| --- | --- | --- | --- |
-| PepsiCo | Manufacturer, owns bottling | Yes (10-K/8-K) | Filings, newsroom, state incentives, FDA |
-| The Coca-Cola Company | Brand owner; **plants sit with independent bottlers** | Yes | Bottler newsrooms + bottler filings, state incentives — *not primarily KO's own filings* |
-| Nestlé | Manufacturer | **No** (Swiss listed) | Nestlé USA / Purina newsrooms, state incentives, local permits |
-| Kroger | **Retailer** with ~30+ owned food plants and DCs | Yes | Newsroom, DC announcements, local planning, FDA |
-| Tyson Foods | Protein manufacturer | Yes | **FSIS** (primary), filings, closures/layoffs, EPA ECHO |
-| Mars | Manufacturer | **No** (private) | Newsroom, state incentives, local permits, FDA |
-| The Hershey Company | Manufacturer | Yes | Filings (capex guidance), newsroom |
-| Kimberly-Clark | Consumer products (non-food) | Yes | Filings, newsroom — food-safety families N/A |
-| Unilever | Manufacturer | Yes (20-F, ADR) | 20-F is thin on US plants; newsroom + local sources carry it |
-| Procter & Gamble | Consumer products (non-food) | Yes | Filings, newsroom |
-| Sherwin-Williams | Coatings — **scope question, see C22/D3** | Yes | Filings, newsroom |
-| Ecolab | **Supplier to F&B**, not an F&B producer | Yes | Filings, newsroom — different opportunity semantics |
-| Danone | Manufacturer | **No** (deregistered from SEC) | Danone North America newsroom, state incentives, FDA |
-| Keurig Dr Pepper | Manufacturer | Yes | Filings, newsroom, state incentives |
-| Niagara Bottling | Manufacturer | **No** (private) | **State incentives + local permits + water/wastewater** — the best pilot test case |
+`docs/design/12_PILOT_SOURCE_COVERAGE_MATRIX.md` documents all fifteen accounts
+individually — canonical company, public or private status, CIK, useful periodic filing
+coverage, ownership-only or incidental coverage, newsroom, IR source, subsidiaries and
+facility operators, priority state/permit/incentive/regulatory/utility sources, coverage
+gaps, and a recommended connector portfolio — with a confidence label on every cell and
+an explicit statement of what could not be checked from this environment.
 
-Five of fifteen file nothing with the SEC. For those five — including two (Mars,
-Niagara) with heavy US plant activity — coverage depends entirely on company newsrooms,
-state incentive awards, and local permitting. **Recommendation: treat company newsrooms
-and state/local incentive sources as Tier-A pilot sources alongside EDGAR, not as a
-later phase.** A pilot built on EDGAR first would show good connector health and near-
-zero opportunities for a third of the cohort.
+The corrected finding, from verified CIKs:
 
-The Coca-Cola bottler point is the same problem in a different shape: the account is the
-brand owner, but the plant is owned by Coca-Cola Consolidated or Coca-Cola Europacific.
-Unless bottlers are loaded as related organizations with an explicit relationship type,
-the system will either miss those projects or attribute them to the wrong entity. This
-generalizes to co-manufacturers across the cohort and is the strongest argument for the
-C3 `facility_organizations` change.
+- **Eleven of fifteen** accounts have operational periodic SEC coverage under a CIK
+  confirmed from an SEC-controlled URL or accession number: PepsiCo (0000077476),
+  The Coca-Cola Company (0000021344), Kroger (0000056873), Tyson Foods (0000100493),
+  Hershey (0000047111), Kimberly-Clark (0000055785), Unilever PLC (0000217410, 20-F),
+  Procter & Gamble (0000080424), Sherwin-Williams (0000089800), Ecolab (0000031462),
+  Keurig Dr Pepper (0001418135).
+- **Four have no periodic filing coverage**: Nestlé S.A. (Swiss-listed, OTC Level-1 ADR),
+  Mars, Incorporated (private), Danone S.A. (historical 20-Fs under CIK 0001048515;
+  now an OTCQX Level-1 ADR with no periodic obligation), and Niagara Bottling (private,
+  no CIK found).
+- **One has excellent coverage that reaches the wrong assets.** The Coca-Cola Company
+  files as a brand owner and concentrate producer. The US plants that generate
+  Haskell-shaped projects belong to independent bottlers — above all **Coca-Cola
+  Consolidated (CIK 0000317540)**, the largest US Coca-Cola bottler, operating across
+  fourteen states and DC, which files its own 10-K.
+
+So the operative statement is not "five file nothing." It is: **four accounts have no
+periodic SEC coverage, and a fifth has periodic coverage that does not reach the
+facilities.** For those five, company newsrooms and state and local incentive and permit
+sources are the *only* pilot coverage that exists.
+
+**Two related distinctions the matrix enforces.** Mars appears in EDGAR only as a filer
+of beneficial-ownership documents against targets — including the SC 13D on Kellanova —
+which is genuinely useful as an M&A signal but is **ownership-only coverage**, not
+company coverage. And a company's name appearing inside someone else's filing is
+**incidental coverage**, usable for discovery and never counted toward monitoring.
+
+### 7.1a Corporate structure moved under four of fifteen accounts
+
+Verified during the reconciliation pass, and the strongest argument in the package for
+time-bounded ownership (C24):
+
+| Event | Date | Consequence for the radar |
+| --- | --- | --- |
+| Mars completes the Kellanova acquisition | 11 Dec 2025 | A private, filing-free account absorbs a large US snack-plant footprint; Kellanova's own filings (CIK 0000055067) end as a source at deregistration |
+| Nestlé Waters NA → BlueTriton (2021) → **Primo Brands** (CIK 0002042694) | merger closed 8 Nov 2024 | Poland Spring, Deer Park, Ozarka, Ice Mountain, Pure Life activity is **not Nestlé** — attributing it there is a resolution error against a Highest Value account |
+| Unilever demerges ice cream as **The Magnum Ice Cream Company** | trading from 8 Dec 2025 | Ben & Jerry's, Magnum, Cornetto, Wall's plants leave Unilever |
+| KDP acquires JDE Peet's, then plans a tax-free split into two US-listed companies | acquisition ~Apr 2026; separation readiness targeted year-end 2026 | **KDP will likely become two accounts during the pilot** — and separations generate capital projects |
+| Kimberly-Clark / Kenvue | approved Jan–Feb 2026, expected 2H 2026 | A sixth structural change may land inside the pilot window |
+
+Four completed reorganizations in roughly twenty months, two more in flight, across a
+fifteen-account cohort. Ownership cannot be a current-state pointer. Projects must be
+attributed to the operator **as at the event date**, which is what `facility_organizations`
+and `organization_relationships` with `from_date` / `to_date` / `evidence_id` provide.
 
 ### 7.2 Coverage matrix
 
 Priority: **A** = enable in pilot week 1, **B** = pilot week 3, **C** = Phase 4.
+Cohort coverage counts are from `12_PILOT_SOURCE_COVERAGE_MATRIX.md`.
 
 | Source family | Method | Cohort coverage | Priority | Expected yield | Main risk |
 | --- | --- | --- | --- | --- | --- |
-| SEC EDGAR submissions + filing docs | API + PDF/HTML | 10 of 15 | A | Capex guidance, acquisitions, facility mentions; low volume, high authority | Fair-access rate limits; filing text is long — extraction cost |
-| Company newsroom / IR | Feed → sitemap → structured HTML | 15 of 15 (~25 endpoints incl. bottlers, Nestlé USA, Purina, Danone NA) | A | **Highest-value source for the pilot**; primary announcements support Confirmed directly | Highest breakage rate; each is a bespoke selector — budget for this |
-| State & local incentives / economic development | API, feed, or approved adapter | Strong for Mars, Niagara, Tyson, KDP, Nestlé | A (3–5 states) | Site selection + Developing-stage evidence months before press | Fragmented, per-state formats |
-| FDA food enforcement (openFDA) | API | ~9 of 15 | A | Facility-level, named firms; negative + food-safety signals | Firm names need alias resolution; recalls ≠ opportunities |
+| SEC EDGAR submissions + filing docs | API + PDF/HTML | **11 verified CIKs**, plus Coca-Cola Consolidated and Kellanova-while-filing | A | Capex guidance, acquisitions, facility mentions; low volume, high authority | Fair-access rate limits; long filings are expensive to extract; **reaches no plants for KO** |
+| Company and subsidiary newsrooms | Feed → sitemap → structured HTML | 15 of 15 (**~25–30 endpoints** incl. bottlers, Nestlé USA, Purina, Danone NA, Kellanova, MICC) | **A** | **The only coverage for four accounts**; primary announcements can support authoritative evidence directly | Highest breakage rate; each is a bespoke selector — budget for this explicitly |
+| State & local incentives / economic development | API, feed, or approved adapter | Decisive for Mars, Nestlé, Danone, Niagara; strong for Tyson, KDP, P&G | **A (3–5 states)** | Site selection and Developing-stage evidence months before press | Fragmented, per-state formats |
+| FDA food enforcement (openFDA) | API | ~9 of 15 — **not applicable to KMB, PG, SHW** | A | Facility-level, named firms; negative and food-safety signals | Firm names need alias resolution; recalls ≠ opportunities |
 | USDA FSIS | API + feeds | Tyson primarily | A | Plant-level, authoritative | Narrow applicability |
-| Broad news discovery (GDELT) | API, **discovery-only** | All | A | Regional/trade reporting EDGAR never sees | Licensing + allowlist conflict — see §7.4 |
-| Permits & planning (ArcGIS / Socrata / Legistar) | API | Geography-dependent | B (2–3 metros) | Earliest credible project formation | Highest per-source setup cost; sparse hit rate |
-| EPA ECHO | Web services | Facility enrichment across cohort | B | Facility identifiers, permits, discharge — feeds water/wastewater capability | Weekly cadence; join keys are messy |
+| Broad news discovery (GDELT) | API, **discovery-only** | All | A | Regional and trade reporting EDGAR never sees | Licensing and allowlist conflict — see §7.4 |
+| Permits & planning (ArcGIS / Socrata / Legistar) | API | Geography-dependent | **A for Niagara**, B otherwise | Earliest credible project formation | Highest per-source setup cost; sparse hit rate |
+| Water / wastewater permits | API or portal | Niagara, beverage, dairy, protein | **A for Niagara**, B otherwise | Distinctive early signal for bottling siting | Jurisdiction-specific; often PDF |
+| EPA ECHO | Web services | ~12 of 15 | B | Facility identifiers, permits, discharge; feeds water/wastewater capability | Weekly cadence; join keys are messy |
 | PACK EXPO / marketing import | Controlled import | Engagement only | A (one-time) | Account strategy dimension only | Never raises project maturity (`02`) |
 | Regulations.gov | API | Sector-wide | C | Regulatory-change trends | Deferred (C20) |
-| Licensed business news | Licensed feed | All | C | Full text under license | Cost + retention terms (D6) |
+| Licensed business news | Licensed feed | All | C | Full text under licence | Cost and retention terms (D6) |
 
 ### 7.3 Rollout sequence
 
-Weeks 1–2: EDGAR, openFDA, FSIS, PACK EXPO import, plus five newsrooms as pathfinders
-(PepsiCo, Tyson, Hershey, KDP, Niagara) chosen to exercise feed, sitemap, structured
-HTML, and PDF paths. Weeks 3–4: remaining newsrooms including bottlers and NA
-subsidiaries, GDELT discovery, three state incentive sources. Weeks 5–6: EPA ECHO,
-two-to-three metro permit portals in the geographies the first four weeks actually
-surface. Every source goes through **dry run → sample review → enable**, per the
-`require_dry_run_before_enable` default already in the config.
+**Revised in v0.2.** Version 0.1 sequenced newsrooms and incentives as week 3. That is
+wrong for this cohort: Nestlé, Mars, Danone, and Niagara have no periodic filing
+coverage, and Coca-Cola's filings do not reach its plants. Deferring their only sources
+by two weeks would produce green connector health and an empty pipeline for a third of
+the pilot — precisely the failure the platform exists to prevent.
 
-### 7.4 The GDELT / allowlist resolution (C5)
+- **Weeks 1–2.** EDGAR for the eleven verified CIKs **plus Coca-Cola Consolidated**;
+  openFDA; FSIS; the PACK EXPO controlled import; GDELT in reference mode; **and the
+  no-filing-coverage newsrooms first** — Nestlé USA, Purina, Mars, Kellanova, Danone
+  North America, Niagara — followed by pathfinder newsrooms chosen to exercise the feed,
+  sitemap, structured-HTML, and PDF paths.
+- **Weeks 2–3.** State incentive sources for the geographies those four accounts
+  concentrate in; **local permit and water sources for Niagara**, promoted from Phase B
+  because they are that account's only coverage.
+- **Weeks 3–4.** Remaining newsrooms including private bottlers and MICC; EPA ECHO.
+- **Weeks 5–6.** Two or three metro permit portals in the geographies the first four
+  weeks actually surface, rather than the ones guessed in advance.
 
-Broad news discovery and strict destination allowlisting are in direct tension. Proposed
-two-tier evidence model:
+Every source still passes **dry run → sample review → enable**, per the
+`require_dry_run_before_enable` default already in the config. For sources marked
+*Unverified* in the coverage matrix, the dry run is also the endpoint-existence check.
 
-- **`evidence_mode = 'reference'`** — GDELT metadata only: URL, title, publisher,
-  publication time, and GDELT's own extracted snippet. No fetch of the publisher, no
-  stored body. Displayed as a link with attribution. Can trigger a *lead* for review and
-  can contribute to trend velocity, but **cannot alone support Probable or Confirmed
-  confidence**.
-- **`evidence_mode = 'full'`** — full text stored, from an allowlisted publisher set
-  (trade publications reviewed and approved), a licensed feed, or a primary source.
+### 7.4 Evidence access modes (C5)
 
-This preserves discovery breadth without either fetching arbitrary hosts or storing text
-we lack rights to. It also matches `02`'s corroboration rule: syndicated copies of one
-release collapse to one evidence family regardless of how many GDELT rows point at them.
+Broad news discovery and strict destination allowlisting are in direct tension, and the
+v0.1 two-tier split was too coarse to express what we actually hold. Five access modes:
+
+| Mode | What is stored | Fetch behavior | Max evidence strength |
+| --- | --- | --- | --- |
+| **structured_primary** | Parsed records from an official API or filing, plus the raw response | Direct, allowlisted | **authoritative** |
+| **archived_full_text** | Full text and raw bytes archived, excerptable, locators preserved | Direct, allowlisted primary source or approved publisher | **authoritative** |
+| **licensed_full_text** | Full text held under licence, display and retention bounded by contract | Licensed feed or API | **authoritative** |
+| **reference_only** | URL, title, publisher, timestamps, and a snippet the discovery source itself supplied. No body | **Publisher is never fetched** | **indicative** |
+| **metadata_only** | Existence, identifiers, timestamps. No text at all (e.g. a docket index entry) | Index or listing only | **indicative** |
+
+**Promotion rules — the enforceable part:**
+
+1. `reference_only` and `metadata_only` evidence **cannot set evidence strength above
+   `indicative`**, regardless of how many such records agree.
+2. An opportunity **cannot reach the Confirmed stage** unless at least one supporting
+   signal carries `authoritative` evidence strength with assessment type `observed_fact`
+   — which by rule 1 requires a structured, archived, or licensed record.
+3. Any number of `reference_only` records can raise **momentum and trend velocity**, and
+   can create or sustain an Emerging opportunity. They can never, alone, promote one.
+4. Syndicated copies collapse into one evidence family before corroboration is counted,
+   so breadth of discovery never inflates apparent corroboration (`02`).
+5. The mode is enforced in the schema — reference and metadata modes may not carry a raw
+   storage or extracted-text URI — and in the gateway, which refuses to fetch publisher
+   URLs discovered inside a reference-mode payload.
+
+The practical effect: GDELT makes us *aware* of a project within hours and can put it on
+the Pulse as an Emerging lead, while promotion to Confirmed waits for the company, the
+regulator, or the permit office. That is the correct direction to be wrong in, and D6
+(a licensed feed) is the remedy if it proves too conservative.
+
+### 7.5 Account scope classification (C22)
+
+Four Highest Value accounts are not core Food & Beverage. Version 0.1 framed this as a
+list error, which was wrong — these accounts are on the list for commercial reasons.
+What was missing is vocabulary. Every monitored account carries a scope class:
+
+| Class | Meaning | Ontology treatment |
+| --- | --- | --- |
+| **Core Food & Beverage** | F&B manufacturing or processing is the account's business | Full signal ontology; full alerting weight |
+| **Adjacent Consumer Products** | Manufacturer whose plants need the same Haskell capabilities, but not F&B | Suppress food-safety families; keep facility, process, packaging, automation, utilities, distribution |
+| **Strategic supplier or partner** | Sells into the same plants Haskell designs | Signals route to account intelligence and partner context, not the pursuit queue, unless the signal is about the account's *own* facilities |
+| **Scope confirmation required** | Commercial rationale is real but the F&B fit is unclear | Monitored, clearly labeled, excluded from relevance metrics until classified |
+
+Applied to the four:
+
+- **Kimberly-Clark** — *Adjacent Consumer Products.* Tissue and nonwovens plants are
+  water- and energy-intensive; industrial water and wastewater is a strong Haskell match.
+  Food-safety families produce nothing and must be suppressed rather than left to look
+  like silence.
+- **Procter & Gamble** — *Adjacent Consumer Products.* Large US plant network, and
+  historically incentive-announced site expansions, which suits the state-incentive
+  connector well.
+- **Ecolab** — *Strategic supplier or partner.* Ecolab sells water, hygiene, and
+  sanitation programs into the same plants Haskell designs. Its own facility projects
+  remain a legitimate but small opportunity surface; the larger value is as market
+  intelligence and possible channel. Treating it as a pursuit target would generate
+  confident, wrong recommendations against a Highest Value account.
+- **Sherwin-Williams** — **Scope confirmation required.** Coatings manufacturing and a
+  very large distribution network are genuine Haskell adjacency — process systems,
+  automation, material handling, industrial water and wastewater, large distribution
+  facilities. But the F&B signal ontology does not contain its vocabulary. **This is a
+  question for the market leader, not a data-quality defect**, and it is put to them as
+  D11 rather than resolved here.
 
 ---
 
@@ -439,9 +848,11 @@ release collapse to one evidence family regardless of how many GDELT rows point 
   what makes `partial_success` meaningful rather than a euphemism for failure.
 - **Retry with jitter** per the config defaults (4 attempts, 30s → 30m). Retries stay
   inside the run budget; exhausted units become explicit failed units with reasons.
-- **Idempotency** at three levels: run `(source_id, scheduled_for)`; evidence
-  `(source_id, content_hash)`; alert `dedupe_key`. Together these deliver "a second run
-  against unchanged content produces no duplicate alerts" structurally.
+- **Idempotency** at three levels: the logical run `(source_id, collection_window_start)`
+  with retries recorded as child attempts; evidence `(source_id, content_hash)`; and the
+  non-null `alert_dedupe_key` over recipient, channel, target, and material-change
+  fingerprint (§6.6). Together these deliver "a second run against unchanged content
+  produces no duplicate alerts" structurally rather than by careful coding.
 - **Dry run before enable**, and dry run again before resuming from Connector Care.
 - **Circuit breaking.** Two consecutive failures → `degraded`; four → `action_required`
   and the schedule backs off, so a dead source does not burn the rate-limit budget of a
@@ -485,6 +896,58 @@ successful collection, coverage affected, **exactly one** bounded action, a test
 and an audit record. No task may request content entry — enforced in code, not policy,
 which is the mechanism behind G7.
 
+### 8.5 Operational health is not market coverage (C23)
+
+`05` lists acceptance metrics in one undifferentiated block and leads Phase 2 exit with a
+95% connector-success rate. Nothing in the package stops that number from being read as
+evidence that the market is being covered. It is not, and the coverage matrix shows
+exactly how the two can diverge: for Nestlé, Mars, Danone, and Niagara, every enabled
+connector can be green while the account is effectively unmonitored, because the sources
+that would carry their signals were never built.
+
+**A connector-success rate measures whether we collected what we configured. It says
+nothing about whether we configured the right things.**
+
+Two independent metric families, with independent thresholds, both required at every
+exit gate:
+
+#### Family 1 — Operational health (are the connectors working?)
+
+| Metric | Definition | Pilot target |
+| --- | --- | --- |
+| **Connector execution success** | Logical runs ending `success`/`unchanged`/`partial_success` ÷ scheduled logical runs. **Attempts excluded**; `action_required` counts as failure | ≥95% over 14 days |
+| **Attempts per successful run** | Mean attempts inside a successful logical run | ≤1.3; a rise predicts failure before the success rate moves |
+| **Source freshness** | Sources within their freshness SLA ÷ enabled sources, measured continuously | ≥95%, no source stale >2 cycles |
+| **Extraction completeness** | Documents reaching `extraction_status = success` with required fields and above minimum text ÷ documents fetched | ≥90%, tracked per method (PDF and OCR will be worse) |
+| **Operator-action rate** | Connector Care tasks per source per 30 days | <0.5; the automation-first requirement in numeric form |
+| **Median recovery time** | `action_required` → next successful run | <2 business days |
+
+#### Family 2 — Intelligence coverage (are we seeing the market?)
+
+| Metric | Definition | Pilot target |
+| --- | --- | --- |
+| **Expected coverage completeness** | Enabled, healthy sources ÷ **expected** sources for each account, from a declared per-account source expectation | 100% of accounts at ≥80%; **no account below 50%** |
+| **Discovery yield** | Distinct new signals per account per 30 days, and the share of accounts with zero | Zero-signal accounts must be **explained** — either a declared quiet period or a coverage gap — never unexplained |
+| **Duplicate suppression** | Duplicate opportunity clusters ÷ presented opportunities; duplicate alerts ÷ alerts sent | <10% clusters (`05`); <2% duplicate alerts |
+| **Opportunity relevance** | Dismissal rate with reason codes, plus user-rated relevance | Dismissal <30%, with the false-positive category share falling over time |
+| **Evidence-link availability** | Opportunities whose every claim resolves to retrievable evidence | 100% — invariant, not a target |
+| **Resolution accuracy** | Organization and facility resolution measured against the adversarial set | Above the approved threshold, with **zero incorrect merges** |
+
+#### The mechanism that makes coverage measurable
+
+Family 2 depends on one new object: **`account_source_expectations`** — a declared
+statement, per account, of which source families *should* produce signal. It is seeded
+directly from the coverage matrix. Without it, "expected coverage" has no denominator
+and zero signals from Nestlé is indistinguishable from a quiet quarter.
+
+It also fixes the Kimberly-Clark problem: FDA enforcement is declared *not expected* for
+Adjacent Consumer Products accounts, so its silence is correct rather than alarming, and
+the account is not penalized for a source that was never going to fire.
+
+**Reporting rule.** Pulse, the daily brief, and the Phase 2 exit review all report the
+two families side by side and never substitute one for the other. An account with healthy
+connectors and no expected coverage is reported as **uncovered**, not as quiet.
+
 ---
 
 ## 9. Phased MVP backlog
@@ -518,7 +981,7 @@ E0 Platform foundation
 | --- | --- | --- | --- |
 | **E0** Foundation | Schemas, migrations from empty **and** from prior release, audit events, config-as-code | — | Migration suite passes from empty DB and from v0.1 fixture; audit event written for every mutating action in an integration run |
 | **E1** Ontology | Sectors, capabilities, signal families, event types, scoring config as versioned reference data (C14, C15) | E0 | Changing a scoring weight is a config version bump; recomputation reproduces prior snapshots for prior versions |
-| **E2** Import | `import_batches` → `import_records` → candidates; 171 curated rows + 519 email rows + 397 XPress rows; PII segregation (C6) | E0, E1 | Re-importing the identical file creates a new batch with **zero** new organizations; every derived value traces to a row number; no personal field is reachable from any Radar endpoint |
+| **E2** Import | `import_batches` → `import_records` → candidates → engagement observations → facility candidates; 171 curated rows + 519 engagement rows + 397 XPress rows; `transformation_version` on every derived row; `data_sensitivity_class = confidential_internal`; conditional personal-data controls specified but dormant (C6) | E0, E1 | Re-importing the identical file creates a new batch with **zero** new organizations; every derived value traces to batch + sheet + row number + transformation version; **no event address becomes a facility without corroborating evidence**; attempting to ingest a contact-level field without a lawful basis and retention expiry fails closed |
 | **E3** Resolution | Identifier → alias → domain → address ladder; durable approved mappings; unresolved is a valid outcome | E2 | Adversarial set (Mars Inc vs Mars candy brands; Nestlé Food vs Beverage rows; three Coca-Cola bottlers; "Ferrara") produces zero incorrect merges; ≥10 known XPress↔curated matches found; ambiguous cases remain unresolved |
 | **E4** Egress & security | Gateway, allowlist, SSRF/IP denial, redirect policy, caps, rate limits, robots (C21) | E0 | Requests to non-allowlisted hosts, `http://`, private IP ranges, and DNS-rebind fixtures all fail closed and are logged |
 | **E5** Source registry | Source contract incl. timezone (C9), license mode, retention, `evidence_mode`; dry-run gate | E4 | A source cannot be enabled without a passing dry run and a recorded terms review |
@@ -542,10 +1005,18 @@ unresolved.
 | **E13** Alerts & briefs | Immediate/daily/weekly, per-user dedupe (C7), auto-generated brief | E12 | One user with three matching subscriptions receives one alert; brief generated with no human input and links to every claim |
 | **E15** Source health & Care | Metrics, anomaly detection, coverage impact, bounded tasks | E6 | Injected auth expiry surfaces as `action_required` within one cycle with correct affected-accounts list; no Care task of a non-allowlisted type can be created |
 
-**Phase 2 exit** (from `05`, with the definition gap closed): ≥95% of scheduled runs end
-in `success`, `unchanged`, or `partial_success` over 14 days — *the denominator is
-scheduled runs; `unchanged` counts as success; `action_required` does not* (this
-definition is currently unstated in `05` and must be ratified).
+**Phase 2 exit**, with the definition gap closed and the two metric families separated
+(§8.5). **Both must pass; neither substitutes for the other.**
+
+*Operational health* — ≥95% of scheduled **logical** runs end in `success`, `unchanged`,
+or `partial_success` over 14 days. The denominator is scheduled logical runs; retry
+attempts are excluded; `unchanged` counts as success; `action_required` does not. This
+definition is unstated in `05` and must be ratified at Gate G-6.
+
+*Intelligence coverage* — every pilot account reaches ≥80% expected-source coverage with
+none below 50%; every account with zero signals over the window has a recorded
+explanation; duplicate alert rate <2%; and 100% of displayed opportunities resolve to
+retrievable evidence.
 
 ### Phase 3 — MVP interface (4–6 weeks, overlapping Phase 2)
 
@@ -566,9 +1037,12 @@ No new capability is proposed here beyond what `05` defines.
 
 ## 10. Decisions requiring stakeholder input
 
-`05` lists ten. All are restated with a recommended default, followed by six new ones
-this review surfaced. Recommended default is what we will build if no other direction is
-given.
+`05` lists ten. All are restated with a recommended default, followed by ten surfaced by
+this review. Recommended default is what we will build if no other direction is given.
+
+**`docs/design/13_GATE_1_DECISION_PACKET.md` is the stakeholder-facing version of this
+table** — each decision with its alternatives, operational consequence, cost and
+complexity impact, decision owner, and required timing. The table below is the index.
 
 | ID | Decision | Recommended default | Consequence of deferring |
 | --- | --- | --- | --- |
@@ -577,38 +1051,47 @@ given.
 | D3 | **CRM target for pursued opportunities** | Link-out first (store CRM ID on the opportunity); no write-back in MVP | Deferrable to Phase 4 |
 | D4 | Immediate alerts: Teams, email, or both? | **Both**, with Teams for immediate and email for digests | Blocks E13 UI polish only |
 | D5 | Which geographies get permitting/incentive coverage first? | Follow the pilot: Southeast (GA/TN/NC/SC/AL/FL), TX, Midwest (OH/IN/IA/WI), plus AZ/NV for Niagara | Blocks E6 week-3 scope |
-| D6 | Which paid news/market-data subscriptions exist? | Assume none in pilot; GDELT reference-mode only (§7.4) | Determines whether Confirmed confidence is reachable from trade press |
+| D6 | Which paid news/market-data subscriptions exist? | Assume none in pilot; GDELT reference-only mode (§7.4) | Determines whether trade-press reporting can ever reach `authoritative` evidence strength |
 | D7 | Retention and display rights for licensed content | Per-source `license_mode` + `retention_days`; default to reference-mode when unknown | **Compliance risk if deferred past E5** |
 | D8 | Who owns tier changes and manual overrides? | Market leader owns tier; BD owner owns opportunity status; both require a reason code | Blocks E10 permissions |
 | D9 | What counts as a successful pilot BD outcome? | Number of opportunities that become a qualified conversation, plus daily-review time under ten minutes | Without this, Phase 2 cannot be evaluated, only demonstrated |
 | D10 | Haskell design system / brand assets | Use existing Haskell web brand tokens; no new design language | Blocks E14 visual work |
-| **D11** | **Scope of non-F&B Highest Value accounts** (Kimberly-Clark, P&G, Sherwin-Williams, Ecolab) — C22 | Keep, tag `consumer_products`, suppress food-safety families; **explicitly confirm Sherwin-Williams is intended** rather than a campaign-list artifact | Noise in the pilot's most-watched cohort |
-| **D12** | **Supplier-role accounts** (Ecolab) — the opportunity semantics differ; Ecolab is plausibly a partner or channel, not a pursuit target | Model role as `ingredient_supplier`; surface as account intelligence, not as pursuit opportunities, until BD confirms | Mis-scored opportunities against a Highest Value account |
-| **D13** | **Bottler and co-manufacturer networks** (Coca-Cola Consolidated, Coca-Cola Europacific, contract manufacturers) — §7.1 | Load as related organizations with explicit relationship types; attribute projects to the operating entity, surface under the brand account | Systematically missed or misattributed Coca-Cola projects |
-| **D14** | **Personal data in PACK EXPO exports** — C6 | Organization-grain ingestion; personal fields in a restricted store, never in the Radar UI; legal review before Phase 1 | **Privacy exposure; must not be deferred** |
-| **D15** | **Date-precision model** — C2 | Adopt `event_date_precision` before any signal is written | Retrofitting means reprocessing all evidence |
-| **D16** | Confidence-value rename — C4 | `single_source` / `corroborated` / `authoritative` | Cheap now, expensive after the UI and briefs ship |
+| **D11** | **Scope class for the four non-core F&B accounts** — C22, §7.5 | Kimberly-Clark and P&G → *Adjacent Consumer Products*; Ecolab → *Strategic supplier or partner*; **Sherwin-Williams → Scope confirmation required**, put to the market leader as a genuine question, not treated as a list error | Wrong class produces either noise or unexplained silence in the most-watched cohort |
+| **D12** | **Supplier-role account semantics** (Ecolab) | Route Ecolab signals to account intelligence and partner context; its own facility projects remain eligible, its customers' do not | Confident, wrong pursuit recommendations against a Highest Value account |
+| **D13** | **Bottler, subsidiary, and co-manufacturer networks** — §7.1, `12_…MATRIX.md` | Load **Coca-Cola Consolidated (CIK 0000317540)**, Nestlé USA, Purina, Danone North America, Kellanova, and MICC as related organizations with typed, time-bounded relationships; attribute projects to the operating entity and surface them under the brand account | Systematically missed or misattributed projects — verified as a live risk for KO, Nestlé, Unilever, and Mars |
+| **D14** | **Event-data governance** — C6, §6.5. *Reframed in v0.2: the supplied data is company-level, not personal* | Govern as confidential third-party business data (access-controlled, licence-bounded, retention-bounded, not redistributable); **review the event lead-retrieval agreement** for retention and use restrictions; hold the personal-data controls dormant until contact-level data actually arrives | Contractual exposure, not privacy exposure. The licence review still gates E2 |
+| **D15** | **Temporal model** — C2, §6.2 | Adopt raw expression + start + end + precision + basis + inference note **before any signal is written** | Retrofitting means reprocessing the entire corpus |
+| **D16** | **Confidence decomposition** — C4, §6.4 | Keep Emerging/Developing/Confirmed; split confidence into evidence strength, assessment type, and confidence level | Cheap now; expensive after the UI, briefs, and alert templates ship |
+| **D17** | **Coverage measurement** — C23, §8.5 | Adopt `account_source_expectations` and report operational health and intelligence coverage as separate families with independent thresholds at every gate | Without it, a green dashboard can hide four unmonitored accounts. **This is the single most consequential new decision in v0.2** |
+| **D18** | **Corporate-reorganization handling** — C24, §7.1a | Time-bounded, evidence-backed ownership; attribute to the operator as at the event date; add a reorganization watch for KDP's planned split and the pending Kimberly-Clark/Kenvue close | Four completed reorganizations in ~20 months across 15 accounts; two more in flight during the pilot |
+| **D19** | **Evidence access modes and promotion rules** — C5, §7.4 | Five modes; `reference_only` and `metadata_only` capped at `indicative` and barred from independently producing a Confirmed opportunity | Sets how fast the platform is allowed to become confident, and therefore its false-positive rate |
+| **D20** | **Kellanova connector retirement** — `12_…MATRIX.md` | Run the Kellanova EDGAR connector while it remains a filer, with a scheduled review at deregistration so it is retired rather than left failing | A connector that fails for a *correct* reason still degrades the health metric and consumes operator attention |
 
 ---
 
 ## Proposed stakeholder review and approval sequence
 
 Structured as six gates. Each gate has named inputs, a decision set, and an exit that
-unblocks specific work — so approval is a decision, not a meeting.
+unblocks specific work — so approval is a decision, not a meeting. Gate G-1 is packaged
+in full in `docs/design/13_GATE_1_DECISION_PACKET.md`.
 
 | Gate | Timing | Attendees | Decides | Unblocks |
 | --- | --- | --- | --- | --- |
-| **G-1 Mission, users, and pilot cohort** | Week 1 | F&B market leader, BD lead, executive sponsor | §1 product statement; personas; D11, D12 (non-F&B and supplier accounts); D9 success definition | Everything — this is the only gate that cannot be run in parallel |
-| **G-2 Opportunity definition and scoring** | Week 1 | Market leader, BD, SMEs | Stages, confidence (D16 rename), the five dimensions and caps, promotion and negative-signal rules, D8 ownership | E1, E10 |
-| **G-3 Source coverage, licensing, and privacy** | Week 2 | Platform admin, legal/compliance, marketing ops | §7 source plan, D5 geographies, D6 subscriptions, D7 retention, **D14 personal data**, §7.4 GDELT posture | E4, E5, E6 |
-| **G-4 Architecture and data model** | Week 2 | Engineering, IT security, data owner | D1, D2; §4 boundaries; §6 model changes incl. **D15 date precision**, C1 missing tables, C3 multi-org facilities | E0, E2, E3 |
-| **G-5 Information architecture and visual direction** | Week 3 | Market leader, BD, design, accessibility reviewer | §5 page map, drawer-vs-page pattern, coverage-honesty treatment, D10 brand, D4 alert channels | E14 |
-| **G-6 MVP backlog and implementation authorization** | Week 3 | All of the above | §9 phasing, the Phase 2 95% metric definition, acceptance tests, Phase 1 start | Implementation begins |
+| **G-1 Mission, users, and pilot cohort** | Week 1 | F&B market leader, BD lead, executive sponsor | §1 product statement; personas; **D11** scope classes incl. Sherwin-Williams; **D12** Ecolab semantics; **D9** success definition | Everything — the only gate that cannot run in parallel |
+| **G-2 Opportunity definition and scoring** | Week 1 | Market leader, BD, SMEs | Lifecycle unchanged; **D16** confidence decomposition; **D19** evidence access modes and promotion rules; the five dimensions and caps; negative-signal rules; **D8** ownership | E1, E10 |
+| **G-3 Source coverage, licensing, and confidentiality** | Week 2 | Platform admin, legal/commercial, marketing ops | §7 source plan and revised week-1 sequencing; **D5** geographies; **D6** subscriptions; **D7** retention; **D14** event-data licence review; **D17** coverage measurement; **D20** Kellanova retirement | E4, E5, E6 |
+| **G-4 Architecture and data model** | Week 2 | Engineering, IT security, data owner | **D1**, **D2**; §4 runtimes, transaction and queue boundaries; §6 model changes incl. **D15** temporal model, **D18** time-bounded ownership, C1 ingestion tables, C25 replay-cache key | E0, E2, E3 |
+| **G-5 Information architecture and visual direction** | Week 3 | Market leader, BD, design, accessibility reviewer | §5 page map; drawer-vs-page pattern; how inferred dates and coverage gaps are shown; **D10** brand; **D4** alert channels | E14 |
+| **G-6 MVP backlog and implementation authorization** | Week 3 | All of the above | §9 phasing; ratification of the **two-family Phase 2 exit definition** (§8.5); acceptance tests; Phase 1 start | Implementation begins |
 
 Gates G-2 through G-5 can run in parallel after G-1. The conflict register in §2 should
-be walked at whichever gate owns each row — every item has an owner column implied by
-its gate, and no item should reach implementation unowned.
+be walked at whichever gate owns each row; no item should reach implementation unowned.
 
-Architecture decision records for the choices already made in this response are in
-`docs/adr/`. Each decision above becomes a new ADR when ratified, superseding the
-provisional one where the stakeholder answer differs from the recommended default.
+**Two items are timing-critical and should not wait for their natural gate.** D15 (the
+temporal model) and D18 (time-bounded ownership) must be settled before the first signal
+and the first facility link are written, because both are corpus-wide retrofits
+afterwards. If G-4 slips, take these two out of band.
+
+Architecture decision records for the choices made in this response are in `docs/adr/`.
+Each decision above becomes a new ADR when ratified, superseding the provisional one
+where the stakeholder answer differs from the recommended default.

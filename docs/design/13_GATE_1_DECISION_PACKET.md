@@ -1,0 +1,519 @@
+# Gate 1 Decision Packet
+
+Haskell Food & Beverage Opportunity Radar · Version 0.1 · **For stakeholder decision**
+
+Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.md`.
+
+---
+
+## How to use this packet
+
+Twenty decisions are open. Each is presented with a **recommended default**, the
+**alternatives** actually considered, the **operational consequence** of choosing it, the
+**cost and complexity impact**, a proposed **decision owner**, and the **required
+timing**.
+
+Three things are worth saying plainly before the list:
+
+1. **Silence is a decision.** Each recommended default is what will be built if no other
+   direction is given. Nothing here blocks on a meeting; the packet exists so that
+   defaults are chosen deliberately rather than by drift.
+2. **Only two decisions are genuinely urgent.** D15 (temporal model) and D18
+   (time-bounded ownership) are corpus-wide retrofits if taken late. Everything else can
+   be reversed at moderate cost.
+3. **Nothing has been implemented.** No migration has been applied, no connector built,
+   no code written. The schema delta in `11_SCHEMA_DELTA_PROPOSAL.sql` is a proposal.
+
+**Cost scale.** S = under a week of one engineer · M = one to three weeks · L = more than
+three weeks or a recurring commercial cost.
+
+---
+
+## Decision index
+
+| ID | Decision | Owner | Required by | Cost | Gate |
+| --- | --- | --- | --- | --- | --- |
+| **D15** | Temporal model | Platform engineering lead | **Before the first signal is written** | M | G-4 |
+| **D18** | Corporate-reorganization handling | Platform engineering lead | **Before the first facility link is written** | M | G-4 |
+| D1 | Hub-embedded or separate application | Executive sponsor + engineering | Before Phase 1 start | L if reversed late | G-4 |
+| D2 | Approved platform services | IT / engineering | Before Phase 1 start | S to select, L to change | G-4 |
+| D9 | Definition of pilot success | Executive sponsor + market leader | Before Phase 1 start | S | G-1 |
+| D11 | Scope class for four non-core accounts | F&B market leader | Before Phase 1 import | S | G-1 |
+| D12 | Ecolab account semantics | BD lead | Before Phase 2 scoring | S | G-1 |
+| D13 | Bottler and subsidiary networks | Market leader + engineering | Before connector enablement | M | G-3 |
+| D14 | Event-data licence and governance | Legal / commercial + marketing ops | Before Phase 1 import | S (review), M if restrictive | G-3 |
+| D17 | Coverage measurement model | Market leader + engineering | Before Phase 2 exit review | M | G-3 |
+| D19 | Evidence access modes and promotion | Market leader + BD | Before Phase 2 scoring | M | G-2 |
+| D16 | Confidence decomposition | Market leader + SMEs | Before Phase 3 UI build | S now, L later | G-2 |
+| D5 | Priority permitting geographies | Market leader + BD | Before week 2 of Phase 2 | M | G-3 |
+| D6 | Paid news / market-data subscriptions | Executive sponsor | Before Phase 2 | L (recurring) | G-3 |
+| D7 | Licensed-content retention and display | Legal / commercial | Before source enablement | S | G-3 |
+| D20 | Kellanova connector retirement | Platform admin | Before Phase 4 | S | G-3 |
+| D8 | Ownership of tier changes and overrides | Market leader | Before Phase 3 | S | G-2 |
+| D4 | Alert channels | BD lead + IT | Before Phase 3 | S | G-5 |
+| D10 | Design system and brand assets | Design lead | Before Phase 3 | S | G-5 |
+| D3 | CRM linkage | BD lead + IT | Phase 4 | M | G-1 (informational) |
+
+---
+
+## The two urgent decisions
+
+### D15 — Temporal model
+
+**Recommended default.** Store six fields wherever a date can come from source text —
+raw expression, start, end, precision (`exact_day` / `month` / `quarter` / `half_year` /
+`year` / `range` / `relative` / `unknown`), basis (`stated` / `inferred`), and an
+inference note required when basis is `inferred`. "Production begins in 2027" is stored
+as the interval 2027-01-01 → 2027-12-31 at `year` precision with basis `stated`, and is
+rendered as "expected 2027."
+
+**Alternatives.**
+- *Keep a single `date` column.* Cheapest, and it violates a stated non-negotiable: the
+  only ways to store "in 2027" are to invent January 1 or to discard the signal.
+- *Store the raw string alongside a parsed date.* Preserves evidence, but every consumer
+  re-parses, and scoring still reads the fabricated day.
+- *A numeric date-confidence score.* A number cannot tell the interface how to render,
+  and cannot be inverted back into "H2 2027."
+
+**Operational consequence.** Forward-looking timing is the earliest and most valuable
+signal in capital projects, and it is almost always imprecise. With the default, those
+signals are capturable and queryable; the interface can distinguish a stated date from
+one we inferred; and timing scores stop being falsely precise. Without it, the platform
+either fabricates dates or is blind to early-stage projects.
+
+**Cost and complexity.** M. Six columns instead of one, plus interval-aware queries and
+render logic. The real cost is discipline: every date comparison must consider precision.
+
+**Owner.** Platform engineering lead, ratified at G-4.
+
+**Timing. Before the first signal is written.** Retrofitting means reprocessing the
+entire evidence corpus and re-running every classification.
+
+### D18 — Corporate-reorganization handling
+
+**Recommended default.** Ownership relationships — facility-to-organization and
+organization-to-organization — carry `from_date`, `to_date`, and `evidence_id`. Projects
+are attributed to the operator **as at the event date**, not as at query time. Add an
+explicit reorganization watch for KDP's planned separation and the pending
+Kimberly-Clark / Kenvue close.
+
+**Alternatives.**
+- *Single current-owner pointer (today's schema).* Simple, and wrong within months.
+- *Snapshot the whole graph periodically.* Storage-heavy, and still cannot answer "who
+  operated this plant when the permit was filed."
+- *Handle reorganizations manually as they occur.* Contradicts the no-analyst
+  requirement, and assumes someone notices.
+
+**Operational consequence.** Verification found **four completed reorganizations across
+the fifteen pilot accounts in roughly twenty months, with two more in flight**: Mars
+acquired Kellanova (Dec 2025); Nestlé Waters North America became BlueTriton and then
+Primo Brands (Nov 2024); Unilever demerged its ice cream business as The Magnum Ice
+Cream Company (Dec 2025); KDP acquired JDE Peet's and plans to split in two;
+Kimberly-Clark's Kenvue acquisition is pending. Under the default, a 2023 Poland Spring
+project stays correctly attributed to Nestlé Waters and a 2026 one to Primo Brands.
+Without it, every one of these silently corrupts an account timeline — against Highest
+Value accounts, which are the ones people will check.
+
+**Cost and complexity.** M. Two join tables with date bounds, and resolution logic that
+takes an as-at date.
+
+**Owner.** Platform engineering lead, ratified at G-4.
+
+**Timing. Before the first facility-to-organization link is written.**
+
+---
+
+## Gate 1 decisions — mission, cohort, and scope
+
+### D9 — What counts as a successful pilot
+
+**Recommended default.** Two primary measures: the number of opportunities that become a
+qualified business-development conversation, and daily review time under ten minutes.
+Two secondary: pursue/watch action rate, and user-rated relevance. Explicitly **not**
+counted: number of opportunities generated.
+
+**Alternatives.** *Volume of opportunities* — actively harmful, rewards noise.
+*Won work attributable to the platform* — the honest measure, and the capital-project
+sales cycle is far longer than the pilot. *Qualitative sponsor judgment* — legitimate,
+but not repeatable across phases.
+
+**Operational consequence.** Determines what the scoring model is tuned toward. A
+volume target and a qualified-conversation target produce opposite systems.
+
+**Cost and complexity.** S — but requires BD to log outcomes, which is a process
+commitment, not an engineering one.
+
+**Owner.** Executive sponsor with the F&B market leader. **Timing.** Before Phase 1;
+without it, Phase 2 can be demonstrated but not evaluated.
+
+### D11 — Scope class for the four non-core accounts
+
+**Recommended default.**
+
+| Account | Proposed class | Effect |
+| --- | --- | --- |
+| Kimberly-Clark | Adjacent Consumer Products | Full facility/process/packaging/automation/utilities ontology; food-safety families suppressed |
+| Procter & Gamble | Adjacent Consumer Products | Same |
+| Ecolab | Strategic supplier or partner | See D12 |
+| **Sherwin-Williams** | **Scope confirmation required** | Monitored and clearly labeled; excluded from relevance metrics until classified |
+
+**Alternatives.** *Treat all four as core F&B* — food-safety connectors fire never,
+which is indistinguishable from a broken connector without D17. *Remove them from the
+pilot* — discards accounts the business deliberately prioritized. *Build a separate
+coatings/consumer-products ontology now* — real work, premature before the pilot proves
+the core.
+
+**Operational consequence.** Sherwin-Williams is the live question. Coatings
+manufacturing and its very large distribution network are genuine Haskell adjacency —
+process systems, automation, material handling, industrial water and wastewater — but the
+F&B signal vocabulary does not contain its terms. **This is a question about commercial
+intent, not a data-quality defect**, and the market leader is the only person who can
+answer it.
+
+**Cost and complexity.** S for classification. M if Sherwin-Williams is confirmed in
+scope *and* a coatings vocabulary is required.
+
+**Owner.** F&B market leader. **Timing.** Before Phase 1 import, so accounts are
+classified as they are created.
+
+### D12 — Ecolab account semantics
+
+**Recommended default.** Classify as *Strategic supplier or partner*. Ecolab's own plant
+projects remain eligible opportunities; signals about Ecolab's **customers'** plants route
+to account intelligence and partner context rather than the pursuit queue.
+
+**Alternatives.** *Treat as a normal pursuit target* — generates confident, wrong
+recommendations against a Highest Value account. *Remove from monitoring* — discards
+genuine market intelligence, since Ecolab sells into exactly the plants Haskell designs.
+
+**Operational consequence.** Determines whether the BD team sees Ecolab as a prospect or
+as a lens on the market. Getting this wrong is more damaging than it looks: a
+plausible-sounding but commercially confused recommendation erodes trust in the whole
+queue.
+
+**Cost and complexity.** S. **Owner.** BD lead. **Timing.** Before Phase 2 scoring.
+
+### D3 — CRM linkage
+
+**Recommended default.** Link-out only in the MVP: store a CRM identifier on the
+opportunity and deep-link. No write-back, no sync.
+
+**Alternatives.** *Two-way sync* — the largest single integration in the roadmap, and it
+makes the Radar a system of record it was explicitly not meant to be. *No linkage* —
+forces manual re-keying, which contradicts the automation-first principle at the one
+point where a human is already acting.
+
+**Operational consequence.** Link-out gets the workflow benefit at a fraction of the
+cost and keeps `01`'s "not a CRM replacement" boundary intact.
+
+**Cost and complexity.** M for link-out; L for sync. **Owner.** BD lead with IT.
+**Timing.** Phase 4. Listed at G-1 for awareness only.
+
+---
+
+## Source, licensing, and coverage decisions
+
+### D13 — Bottler, subsidiary, and co-manufacturer networks
+
+**Recommended default.** Load the operating entities as first-class organizations with
+typed, time-bounded relationships to the brand account: **Coca-Cola Consolidated
+(CIK 0000317540)**, Nestlé USA, Nestlé Purina PetCare, Danone North America, Kellanova,
+and The Magnum Ice Cream Company. Attribute projects to the operating entity; surface them
+under the brand account.
+
+**Alternatives.** *Treat operators as aliases of the parent* — collapses distinct legal
+entities and produces exactly the bad merges ADR 0005 exists to prevent. *Monitor only
+the named 15* — verified to miss most Coca-Cola plant activity, since KO files as a brand
+owner and concentrate producer while the plants sit with independent bottlers.
+
+**Operational consequence.** Coca-Cola Consolidated alone is the largest US Coca-Cola
+bottler, operating across fourteen states and DC, and files its own 10-K. Without this
+decision, the Coca-Cola account produces brand news and almost no capital projects.
+
+**Cost and complexity.** M — roughly 8–12 additional organizations and their newsroom
+connectors.
+
+**Owner.** Market leader (which entities matter commercially) with engineering (how they
+are modeled). **Timing.** Before connector enablement in Phase 2.
+
+### D14 — Event-data licence and governance
+
+**Recommended default.** Govern the PACK EXPO workbooks as **confidential third-party
+business data**: access-controlled, licence-bounded, retention-bounded, not
+redistributable, and never included in any briefing that can leave Haskell. Review the
+event lead-retrieval agreement for retention, resale, and use restrictions before Phase 1
+import. Hold the personal-data control set specified in `10_DESIGN_RESPONSE.md` §6.5
+**dormant** until contact-level data actually arrives.
+
+**Correction from version 0.1.** The first design response described this data as "519
+rows of personal data." That was wrong. The "Pack Expo 2025 Email List" sheet contains a
+Company column only — 519 populated rows, 183 unique company strings — with no names,
+email addresses, or other direct personal identifiers, and the XPressLeads export's
+person-oriented columns are empty. **The obligation is contractual and confidentiality-
+based, not a privacy matter**, and it should not be presented to stakeholders as a
+privacy incident.
+
+**Alternatives.** *Treat as ordinary internal data* — ignores the event organizer's
+contractual terms and the strategic sensitivity of Haskell's own targeting list.
+*Apply full personal-data controls now* — cost and process burden with no subject to
+protect; also dulls the response if real personal data arrives later.
+
+**Operational consequence.** The licence review is the gating item. If the agreement
+restricts retention or derived use, the engagement layer's design changes — which is
+cheap to accommodate before import and expensive afterwards.
+
+**Cost and complexity.** S for the review; M if terms prove restrictive.
+
+**Owner.** Legal or commercial contracts, with marketing operations. **Timing.** Before
+Phase 1 import.
+
+**Conditional trigger.** If contact names, email addresses, phone numbers, badge-holder
+or scan records, individual job titles, or person-level campaign engagement are ever
+ingested, the dormant control set activates *before* the first such row is stored:
+restricted storage classification, encryption at rest, recorded lawful basis and
+retention expiry with fail-closed ingestion, no exposure through any Radar surface or
+model prompt, and deletion and subject-access paths in place beforehand.
+
+### D17 — Coverage measurement model
+
+**Recommended default.** Adopt `account_source_expectations` — a declared, per-account
+statement of which source families should produce signal — and report **operational
+health** and **intelligence coverage** as two independent metric families with
+independent thresholds at every gate. Phase 2 exit requires both.
+
+**Alternatives.** *Keep the single acceptance-metric block from `05`* — allows a 95%
+connector-success rate to be read as market coverage. *Measure coverage only
+qualitatively* — unfalsifiable, and it degrades under delivery pressure.
+
+**Operational consequence.** This is the decision that prevents the pilot's most likely
+silent failure. For Nestlé, Mars, Danone, and Niagara Bottling — the four accounts with
+no periodic SEC coverage — every enabled connector can be green while the account is
+effectively unmonitored, because the sources that would carry their signals were never
+built. An expectation model makes that state **visible and reportable as "uncovered"**
+rather than as "quiet." It also fixes the inverse: FDA enforcement is declared *not
+expected* for Adjacent Consumer Products accounts, so its silence is correct and the
+account is not penalized for a source that was never going to fire.
+
+**Cost and complexity.** M. One reference table seeded from the coverage matrix, plus
+metric computation and two dashboard panels.
+
+**Owner.** Market leader (what coverage *should* exist) with engineering (measurement).
+**Timing.** Before the Phase 2 exit review; ideally before Phase 2 begins, so the baseline
+is captured.
+
+### D19 — Evidence access modes and promotion rules
+
+**Recommended default.** Five access modes — structured primary, archived full text,
+licensed full text, reference-only, metadata-only. Reference-only and metadata-only
+evidence cannot exceed `indicative` evidence strength regardless of volume, and an
+opportunity cannot reach the **Confirmed** stage without at least one supporting signal
+that is `authoritative` + `observed_fact`. Enforced in the schema and at the egress
+gateway, not by convention.
+
+**Alternatives.** *Fetch and store every discovered article* — violates the destination
+allowlist and creates copyright and retention exposure. *Drop broad news discovery* —
+loses the regional and trade reporting where four pilot accounts are visible at all.
+*Allow reference-only evidence to corroborate* — cheap confidence, and the fastest route
+to a false Confirmed in front of a client.
+
+**Operational consequence.** Sets how quickly the platform is permitted to become
+confident, and therefore its false-positive rate. Under the default, GDELT makes us aware
+of a project within hours and can raise an Emerging lead; promotion waits for the company,
+the regulator, or the permit office. Some genuinely real projects will sit at lower
+confidence than a human reader would assign — the correct direction to be wrong in, and
+D6 is the remedy if it proves too conservative.
+
+**Cost and complexity.** M. **Owner.** Market leader with BD (they carry the
+consequence of both false positives and slow confidence). **Timing.** Before Phase 2
+scoring.
+
+### D5 — Priority permitting and incentive geographies
+
+**Recommended default.** Southeast (GA, TN, NC, SC, AL, FL), Texas, Midwest (OH, IN, IA,
+WI), plus **AZ and NV for Niagara Bottling**. Confirm against Haskell's own delivery
+geography before building.
+
+**Alternatives.** *National coverage* — out of scope per `01`. *Follow only Haskell's
+existing delivery footprint* — reasonable, and may miss where target accounts are actually
+expanding. *Defer until Phase 4* — leaves Niagara Bottling, which has no filings and
+limited press cadence, effectively unmonitored for the whole pilot.
+
+**Operational consequence.** Permit and incentive connectors are the highest per-source
+setup cost in the plan and the earliest signal available. Choosing the wrong three states
+wastes the most expensive connector work in Phase 2.
+
+**Cost and complexity.** M per state, and it does not amortize — each jurisdiction is its
+own format.
+
+**Owner.** Market leader with BD. **Timing.** Before week 2 of Phase 2.
+
+### D6 — Paid news and market-data subscriptions
+
+**Recommended default.** Assume none for the pilot. Operate GDELT in reference mode and
+measure how often a project stalls at `indicative` for want of full text. Revisit with
+evidence.
+
+**Alternatives.** *Buy a licensed business-news feed now* — removes the reference-mode
+ceiling for a recurring cost, before we know the size of the gap. *Approve individual
+trade publications for full-text archiving* — a middle path, and the one most likely to
+be right; each promotion is a reviewed source-registry change.
+
+**Operational consequence.** Determines whether trade-press reporting can ever support
+authoritative evidence. The pilot is designed to produce the number that makes this
+decision answerable.
+
+**Cost and complexity.** L, recurring. **Owner.** Executive sponsor. **Timing.** Before
+Phase 2 if a subscription already exists; otherwise revisit at Phase 4.
+
+### D7 — Licensed-content retention and display rights
+
+**Recommended default.** Per-source `license_mode` and `retention_days`; default to
+reference-only when licensing is unknown; enforce retention in the `maintain` queue.
+
+**Alternatives.** *Retain everything indefinitely* — a compliance exposure that grows
+silently. *Manual review per source without schema enforcement* — depends on memory.
+
+**Operational consequence.** Fail-closed defaults mean an unreviewed source degrades
+capability rather than creating exposure.
+
+**Cost and complexity.** S. **Owner.** Legal or commercial contracts. **Timing.** Before
+any source is enabled — this gates E5.
+
+### D20 — Kellanova connector retirement
+
+**Recommended default.** Run the Kellanova EDGAR connector (CIK 0000055067) while it
+remains a filer following the Mars acquisition, with a scheduled review at deregistration
+so it is retired deliberately.
+
+**Alternatives.** *Do not build it* — forgoes real coverage of a large newly acquired US
+plant footprint during the window it exists. *Leave it running until it fails* — a
+connector failing for a correct reason still degrades the health metric and consumes
+operator attention, which is exactly the noise Connector Care is meant to eliminate.
+
+**Operational consequence.** Mars is otherwise a filing-free account; Kellanova's
+remaining filings are a time-boxed window into its US footprint.
+
+**Cost and complexity.** S. **Owner.** Platform administrator. **Timing.** Review before
+Phase 4.
+
+---
+
+## Architecture and platform decisions
+
+### D1 — Hub-embedded or separate application
+
+**Recommended default.** A separate application sharing identity and infrastructure with
+the Haskell Hub, not embedded in it.
+
+**Alternatives.** *Embed in the Hub* — one surface for users, at the cost of coupling
+release cadence and forcing the F&B ontology into a shared model. *Fully standalone
+including identity* — maximum autonomy, duplicate user administration and a second
+security review.
+
+**Operational consequence.** The F&B ontology, daily cadence, and page model differ
+enough from the Hub's that coupling slows both. Shared identity keeps administration
+single-source.
+
+**Cost and complexity.** L if reversed after Phase 3 — a rewrite of the delivery layer,
+though the ingestion and evidence kernel survives either way.
+
+**Owner.** Executive sponsor with engineering. **Timing.** Before Phase 1 start.
+
+### D2 — Approved platform services
+
+**Recommended default.** PostgreSQL as system of record and queue; object storage for raw
+evidence; an approved LLM provider reached only through the model gateway; identity from
+the existing corporate provider.
+
+**Alternatives.** *A managed search or vector service* — defer until retrieval
+requirements are approved, per the note already in `schemas/database.sql`. *An external
+message broker* — unnecessary at pilot volume and adds an operational surface.
+
+**Operational consequence.** Determines the deployment shape and the security review
+path. Postgres-as-queue is what makes the transactional-outbox guarantee possible.
+
+**Cost and complexity.** S to select, L to change after Phase 2. **Owner.** IT with
+engineering. **Timing.** Before Phase 1 start.
+
+### D16 — Confidence decomposition
+
+**Recommended default.** Keep the lifecycle **Emerging / Developing / Confirmed**
+unchanged. Replace the single confidence enum with three fields: evidence strength
+(`indicative` / `corroborated` / `authoritative`), assessment type (`observed_fact` /
+`inference` / `hypothesis`), and confidence level (`low` / `moderate` / `high`).
+
+**Alternatives.** *Keep the single enum* — leaves stage `confirmed` and confidence
+`confirmed` colliding, and hides the difference between an unimpeachable document and an
+unimpeachable reading of it. *Rename the enum only* — fixes the collision, not the
+conflation.
+
+**Operational consequence.** The combination that matters is *authoritative source +
+inference + moderate confidence*: the filing is beyond question, our reading of it is
+not. That is the most common route to a false Confirmed, and a single enum cannot express
+it. Confidence level is capped at `moderate` for inferences and `low` for hypotheses,
+so a strong source cannot launder a weak claim.
+
+**Cost and complexity.** S now — three columns and derivation rules. L after the UI,
+briefing templates, and alert copy ship.
+
+**Owner.** Market leader with SMEs. **Timing.** Before Phase 3 UI build; ideally at G-2.
+
+### D8 — Ownership of tier changes and manual overrides
+
+**Recommended default.** The market leader owns account tier and Highest Value status;
+the assigned BD owner owns opportunity status; both require a reason code; computed
+values are preserved beneath every override.
+
+**Alternatives.** *Anyone may change anything* — tier drift makes the account-strategy
+score meaningless. *Admin-only* — creates a bottleneck on the most common daily action.
+
+**Operational consequence.** Tier feeds scoring. Uncontrolled tier editing is the easiest
+way to quietly turn the platform back into a priority list.
+
+**Cost and complexity.** S. **Owner.** Market leader. **Timing.** Before Phase 3.
+
+### D4 — Alert channels
+
+**Recommended default.** Both: Microsoft Teams for immediate critical alerts, email for
+daily and weekly digests, in-app for everything.
+
+**Alternatives.** *Email only* — simplest, and immediate alerts lose their urgency.
+*Teams only* — misses executive viewers who live in email.
+
+**Operational consequence.** Channel is part of the alert dedupe key, so supporting both
+is a design input rather than a late addition.
+
+**Cost and complexity.** S. **Owner.** BD lead with IT. **Timing.** Before Phase 3.
+
+### D10 — Design system and brand assets
+
+**Recommended default.** Use existing Haskell web brand tokens — colour, type, spacing —
+with no new design language.
+
+**Alternatives.** *A bespoke product design system* — better long-term fit for a dense
+product surface, at a cost the pilot cannot carry. *An off-the-shelf component library
+unstyled* — fastest, and it will not look like Haskell.
+
+**Operational consequence.** `04` requires restrained colour, generous white space, and
+colour-independent status indicators; existing tokens must be checked against WCAG 2.2 AA
+contrast before they are adopted wholesale.
+
+**Cost and complexity.** S, assuming tokens exist and are accessible. **Owner.** Design
+lead. **Timing.** Before Phase 3.
+
+---
+
+## What we are asking for at Gate 1
+
+A decision, a deferral with a date, or a different answer on each of the following.
+Everything else can follow at its own gate.
+
+1. **D9** — the definition of pilot success.
+2. **D11** — scope classes, and specifically **whether Sherwin-Williams is intended to be
+   in the Food & Beverage radar**.
+3. **D12** — whether Ecolab is a pursuit target or a partner lens.
+4. **D15 and D18** — authorization to adopt the temporal model and time-bounded ownership
+   ahead of their natural gate, because both are corpus-wide retrofits if taken late.
+5. **D14** — authorization to begin the event-data licence review.
+
+Items 4 and 5 are the only ones that block Phase 1 work starting.

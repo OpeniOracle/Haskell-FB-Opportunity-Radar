@@ -2,8 +2,21 @@
 -- PROPOSED schema delta v0.1.0 -> v0.2.0
 --
 -- THIS IS A DESIGN PROPOSAL, NOT A MIGRATION. Do not run it.
+-- Nothing here has been applied to any database.
 -- It exists to make the recommendations in docs/design/10_DESIGN_RESPONSE.md §6
 -- concrete enough to argue with. Migration authoring happens after gate G-4.
+--
+-- Revision 0.2 reconciles this file with the design-reconciliation pass:
+--   * full temporal model, replacing the narrower date-precision proposal   (C2)
+--   * confidence decomposed into three axes                                 (C4)
+--   * five evidence access modes, replacing the two-tier split              (C5)
+--   * event data reclassified as company-level confidential business data,
+--     with personal-data structures made CONDITIONAL and dormant            (C6)
+--   * alert dedupe key made non-null and recipient/channel aware            (C7)
+--   * logical source runs separated from retry attempts                     (C8)
+--   * expected-coverage model, so health is not mistaken for coverage       (C23)
+--   * time-bounded ownership for corporate reorganizations                  (C24)
+--   * replay-cache key covering every effective model input                 (C25)
 --
 -- Each block cites the conflict-register ID from 10_DESIGN_RESPONSE.md §2.
 -- Ordering below is dependency order, not priority order.
@@ -12,6 +25,9 @@
 -- C1  Ingestion model required by 06_SOURCE_DATA_PROFILE.md but absent from
 --     schemas/database.sql. Without these tables there is nowhere to put an
 --     unresolved PACK EXPO row, which blocks Phase 1 entirely.
+--
+--     Note transformation_version on every derived row: 06 requires that every
+--     derived value trace to its import record AND its transformation version.
 -- ---------------------------------------------------------------------------
 
 create table import_batches (
@@ -20,6 +36,8 @@ create table import_batches (
     file_hash char(64) not null,
     sheet_inventory jsonb not null default '[]',
     row_count integer not null check (row_count >= 0),
+    transformation_version text not null,
+    data_sensitivity_class text not null default 'confidential_internal',
     imported_at timestamptz not null default now(),
     imported_by text not null,
     unique (file_hash, source_filename)
@@ -30,14 +48,14 @@ create table import_records (
     batch_id uuid not null references import_batches(id) on delete cascade,
     sheet_name text not null,
     source_row_number integer not null check (source_row_number > 0),
-    original_values jsonb not null,     -- never edited; the audit anchor
+    original_values jsonb not null,     -- raw row JSON; never edited
     record_hash char(64) not null,
     created_at timestamptz not null default now(),
     unique (batch_id, sheet_name, source_row_number)
 );
 
 -- An organization candidate may remain unresolved indefinitely. That is a
--- correct terminal state, not an error (02 §Entity resolution).
+-- correct terminal state, not an error (03 §Entity resolution, ADR 0005).
 create table organization_candidates (
     id uuid primary key default gen_random_uuid(),
     import_record_id uuid references import_records(id) on delete cascade,
@@ -51,6 +69,7 @@ create table organization_candidates (
     resolution_state text not null default 'unresolved' check (resolution_state in (
         'unresolved', 'auto_resolved', 'human_approved', 'human_rejected', 'ambiguous'
     )),
+    transformation_version text not null,
     resolved_at timestamptz,
     resolved_by text,
     created_at timestamptz not null default now(),
@@ -59,6 +78,24 @@ create table organization_candidates (
 
 create index organization_candidates_state_idx
     on organization_candidates(resolution_state, normalized_string);
+
+-- Durable approved mappings. A human resolution decision must survive re-import,
+-- re-normalization, and extractor upgrades, or the unresolved queue regenerates
+-- the same work forever.
+create table approved_entity_mappings (
+    id uuid primary key default gen_random_uuid(),
+    normalized_string text not null,
+    scope text not null default 'global' check (scope in ('global', 'source', 'import')),
+    scope_key text,
+    organization_id uuid references organizations(id) on delete cascade,
+    facility_id uuid references facilities(id) on delete cascade,
+    evidence_id uuid,                    -- FK added after evidence exists
+    approved_by text not null,
+    approved_at timestamptz not null default now(),
+    active boolean not null default true,
+    check (organization_id is not null or facility_id is not null),
+    unique (normalized_string, scope, scope_key)
+);
 
 -- Replaces organizations.engagement jsonb (C11) so engagement traces to a row.
 create table engagement_observations (
@@ -73,11 +110,13 @@ create table engagement_observations (
     company_role_response text,
     address_candidate jsonb,
     repeat_count integer not null default 1 check (repeat_count >= 1),
+    transformation_version text not null,
     created_at timestamptz not null default now(),
     check (organization_candidate_id is not null or organization_id is not null)
 );
 
 -- 06: an event address is a facility CANDIDATE, never a confirmed plant.
+-- Promotion requires corroborating evidence, and records which evidence.
 create table facility_candidates (
     id uuid primary key default gen_random_uuid(),
     organization_candidate_id uuid references organization_candidates(id) on delete cascade,
@@ -88,32 +127,68 @@ create table facility_candidates (
     corroboration_status text not null default 'uncorroborated' check (
         corroboration_status in ('uncorroborated', 'corroborated', 'rejected', 'promoted')
     ),
+    corroborating_evidence_id uuid,      -- FK added after evidence exists
     promoted_facility_id uuid references facilities(id),
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    check (corroboration_status <> 'promoted'
+           or (promoted_facility_id is not null and corroborating_evidence_id is not null))
 );
 
 -- ---------------------------------------------------------------------------
--- C6  PACK EXPO email list is personal data. Segregated store, own retention,
---     never joined into any Radar-facing view. Access is granted separately.
+-- C6  CORRECTED IN 0.2.
+--
+--     The supplied workbooks contain NO personal data. The "Pack Expo 2025
+--     Email List" sheet carries a Company column only -- 519 populated rows,
+--     183 unique company strings -- and the XPressLeads export's person-
+--     oriented columns (UserAccount, DeviceLabel) are empty. TerminalID holds
+--     two manual-import identifiers, which are provenance, not people.
+--
+--     The obligation is confidentiality and licensing, not privacy. Sources and
+--     evidence therefore carry a sensitivity class, and the event imports land
+--     as confidential_internal.
 -- ---------------------------------------------------------------------------
 
-create table contact_records (
-    id uuid primary key default gen_random_uuid(),
-    import_record_id uuid not null references import_records(id) on delete cascade,
-    organization_candidate_id uuid references organization_candidates(id),
-    personal_data jsonb not null,             -- encrypted at rest
-    lawful_basis text not null,
-    retention_expires_at timestamptz not null,
-    created_at timestamptz not null default now()
-);
+alter table sources
+    add column data_sensitivity_class text not null default 'public'
+        check (data_sensitivity_class in (
+            'public', 'licensed', 'confidential_internal', 'restricted_personal'
+        ));
 
-comment on table contact_records is
-    'Restricted. Personal data from event exports. Not exposed through any '
-    'Radar API surface. Subject to independent retention and access control.';
+alter table evidence
+    add column data_sensitivity_class text not null default 'public'
+        check (data_sensitivity_class in (
+            'public', 'licensed', 'confidential_internal', 'restricted_personal'
+        ));
+
+-- CONDITIONAL AND DORMANT. Create this table only if and when contact-level,
+-- badge-holder, email, or individual campaign data is actually ingested.
+-- Trigger conditions and the full control set are in 10_DESIGN_RESPONSE.md §6.5.
+-- It is written here so the controls exist before the data does, not after.
+--
+-- create table contact_records (
+--     id uuid primary key default gen_random_uuid(),
+--     import_record_id uuid not null references import_records(id) on delete cascade,
+--     organization_candidate_id uuid references organization_candidates(id),
+--     personal_data jsonb not null,             -- encrypted at rest
+--     lawful_basis text not null,               -- ingestion fails closed without it
+--     retention_expires_at timestamptz not null,
+--     created_at timestamptz not null default now()
+-- );
+-- comment on table contact_records is
+--     'Restricted personal data. Independent access control. Never reachable '
+--     'from any Radar API surface, briefing, export, or model prompt.';
 
 -- ---------------------------------------------------------------------------
--- C3  A facility can be operated, owned, or used by more than one organization
---     (co-manufacturing, JVs, multi-tenant cold storage). 01 requires this.
+-- C3 + C24  Ownership is time-bounded and evidence-backed.
+--
+--     Verification found four completed corporate reorganizations across the
+--     15-account pilot cohort in roughly twenty months, with two more in
+--     flight (Mars/Kellanova, Nestle Waters -> BlueTriton -> Primo Brands,
+--     Unilever's ice cream demerger, KDP/JDE Peet's and its planned split,
+--     Kimberly-Clark/Kenvue pending). A single current-owner pointer
+--     misattributes projects after every one of them.
+--
+--     Attribution rule: a project belongs to the operator AS AT THE EVENT DATE.
 -- ---------------------------------------------------------------------------
 
 create table facility_organizations (
@@ -123,38 +198,105 @@ create table facility_organizations (
         'owner', 'operator', 'tenant', 'co_manufacturer', 'brand_produced_here',
         'former_owner', 'unknown'
     )),
-    evidence_id uuid references evidence(id),
+    evidence_id uuid,                    -- FK added after evidence exists
     from_date date,
     to_date date,
     created_at timestamptz not null default now(),
-    primary key (facility_id, organization_id, relationship)
+    primary key (facility_id, organization_id, relationship),
+    check (to_date is null or from_date is null or to_date >= from_date)
 );
 
--- facilities.organization_id is retained as the denormalized primary operator.
+create table organization_relationships (
+    parent_organization_id uuid not null references organizations(id) on delete cascade,
+    child_organization_id uuid not null references organizations(id) on delete cascade,
+    relationship text not null check (relationship in (
+        'parent_subsidiary', 'brand_owner', 'division', 'joint_venture',
+        'franchise_bottler', 'co_manufacturer', 'former_parent'
+    )),
+    evidence_id uuid,                    -- FK added after evidence exists
+    from_date date,
+    to_date date,
+    created_at timestamptz not null default now(),
+    primary key (parent_organization_id, child_organization_id, relationship),
+    check (parent_organization_id <> child_organization_id),
+    check (to_date is null or from_date is null or to_date >= from_date)
+);
+
+-- facilities.organization_id is retained as the denormalized current operator.
+-- organizations.parent_organization_id is retained as the current parent.
+-- Neither may be used for as-at-date attribution.
 
 -- ---------------------------------------------------------------------------
--- C2  Date precision. A non-negotiable requirement the v0.1 schema cannot meet:
---     "in 2027" currently has to be stored as 2027-01-01, i.e. invented.
---     Applies identically to evidence, signals, and facility open/close dates.
+-- C2  TEMPORAL MODEL. A non-negotiable requirement the v0.1 schema cannot meet:
+--     "in 2027" currently has to be stored as 2027-01-01, i.e. invented. The
+--     v0.1 schema also cannot distinguish a date the source STATED from one the
+--     platform INFERRED.
+--
+--     Six fields replace one. The interval is what does the work -- a point plus
+--     a precision label still tempts every consumer to read the point.
 -- ---------------------------------------------------------------------------
 
+create type temporal_precision as enum (
+    'exact_day',    -- "on 14 March 2027"
+    'month',        -- "in March 2027"
+    'quarter',      -- "in Q3 2027"
+    'half_year',    -- "in the second half of 2027"
+    'year',         -- "in 2027"
+    'range',        -- "between 2027 and 2029"
+    'relative',     -- "within 18 months of closing" -- anchor not yet resolved
+    'unknown'       -- source gives no timing at all
+);
+
+create type temporal_basis as enum (
+    'stated',       -- the source gives this timing
+    'inferred',     -- the platform derived it; explanation required
+    'unknown'
+);
+
+-- Applied identically to evidence, signals, and facility open/close dates.
 alter table evidence
-    add column event_date_end date,
-    add column event_date_precision text not null default 'unknown'
-        check (event_date_precision in (
-            'day', 'month', 'quarter', 'year', 'range', 'unknown'
-        )),
-    add constraint evidence_event_date_precision_ck
-        check (event_date is null or event_date_precision <> 'unknown');
+    add column temporal_raw_expression text,
+    add column temporal_start date,
+    add column temporal_end date,
+    add column temporal_precision temporal_precision not null default 'unknown',
+    add column temporal_basis temporal_basis not null default 'unknown',
+    add column temporal_inference_note text,
+    add constraint evidence_temporal_interval_ck
+        check (temporal_end is null or temporal_start is null
+               or temporal_end >= temporal_start),
+    add constraint evidence_temporal_precision_ck
+        check (temporal_precision = 'unknown'
+               or temporal_start is not null
+               or temporal_precision = 'relative'),
+    add constraint evidence_temporal_inference_ck
+        check (temporal_basis <> 'inferred' or temporal_inference_note is not null);
 
 alter table signals
-    add column event_date_end date,
-    add column event_date_precision text not null default 'unknown'
-        check (event_date_precision in (
-            'day', 'month', 'quarter', 'year', 'range', 'unknown'
-        )),
-    add constraint signals_event_date_precision_ck
-        check (event_date is null or event_date_precision <> 'unknown');
+    add column temporal_raw_expression text,
+    add column temporal_start date,
+    add column temporal_end date,
+    add column temporal_precision temporal_precision not null default 'unknown',
+    add column temporal_basis temporal_basis not null default 'unknown',
+    add column temporal_inference_note text,
+    add constraint signals_temporal_interval_ck
+        check (temporal_end is null or temporal_start is null
+               or temporal_end >= temporal_start),
+    add constraint signals_temporal_inference_ck
+        check (temporal_basis <> 'inferred' or temporal_inference_note is not null);
+
+-- "production begins in 2027" is stored as:
+--   temporal_raw_expression = 'production begins in 2027'
+--   temporal_start          = 2027-01-01
+--   temporal_end            = 2027-12-31
+--   temporal_precision      = 'year'
+--   temporal_basis          = 'stated'
+-- and is queried by interval overlap, never by equality on a fabricated day:
+--   where temporal_start <= '2027-12-31' and temporal_end >= '2027-01-01'
+-- and is rendered "expected 2027", never "1 January 2027".
+
+-- The existing event_date columns remain during transition and are then dropped;
+-- they must not be read once temporal_start exists, or the fabricated day
+-- re-enters through the back door.
 
 -- C10  A market_demand signal may have no organization and no facility, but it
 --      still has a place. There is currently nowhere to record it.
@@ -187,9 +329,113 @@ alter table signals
         check (independent_organization_count >= 0);
 
 -- ---------------------------------------------------------------------------
--- C17  One ledger that powers Pulse deltas, "material change summary" on the
---      card, alert deduplication, and the daily brief. Without it these grow
---      three separate half-correct diffing implementations.
+-- C5  EVIDENCE ACCESS MODES. Broad news discovery and a strict destination
+--     allowlist are in direct tension, and the v0.1 two-tier split was too
+--     coarse to express how much of a document we actually hold.
+--
+--     Promotion rules below are the enforceable half of ADR 0006.
+-- ---------------------------------------------------------------------------
+
+create type evidence_access_mode as enum (
+    'structured_primary',   -- parsed records from an official API or filing
+    'archived_full_text',   -- full text archived and excerptable
+    'licensed_full_text',   -- full text held under licence, display bounded
+    'reference_only',       -- URL + title + publisher + timestamps + given snippet
+    'metadata_only'         -- existence and identifiers; no text at all
+);
+
+alter table sources
+    add column default_access_mode evidence_access_mode not null
+        default 'archived_full_text',
+    add column license_mode text not null default 'unknown'
+        check (license_mode in (
+            'public_domain', 'open_attribution', 'licensed_full_text',
+            'reference_only', 'unknown'
+        )),
+    add column retention_days integer check (retention_days is null or retention_days > 0),
+    add column schedule_timezone text not null default 'UTC',   -- C9
+    add column user_agent text,                                 -- C21
+    add column robots_policy text not null default 'respect'    -- C21
+        check (robots_policy in ('respect', 'not_applicable_api', 'exempt_licensed'));
+
+alter table evidence
+    add column access_mode evidence_access_mode not null default 'archived_full_text',
+    add column retention_expires_at timestamptz;
+
+-- Reference-only and metadata-only evidence store metadata and a link. Never a body.
+alter table evidence
+    add constraint evidence_access_mode_body_ck
+        check (access_mode not in ('reference_only', 'metadata_only')
+               or (raw_storage_uri is null and extracted_text_uri is null));
+
+-- ---------------------------------------------------------------------------
+-- C4  CONFIDENCE DECOMPOSED. The single enum answered three questions at once,
+--     and reused the word "confirmed" for a lifecycle stage.
+--
+--     THE LIFECYCLE IS UNCHANGED: emerging -> developing -> confirmed.
+--     Only our description of KNOWLEDGE changes.
+-- ---------------------------------------------------------------------------
+
+create type evidence_strength as enum (
+    'indicative',       -- credible but incomplete, indirect, or single non-authoritative
+    'corroborated',     -- independent publishers or consistent structured data
+    'authoritative'     -- a primary source explicitly establishes it
+);
+
+create type assessment_type as enum (
+    'observed_fact',    -- the evidence states the claim
+    'inference',        -- the evidence supports the claim indirectly
+    'hypothesis'        -- the evidence merely suggests the claim
+);
+
+create type confidence_level as enum ('low', 'moderate', 'high');
+
+alter table signals
+    add column evidence_strength evidence_strength,
+    add column assessment_type assessment_type,
+    add column confidence_level confidence_level;
+
+alter table opportunities
+    add column evidence_strength evidence_strength,
+    add column assessment_type assessment_type,
+    add column confidence_level confidence_level;
+
+-- Guardrails: a strong source cannot launder a weak claim.
+alter table signals
+    add constraint signals_inference_confidence_ck
+        check (assessment_type is null
+               or assessment_type = 'observed_fact'
+               or (assessment_type = 'inference'  and confidence_level <> 'high')
+               or (assessment_type = 'hypothesis' and confidence_level = 'low'));
+
+alter table opportunities
+    add constraint opportunities_inference_confidence_ck
+        check (assessment_type is null
+               or assessment_type = 'observed_fact'
+               or (assessment_type = 'inference'  and confidence_level <> 'high')
+               or (assessment_type = 'hypothesis' and confidence_level = 'low'));
+
+-- Promotion rules (C5 + C4 together), enforced in versioned application logic
+-- because they span rows; stated here so the intent is reviewable:
+--
+--   1. Evidence with access_mode in ('reference_only','metadata_only') may not
+--      raise evidence_strength above 'indicative', however many such records agree.
+--   2. An opportunity may not enter stage 'confirmed' unless at least one
+--      supporting signal has evidence_strength = 'authoritative'
+--      AND assessment_type = 'observed_fact'.
+--   3. Any number of reference_only records may raise momentum and trend
+--      velocity, and may create or sustain an 'emerging' opportunity.
+--   4. Syndicated copies collapse into one evidence_family before corroboration
+--      is counted.
+--
+-- The 02 multipliers carry over unchanged, keyed on confidence_level:
+--   low = 0.60, moderate = 0.80, high = 1.00
+-- The old three-value confidence column is dropped after backfill.
+
+-- ---------------------------------------------------------------------------
+-- C17  One append-only ledger powers Pulse deltas, the card's "material change
+--      summary", alert deduplication, and the daily brief. Built separately,
+--      these grow four half-correct diffing implementations that disagree.
 -- ---------------------------------------------------------------------------
 
 create table change_events (
@@ -198,11 +444,12 @@ create table change_events (
         'opportunity', 'signal', 'market_trend', 'facility', 'organization', 'source'
     )),
     object_id uuid not null,
-    change_type text not null,          -- e.g. stage_promoted, evidence_added, closed
+    change_type text not null,          -- stage_promoted, evidence_added, closed, ...
     from_state jsonb,
     to_state jsonb,
     materiality text not null check (materiality in ('material', 'minor', 'silent')),
     dedupe_key text not null,
+    scoring_version text,
     occurred_at timestamptz not null default now(),
     unique (object_type, object_id, dedupe_key)
 );
@@ -234,66 +481,173 @@ create table opportunity_status_history (
 );
 
 -- ---------------------------------------------------------------------------
--- C7  alerts uniqueness is (subscription_id, material_change_key) and
---     subscription_id is nullable. NULLs are distinct in PostgreSQL, so
---     system-generated alerts can duplicate without bound. Dedupe belongs at
---     the recipient level anyway: one user with three matching saved views
---     should receive one alert.
+-- C7  ALERT IDEMPOTENCY REPAIRED. v0.1 keyed on (subscription_id,
+--     material_change_key) with subscription_id nullable -- and NULLs are
+--     distinct in PostgreSQL, so system alerts could duplicate without bound.
+--     The key also omitted recipient and channel, so one person matching
+--     through three saved views was told three times.
+--
+--     The new key is NON-NULL and self-sufficient.
 -- ---------------------------------------------------------------------------
 
 alter table alerts
-    add column recipient_key text;
+    add column recipient_key text,
+    add column target_type text,
+    add column target_id uuid,
+    add column material_change_fingerprint text,
+    add column alert_dedupe_key text;
 
-create unique index alerts_recipient_change_uidx
-    on alerts (recipient_key, material_change_key);
+-- alert_dedupe_key = hash(recipient_key, delivery_channel, target_type, target_id,
+--                         material_change_fingerprint)
+-- material_change_fingerprint = hash(change_type, from_state_digest,
+--                                    to_state_digest, scoring_version)
+--
+-- Recipient rather than subscription: one user, one alert.
+-- Channel included: a Teams alert and tomorrow's email digest are not duplicates.
+-- scoring_version included: a deliberate rescoring run may re-notify; an
+-- unchanged recomputation may not.
 
-create unique index alerts_system_change_uidx
-    on alerts (material_change_key)
-    where subscription_id is null and recipient_key is null;
+alter table alerts
+    alter column alert_dedupe_key set not null;
 
--- C8  No idempotency key on source_runs: a scheduler retry or duplicate worker
---     lease produces two runs for one slot, corrupting the 95% success metric
---     that Phase 2 exit depends on.
-create unique index source_runs_slot_uidx
-    on source_runs (source_id, scheduled_for)
-    where scheduled_for is not null;
+alter table alerts
+    add constraint alerts_dedupe_key_uidx unique (alert_dedupe_key);
+
+-- the old partial-index workaround is unnecessary once the key is non-null.
 
 -- ---------------------------------------------------------------------------
--- C9, C21, C5, D7  Source contract additions: timezone, robots posture,
---     licensing mode, retention, and the two-tier evidence model that resolves
---     broad news discovery against the destination allowlist.
+-- C8  LOGICAL RUNS vs RETRY ATTEMPTS. v0.1 had no idempotency key at all, and
+--     no way to tell a collection cycle from the tries inside it. Retries
+--     inflated run counts and corrupted the 95% success rate that Phase 2 exit
+--     depends on: a source succeeding on its third try looked like two failures
+--     and a success.
 -- ---------------------------------------------------------------------------
 
-alter table sources
-    add column schedule_timezone text not null default 'UTC',
-    add column user_agent text,
-    add column robots_policy text not null default 'respect'
-        check (robots_policy in ('respect', 'not_applicable_api', 'exempt_licensed')),
-    add column license_mode text not null default 'unknown'
-        check (license_mode in (
-            'public_domain', 'open_attribution', 'licensed_full_text',
-            'reference_only', 'unknown'
-        )),
-    add column retention_days integer check (retention_days is null or retention_days > 0),
-    add column evidence_mode text not null default 'full'
-        check (evidence_mode in ('full', 'reference'));
+alter table source_runs
+    add column collection_window_start timestamptz,
+    add column collection_window_end timestamptz,
+    add column attempt_count integer not null default 1 check (attempt_count >= 1);
 
-alter table evidence
-    add column evidence_mode text not null default 'full'
-        check (evidence_mode in ('full', 'reference')),
-    add column retention_expires_at timestamptz;
+create unique index source_runs_logical_uidx
+    on source_runs (source_id, collection_window_start)
+    where collection_window_start is not null;
 
--- reference-mode evidence stores metadata and a link only, never a body.
-alter table evidence
-    add constraint evidence_reference_mode_ck
-        check (evidence_mode <> 'reference'
-               or (raw_storage_uri is null and extracted_text_uri is null));
+create table source_run_attempts (
+    id uuid primary key default gen_random_uuid(),
+    source_run_id uuid not null references source_runs(id) on delete cascade,
+    attempt_number integer not null check (attempt_number >= 1),
+    started_at timestamptz not null default now(),
+    completed_at timestamptz,
+    status text not null check (status in (
+        'running', 'success', 'partial_success', 'unchanged', 'failed', 'action_required'
+    )),
+    error_code text,
+    error_summary text,
+    http_status_distribution jsonb not null default '{}',
+    redirect_violations integer not null default 0,
+    bytes_fetched bigint,
+    checkpoint text,
+    unique (source_run_id, attempt_number)
+);
+
+create index source_run_attempts_run_idx on source_run_attempts(source_run_id);
+
+-- Metric rule, stated so it cannot drift:
+--   connector execution success = logical runs ending success/unchanged/
+--   partial_success  DIVIDED BY  scheduled logical runs.
+--   Attempts are EXCLUDED from that denominator and reported separately as
+--   "attempts per successful run", which is the earlier warning signal.
+
+-- ---------------------------------------------------------------------------
+-- C23  EXPECTED COVERAGE. 05 leads Phase 2 exit with a connector-success rate.
+--      Nothing stops that being read as market coverage. For the four pilot
+--      accounts with no periodic SEC filing coverage -- Nestle, Mars, Danone,
+--      Niagara Bottling -- every enabled connector can be green while the
+--      account is effectively unmonitored, because the sources that would carry
+--      their signals were never built.
+--
+--      This table gives "coverage" a denominator.
+-- ---------------------------------------------------------------------------
+
+create table account_source_expectations (
+    id uuid primary key default gen_random_uuid(),
+    organization_id uuid not null references organizations(id) on delete cascade,
+    source_family text not null,        -- 'sec_edgar', 'company_newsroom', ...
+    expectation text not null check (expectation in (
+        'required',        -- coverage gap if absent or unhealthy
+        'expected',        -- counts toward completeness
+        'optional',        -- neither counted nor penalised
+        'not_applicable'   -- silence here is CORRECT; do not alarm
+    )),
+    rationale text not null,
+    reviewed_at timestamptz,
+    unique (organization_id, source_family)
+);
+
+-- Seeded directly from docs/design/12_PILOT_SOURCE_COVERAGE_MATRIX.md.
+-- Two examples of why the 'not_applicable' value matters:
+--   * FDA food enforcement for Kimberly-Clark and Procter & Gamble: they are
+--     Adjacent Consumer Products accounts. Silence is correct, and the account
+--     must not be penalised for a source that was never going to fire.
+--   * SEC EDGAR for Mars and Niagara Bottling: no periodic filings exist, so
+--     coverage must come from newsrooms, incentives, and permits instead.
+
+-- C22  Account scope classification, so non-core F&B accounts are classified
+--      rather than treated as list errors.
+alter table organizations
+    add column scope_class text not null default 'core_food_beverage'
+        check (scope_class in (
+            'core_food_beverage',
+            'adjacent_consumer_products',
+            'strategic_supplier_partner',
+            'scope_confirmation_required'
+        ));
+
+-- ---------------------------------------------------------------------------
+-- C25  MODEL REPLAY CACHE. The v0.1 key -- content hash, prompt version, model,
+--      schema version -- was incomplete, and an incomplete cache key is worse
+--      than no cache: it serves stale output as if it were fresh.
+--
+--      structured_context_digest is the one most easily forgotten and the most
+--      dangerous: classification prompts include resolved account and facility
+--      context, so the same article legitimately classifies differently once a
+--      facility resolves. Without it in the key, the cache pins the
+--      pre-resolution answer forever.
+-- ---------------------------------------------------------------------------
+
+create table model_replay_cache (
+    replay_key char(64) primary key,     -- hash of every column below
+    content_hash char(64) not null,
+    preprocessing_version text not null, -- extractor / OCR version
+    task text not null,                  -- extract | classify | align | summarize | cluster
+    provider text not null,
+    model text not null,
+    model_parameters jsonb not null,     -- temperature, top_p, max_tokens, seed, tools
+    system_instructions_hash char(64) not null,
+    prompt_version text not null,
+    schema_version text not null,
+    taxonomy_version text not null,
+    structured_context_digest char(64) not null,
+    output jsonb not null,
+    output_valid boolean not null,
+    created_at timestamptz not null default now(),
+    last_hit_at timestamptz
+);
+
+-- Components are stored alongside the hash so a version bump can be scoped
+-- precisely: "reprocess everything affected by taxonomy v3" is a query, not a
+-- full recompute.
+create index model_replay_cache_taxonomy_idx on model_replay_cache(taxonomy_version);
+create index model_replay_cache_prompt_idx on model_replay_cache(task, prompt_version);
+create index model_replay_cache_content_idx on model_replay_cache(content_hash);
 
 -- ---------------------------------------------------------------------------
 -- C12  A global unique index on lower(canonical_name) forces a premature merge
 --      of two legitimately distinct entities that share a name -- the exact
 --      failure 06 §Data-quality rules warns against. Identity should come from
---      identifiers, not from a string.
+--      identifiers, not from a string. ("Niagara Bottling" vs the several
+--      unrelated "Niagara" registrants found during source verification is a
+--      live example.)
 -- ---------------------------------------------------------------------------
 
 drop index organizations_canonical_name_lower_uidx;
@@ -320,8 +674,8 @@ create table organization_segment_tiers (
 );
 
 -- ---------------------------------------------------------------------------
--- C14, C15  Ontology and scoring configuration move out of check constraints
---     into versioned reference data. Two reasons: 05 requires a reusable market
+-- C14, C15, C19  Ontology and scoring configuration move out of check
+--     constraints into versioned reference data. 05 requires a reusable market
 --     module for other Haskell departments, and scoring weights will change
 --     during the pilot -- that must be a config version bump with recomputable
 --     snapshots, not a migration. signals.event_type is currently free text
@@ -343,14 +697,13 @@ alter table signals
 create table scoring_configs (
     version text primary key,
     dimension_caps jsonb not null,      -- {"haskell_fit":30, ...}
-    confidence_multipliers jsonb not null,
+    confidence_multipliers jsonb not null,   -- keyed on confidence_level now
     promotion_thresholds jsonb not null,
+    materiality_rules jsonb not null,   -- one definition of "material" (C17)
     effective_from timestamptz not null,
     retired_at timestamptz
 );
 
--- The multiplier set moves into scoring_configs; the column keeps a range
--- check only, so changing a multiplier stops being a schema migration.
 alter table opportunities
     drop constraint opportunities_confidence_multiplier_check;
 
@@ -361,45 +714,50 @@ alter table opportunities
 alter table opportunities
     add column scoring_version text references scoring_configs(version);
 
--- ---------------------------------------------------------------------------
--- C4  Stage 'confirmed' and confidence 'confirmed' are different concepts with
---     the same word; "Confirmed / Possible" is a legitimate and confusing
---     combination. Stage labels stay -- they are the plain-language ones users
---     want. Confidence values are renamed; the semantics in 02 are unchanged.
---
---     possible  -> single_source
---     probable  -> corroborated
---     confirmed -> authoritative
---
---     Applies to evidence-derived confidence on signals and opportunities and
---     to every enum in schemas/platform.schema.json. Deliberately left as an
---     explicit rename rather than sketched here, because it touches stored
---     rows, the JSON Schema, the UI copy, and the briefing templates -- and it
---     is cheap now and expensive after any of those ship.
--- ---------------------------------------------------------------------------
-
--- ---------------------------------------------------------------------------
 -- C19  market_trends.velocity is constrained to [-1, 1] with no definition of
 --      how it is computed or over what window; two implementations would
 --      produce different numbers for the same data.
--- ---------------------------------------------------------------------------
-
 alter table market_trends
     add column velocity_method text not null default 'org_weighted_rate_v1',
     add column window_days smallint not null default 30,
     add column baseline_days smallint not null default 90;
 
 -- ---------------------------------------------------------------------------
+-- Deferred FKs, once evidence exists.
+-- ---------------------------------------------------------------------------
+
+alter table approved_entity_mappings
+    add constraint approved_entity_mappings_evidence_fk
+    foreign key (evidence_id) references evidence(id) on delete set null;
+
+alter table facility_candidates
+    add constraint facility_candidates_evidence_fk
+    foreign key (corroborating_evidence_id) references evidence(id) on delete set null;
+
+alter table facility_organizations
+    add constraint facility_organizations_evidence_fk
+    foreign key (evidence_id) references evidence(id) on delete set null;
+
+alter table organization_relationships
+    add constraint organization_relationships_evidence_fk
+    foreign key (evidence_id) references evidence(id) on delete set null;
+
+-- ---------------------------------------------------------------------------
 -- Deliberately NOT changed, so the record shows these were considered:
---   * the seven source_run statuses               (02 -- correct as written)
---   * the three opportunity stages                (02 -- correct as written)
---   * the five scoring dimensions and their caps  (02 -- account_strategy
---                                                  capped at 10 is the whole
---                                                  point; do not raise it)
---   * the ten opportunity statuses                (02)
---   * the nine signal families                    (02)
---   * the eighteen organization roles             (02)
---   * evidence unique (source_id, content_hash)   -- per-source copies are
+--   * the seven source_run statuses                (02 -- correct as written)
+--   * the three opportunity stages emerging /
+--     developing / confirmed                       (02 -- KEPT; only the
+--                                                   confidence enum is split)
+--   * the five scoring dimensions and their caps   (02 -- account_strategy
+--                                                   capped at 10 is the whole
+--                                                   point; do not raise it)
+--   * the confidence multiplier VALUES 0.60 /
+--     0.80 / 1.00                                  (02 -- they now key on
+--                                                   confidence_level)
+--   * the ten opportunity statuses                 (02)
+--   * the nine signal families                     (02)
+--   * the eighteen organization roles              (02)
+--   * evidence unique (source_id, content_hash)    -- per-source copies are
 --     intentionally distinct evidence; cross-source dedup is the job of
 --     evidence_families, not of this constraint.
 -- ---------------------------------------------------------------------------
