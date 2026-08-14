@@ -45,7 +45,8 @@ package version 0.1. Work produced in response to the baseline lives under `docs
 | `docs/design/12_PILOT_SOURCE_COVERAGE_MATRIX.md` | Verified per-account source coverage for all 15 Highest Value accounts, with a confidence label on every cell |
 | `docs/design/13_GATE_1_DECISION_PACKET.md` | Every open stakeholder decision with recommended default, alternatives, operational consequence, cost, owner, and required timing |
 | `docs/design/14_EXTERNAL_RESEARCH_RECONCILIATION.md` | Disposition of every material external research finding, the research-claim staging contract, and the change register |
-| `docs/adr/` | Architecture decision record. All entries are Proposed until ratified at a stakeholder gate |
+| `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md` | Phase 1 plan: objective and completion boundary, epics with acceptance tests, vendor-neutral architecture, ingestion and failure recovery, data-model sequence, D9 instrumentation, test strategy, app shell, UX direction, and the proposed PR sequence |
+| `docs/adr/` | Architecture decision record. Six entries are Accepted; the rest are Proposed until ratified at a stakeholder gate |
 
 The design response is at version 0.3.
 

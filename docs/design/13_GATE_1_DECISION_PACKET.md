@@ -6,7 +6,8 @@ Haskell Food & Beverage Opportunity Radar · Version 0.4 · **For stakeholder de
 D23, D24, **D1**, and the **D9 framework**. Two are approved in part: **D2a** (architecture)
 with **D2b** (vendor selections) open, and the **D14 handling model** with the licence and
 import permission externally blocked. **D11 is approved provisionally**, pending F&B
-market-leader confirmation. Twelve remain open.
+market-leader confirmation. **Thirteen remain open** — D3, D4, D5, D6, D7, D8, D10, D12,
+D13, D16, D17, D19, D20 — and **D2b** is a fourteenth open row as a sub-item of D2.
 
 Approved decisions keep their full entry below so the reasoning stays on the record; each
 carries its status at its heading.
@@ -19,7 +20,8 @@ Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.m
 
 Twenty-four decisions are tracked — twenty from the v0.2 design reconciliation and four
 added by the v0.3 external-research reconciliation (D21–D24). **Eight are approved, two
-are approved in part, one is provisional, and twelve remain open.** Each is presented with a **recommended default**, the
+are approved in part, one is provisional, and thirteen remain open**, with D2b a
+fourteenth open row as a sub-item of D2. Each is presented with a **recommended default**, the
 **alternatives** actually considered, the **operational consequence** of choosing it, the
 **cost and complexity impact**, a proposed **decision owner**, and the **required
 timing**.
