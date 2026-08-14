@@ -72,7 +72,7 @@ be counted as company coverage:
 | 8 | Kimberly-Clark Corp. | Public (US) | **0000055785** (Verified) | Operational periodic | EDGAR + newsroom (non-food ontology) |
 | 9 | Unilever PLC | Public (LSE/NYSE ADR) | **0000217410** (Verified) | Operational periodic (20-F/6-K) | Newsroom + US subsidiary + local |
 | 10 | Procter & Gamble Co. | Public (US) | **0000080424** (Verified) | Operational periodic | EDGAR + newsroom (non-food ontology) |
-| 11 | The Sherwin-Williams Co. | Public (US) | **0000089800** (Verified) | Operational periodic | EDGAR + newsroom — **scope confirmation required** |
+| 11 | The Sherwin-Williams Co. | Public (US) | **0000089800** (Verified) | Operational periodic | EDGAR + newsroom — **`non_fnb`, provisional (D11)** |
 | 12 | Ecolab Inc. | Public (US) | **0000031462** (Verified) | Operational periodic | EDGAR + newsroom — **supplier semantics** |
 | 13 | Danone S.A. | Public (Euronext; US OTC ADR) | 0001048515 (Verified, **historical**) | No current periodic coverage | Danone North America newsroom + state/local |
 | 14 | Keurig Dr Pepper Inc. | Public (US) | **0001418135** (Verified) | Operational periodic — **mid-reorganization** | EDGAR + newsroom + separation tracking |
@@ -395,7 +395,8 @@ will silently misattribute projects every time one of these closes.
   and sanitation programs *into* the same F&B plants Haskell designs. It is plausibly a
   channel partner, a co-seller, or a source of market intelligence rather than a pursuit
   target
-- **Classification:** **Strategic supplier or partner**
+- **Classification:** **`fnb_adjacent`, supplier routing — provisional** (D11), pending F&B
+  market-leader confirmation
 - **Recommended pilot connectors:** EDGAR (A) · newsroom (A) · EPA ECHO (B). **Route
   Ecolab signals to account intelligence and partner context rather than the pursuit
   queue** until BD confirms otherwise (decision D12)

@@ -1,6 +1,9 @@
 # ADR 0001 — Modular monolith over microservices for the pilot
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** D1, D2
+**Status: Accepted** · **Approved via:** D1 (separate application sharing identity and
+infrastructure) and D2a (platform architecture). The vendor selections behind it — **D2b**,
+covering AI provider, identity provider, PostgreSQL hosting, and object storage — **remain
+open and are IT's to make**. · **Relates to:** D1, D2a, D2b
 
 ## Context
 

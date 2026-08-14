@@ -544,10 +544,14 @@ intact with `low` / `moderate` / `high` in place of Possible / Probable / Confir
 
 ### 6.5 Event-data governance, corrected (C6)
 
-The supplied workbooks contain **no personal data**. The engagement sheet has a Company
-column only; the XPressLeads export's person-oriented columns (`UserAccount`,
-`DeviceLabel`) are empty, and `TerminalID` holds two manual-import identifiers that are
-provenance, not people.
+**Based on inspection of the two workbooks supplied, neither contains populated individual
+contact fields.** The engagement sheet has a Company column only; the XPressLeads export's
+person-oriented columns (`UserAccount`, `DeviceLabel`) are empty, and `TerminalID` holds
+two manual-import identifiers that are provenance, not people.
+
+That is a finding about **these two files as inspected** — not a determination about the
+dataset as a whole, about other exports from the same event, or about what a future export
+may contain, and it does not substitute for Legal's own conclusion.
 
 What the data *is*: **proprietary, third-party, company-level engagement information**,
 obtained through event participation and a lead-retrieval product. The obligations that
@@ -892,21 +896,26 @@ manufacturers and strategic suppliers, because the ontology treatment is the sam
 routing difference is a property of *which facility a signal concerns*, not of the account
 class.
 
+**All four classifications below are provisional** (D11), pending confirmation by the F&B
+market leader before pilot metrics are finalized. None of the three adjacency
+classifications is settled as a side effect of the Sherwin-Williams decision — each is its
+own commercial judgement.
+
 Applied to the four:
 
-- **Kimberly-Clark** — `fnb_adjacent`. Tissue and nonwovens plants are
+- **Kimberly-Clark** — `fnb_adjacent` *(provisional)*. Tissue and nonwovens plants are
   water- and energy-intensive; industrial water and wastewater is a strong Haskell match.
   Food-safety families produce nothing and must be suppressed rather than left to look
   like silence.
-- **Procter & Gamble** — `fnb_adjacent`. Large US plant network, and
+- **Procter & Gamble** — `fnb_adjacent` *(provisional)*. Large US plant network, and
   historically incentive-announced site expansions, which suits the state-incentive
   connector well.
-- **Ecolab** — `fnb_adjacent`, supplier routing. Ecolab sells water, hygiene, and
+- **Ecolab** — `fnb_adjacent`, supplier routing *(provisional)*. Ecolab sells water, hygiene, and
   sanitation programs into the same plants Haskell designs. Its own facility projects
   remain a legitimate but small opportunity surface; the larger value is as market
   intelligence and possible channel. Treating it as a pursuit target would generate
   confident, wrong recommendations against a Highest Value account.
-- **Sherwin-Williams** — **`non_fnb`, with stakeholder confirmation still required.** The
+- **Sherwin-Williams** — **`non_fnb` *(provisional)*, with market-leader confirmation still required.** The
   external research recommends classifying it out of Food & Beverage scope outright, and
   on the evidence that is the right default: coatings manufacturing and a paint-store
   distribution network share no vocabulary with the F&B signal ontology, and FDA and FSIS
@@ -1198,12 +1207,22 @@ by the v0.2 design reconciliation (D11–D20) and the v0.3 external-research rec
 table** — each decision with its alternatives, operational consequence, cost and
 complexity impact, decision owner, and required timing. The table below is the index.
 
-**Six decisions are approved:** **D15** temporal model · **D18** time-bounded ownership ·
-**D21** permit build-versus-buy, with vendor evaluation before contracting · **D22**
-consequence-based severity · **D23** external-research staging, as a Phase 1 requirement ·
-**D24** correction and supersession relationships. Eighteen remain open. The two
-corpus-wide retrofits — D15 and D18 — are settled, so Phase 1 can start without a dating or
-ownership retrofit pending.
+**Decision state.** Approved in full: **D15** temporal model · **D18** time-bounded
+ownership · **D21** permit build-versus-buy, with vendor evaluation before contracting ·
+**D22** consequence-based severity · **D23** external-research staging, as a Phase 1
+requirement · **D24** correction and supersession relationships · **D1** separate
+application sharing identity and infrastructure · **D9 framework** pilot acceptance
+definitions, denominators, and measurement window.
+
+Approved in part: **D2a** platform architecture, with **D2b** vendor selections open and
+IT's to make; **D14 handling model**, with the licence review and import permission
+externally blocked. **D11** is approved **provisionally** — all four scope classifications
+await F&B market-leader confirmation. **D9 numeric targets** are deferred by decision to a
+week-4 checkpoint.
+
+The two corpus-wide retrofits — D15 and D18 — are settled, so Phase 1 can start without a
+dating or ownership retrofit pending. **D1 + D2a + the D9 framework together constitute
+implementation authorization**; merging the design pull request does not.
 
 | ID | Decision | Recommended default | Consequence of deferring |
 | --- | --- | --- | --- |

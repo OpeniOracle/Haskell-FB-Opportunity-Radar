@@ -677,6 +677,21 @@ alter table organizations
 alter table organizations
     add column supplier_routing boolean not null default false;
 
+-- D11 is approved PROVISIONALLY. Every scope_class assigned before F&B market-leader
+-- confirmation is a provisional market classification, and pilot relevance metrics
+-- must be able to exclude provisional accounts -- their classification changes the
+-- relevance denominator. This column records that state; it is not a new
+-- architectural decision, only the means of recording an approved one.
+alter table organizations
+    add column scope_class_status text not null default 'provisional'
+        check (scope_class_status in ('provisional', 'confirmed')),
+    add column scope_class_confirmed_by text,
+    add column scope_class_confirmed_at timestamptz,
+    add constraint organizations_scope_class_confirmation_ck
+        check (scope_class_status <> 'confirmed'
+               or (scope_class_confirmed_by is not null
+                   and scope_class_confirmed_at is not null));
+
 -- ---------------------------------------------------------------------------
 -- C25  MODEL REPLAY CACHE. The v0.1 key -- content hash, prompt version, model,
 --      schema version -- was incomplete, and an incomplete cache key is worse

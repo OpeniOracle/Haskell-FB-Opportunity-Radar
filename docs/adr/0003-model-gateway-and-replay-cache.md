@@ -1,6 +1,8 @@
 # ADR 0003 — All model calls go through a gateway with a replay cache
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** D2
+**Status: Accepted** · **Approved via:** D2a — all AI model access routes through a single
+controlled gateway. **The provider and model tier are not selected**; that is D2b/V1, open
+with IT and procurement. · **Relates to:** D2a, D2b
 
 ## Context
 

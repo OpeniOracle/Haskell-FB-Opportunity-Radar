@@ -1,10 +1,15 @@
 # Gate 1 Decision Packet
 
-Haskell Food & Beverage Opportunity Radar · Version 0.3 · **For stakeholder decision**
+Haskell Food & Beverage Opportunity Radar · Version 0.4 · **For stakeholder decision**
 
-**Six decisions have been approved** — D15, D18, D21, D22, D23, D24. Eighteen remain open.
+**Decision state as recorded.** Eight decisions are approved in full — D15, D18, D21, D22,
+D23, D24, **D1**, and the **D9 framework**. Two are approved in part: **D2a** (architecture)
+with **D2b** (vendor selections) open, and the **D14 handling model** with the licence and
+import permission externally blocked. **D11 is approved provisionally**, pending F&B
+market-leader confirmation. Twelve remain open.
+
 Approved decisions keep their full entry below so the reasoning stays on the record; each
-is marked **Approved** in the index and at its heading.
+carries its status at its heading.
 
 Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.md`.
 
@@ -13,13 +18,13 @@ Companion to `10_DESIGN_RESPONSE.md` §10 and `12_PILOT_SOURCE_COVERAGE_MATRIX.m
 ## How to use this packet
 
 Twenty-four decisions are tracked — twenty from the v0.2 design reconciliation and four
-added by the v0.3 external-research reconciliation (D21–D24). **Six are now approved and
-eighteen remain open.** Each is presented with a **recommended default**, the
+added by the v0.3 external-research reconciliation (D21–D24). **Eight are approved, two
+are approved in part, one is provisional, and twelve remain open.** Each is presented with a **recommended default**, the
 **alternatives** actually considered, the **operational consequence** of choosing it, the
 **cost and complexity impact**, a proposed **decision owner**, and the **required
 timing**.
 
-Three things are worth saying plainly before the list:
+Four things are worth saying plainly before the list:
 
 1. **Silence is a decision.** Each recommended default is what will be built if no other
    direction is given. Nothing here blocks on a meeting; the packet exists so that
@@ -30,6 +35,11 @@ Three things are worth saying plainly before the list:
    be reversed at moderate cost.
 3. **Nothing has been implemented.** No migration has been applied, no connector built,
    no code written. The schema delta in `11_SCHEMA_DELTA_PROPOSAL.sql` is a proposal.
+4. **Three approvals are partial, and the boundary matters.** D2a is approved while the
+   four vendor selections behind it are not. The D9 framework is approved while its numeric
+   targets are deliberately deferred to a week-4 checkpoint. The D14 handling model is
+   approved while the licence review and permission to import are not. Reading any of
+   these as a full approval would authorize work that has not been authorized.
 
 **Cost scale.** S = under a week of one engineer · M = one to three weeks · L = more than
 three weeks or a recurring commercial cost.
@@ -42,13 +52,16 @@ three weeks or a recurring commercial cost.
 | --- | --- | --- | --- | --- | --- | --- |
 | **D15** | Temporal model | **Approved** | Platform engineering lead | **Before the first signal is written** | M | G-4 |
 | **D18** | Corporate-reorganization handling | **Approved** | Platform engineering lead | **Before the first facility link is written** | M | G-4 |
-| D1 | Hub-embedded or separate application | Open | Executive sponsor + engineering | Before Phase 1 start | L if reversed late | G-4 |
-| D2 | Approved platform services | Open | IT / engineering | Before Phase 1 start | S to select, L to change | G-4 |
-| D9 | Definition of pilot success | Open | Executive sponsor + market leader | Before Phase 1 start | S | G-1 |
-| D11 | Scope class for four non-core accounts | Open | F&B market leader | Before Phase 1 import | S | G-1 |
+| **D1** | Hub-embedded or separate application | **Approved** | Executive sponsor + engineering | Before Phase 1 start | L if reversed late | G-4 |
+| **D2a** | Platform architecture | **Approved** | Executive sponsor on engineering's recommendation | Before Phase 1 start | S | G-4 |
+| **D2b** | Vendor selections (AI provider, identity provider, PostgreSQL hosting, object storage) | **Open — IT selection required** | IT | Each blocks the capability that depends on it | S to select, L to change | G-4 |
+| **D9** | Pilot acceptance framework | **Approved** | Executive sponsor + market leader | Before Phase 1 start | S | G-1 |
+| **D9-T** | Numeric acceptance targets | **Deferred to the week-4 checkpoint** | Executive sponsor + market leader | Week 4 of the measurement window | S | G-1 |
+| **D11** | Scope class for four non-core accounts | **Approved provisionally** | F&B market leader | Confirmation before pilot metrics are finalized | S | G-1 |
 | D12 | Ecolab account semantics | Open | BD lead | Before Phase 2 scoring | S | G-1 |
 | D13 | Bottler and subsidiary networks | Open | Market leader + engineering | Before connector enablement | M | G-3 |
-| D14 | Event-data licence and governance | Open | Legal / commercial + marketing ops | Before Phase 1 import | S (review), M if restrictive | G-3 |
+| **D14** | Event-data handling model | **Approved** | Legal / commercial + marketing ops | Before Phase 1 import | S | G-3 |
+| **D14-L** | Event-data licence review and import permission | **Blocked — external review** | Legal / commercial contracts | Before any PACK EXPO import | S (review), M if restrictive | G-3 |
 | D17 | Coverage measurement model | Open | Market leader + engineering | Before Phase 2 exit review | M | G-3 |
 | D19 | Evidence access modes and promotion | Open | Market leader + BD | Before Phase 2 scoring | M | G-2 |
 | D16 | Confidence decomposition | Open | Market leader + SMEs | Before Phase 3 UI build | S now, L later | G-2 |
@@ -145,37 +158,109 @@ takes an as-at date.
 
 ## Gate 1 decisions — mission, cohort, and scope
 
-### D9 — What counts as a successful pilot
+### D9 — Pilot acceptance framework
 
-**Recommended default.** Two primary measures: the number of opportunities that become a
-qualified business-development conversation, and daily review time under ten minutes.
-Two secondary: pursue/watch action rate, and user-rated relevance. Explicitly **not**
-counted: number of opportunities generated.
+> **Status: Approved (framework).** The definitions, denominators, measurement window, and
+> responsibilities below are approved. **Numeric acceptance targets are deferred to the
+> week-4 target-setting checkpoint (D9-T).**
 
-**Alternatives.** *Volume of opportunities* — actively harmful, rewards noise.
-*Won work attributable to the platform* — the honest measure, and the capital-project
-sales cycle is far longer than the pilot. *Qualitative sponsor judgment* — legitimate,
-but not repeatable across phases.
+**Why targets are deferred rather than set.** There is no historical conversion data from
+the current ChatGPT-and-spreadsheet process. Any number chosen today would be either
+trivially met or arbitrarily missed, and neither outcome tells anyone whether the platform
+works.
 
-**Operational consequence.** Determines what the scoring model is tuned toward. A
-volume target and a qualified-conversation target produce opposite systems.
+#### Approved definitions
 
-**Cost and complexity.** S — but requires BD to log outcomes, which is a process
-commitment, not an engineering one.
+**Qualified business-development conversation** — the primary outcome. All five conditions
+must hold:
 
-**Owner.** Executive sponsor with the F&B market leader. **Timing.** Before Phase 1;
-without it, Phase 2 can be demonstrated but not evaluated.
+1. A two-way exchange with a **named individual** at the target account, or at its named
+   operator, bottler, or subsidiary.
+2. Initiated **within 30 days** of the opportunity being surfaced by the platform.
+3. The **specific development the Radar surfaced** is discussed — not a general
+   relationship check-in.
+4. The BD owner records the outcome in the platform as **advancing to a scoped follow-up**
+   or **closed with a reason**.
+5. Attribution recorded honestly: conversations Haskell would have had regardless are
+   marked **"would have found independently"** and excluded from the numerator.
+
+Excluded: outbound with no reply, conference small talk, internal discussions, and any
+conversation not linked to a specific opportunity record.
+
+**Daily review time under ten minutes** — as a statistic:
+
+> **Median active session duration per user per day**, measured from first to last
+> interaction on the Pulse and Opportunities surfaces, with idle gaps over two minutes
+> excluded, computed only across days on which the user opened the product.
+
+Targets **median ≤ 10 minutes** and **90th percentile ≤ 20 minutes**, reported alongside an
+adoption denominator — **days opened ÷ working days per user** — because a fast median
+across two sessions a month is not success.
+
+#### Approved denominators
+
+| Metric | Denominator | Numerator |
+| --- | --- | --- |
+| Relevance / dismissal rate | Opportunities **presented** to a user in the window, counted once per opportunity per user | Those dismissed with a reason code |
+| Action rate | The same presented set | Distinct opportunities receiving Pursue, Watch, or Assign |
+| Conversion to qualified conversation | Opportunities marked **Pursue** | Those meeting all five conditions within 30 days |
+
+With three to five pilot users, all three are reported **both pooled and per user** — a
+pooled rate can hide one enthusiastic user carrying the result.
+
+#### Measurement window
+
+- **12 weeks** from first production-like daily use. The roadmap's 4–6 week Phase 2
+  estimate is build time, not measurement time.
+- **Weeks 1–4: a measured baseline period that is not evaluated against acceptance
+  targets.** **Every approved D9 metric is collected during this period** — conversations,
+  action rate, dismissal rate, session duration, adoption, coverage completeness. The
+  period is unevaluated, not unmeasured; its entire purpose is to produce the data the
+  targets will be set from. In parallel, BD reconstructs the current manual process's
+  output over a comparable prior period, which is the most valuable comparison the pilot
+  can produce and does not exist today.
+- **Week 4: target-setting checkpoint (D9-T).** Sponsor and market leader set week 5–12
+  targets from observed baseline plus a stated improvement, recorded in writing.
+- **Weeks 5–12: measured against those targets.**
+
+#### Leading indicators vs. primary outcome
+
+| Class | Measure | Role |
+| --- | --- | --- |
+| **Primary outcome** | Qualified conversations originated by the Radar | The pilot's success measure |
+| **Leading** | Action rate; median review time; adoption rate; dismissal-rate trend; expected-coverage completeness | Predict the primary outcome; move first |
+| **Guardrail** | Evidence-link availability (100%, invariant); duplicate alert rate | Must hold regardless of outcome |
+| **Lagging, beyond the pilot** | Won work attributable to the platform | The honest measure; capital-project cycles outrun the pilot |
+| **Explicitly not counted** | Number of opportunities generated | Rewards noise |
+
+#### Responsibility for recording outcomes
+
+The **assigned BD owner** records every outcome **in the platform** — status plus reason
+code — not in a spreadsheet. The **F&B market leader** reviews completeness weekly and is
+accountable for the data existing. This is a process commitment, not engineering work, and
+unrecorded outcomes make the pilot unevaluable.
+
+**Cost and complexity.** S in engineering; the recording commitment is the real cost.
+**Owner.** Executive sponsor with the F&B market leader; BD lead for recording.
+**Timing.** Framework before Phase 1; targets at the week-4 checkpoint.
 
 ### D11 — Scope class for the four non-core accounts
 
+> **Status: Approved provisionally.** **All four classifications below are provisional
+> market classifications**, pending confirmation by the F&B market leader. They are not
+> permanently approved, and Kimberly-Clark, Procter & Gamble, and Ecolab are **not**
+> settled as a side effect of the Sherwin-Williams decision — each is its own commercial
+> judgement. Confirmation is due **before pilot metrics are finalized at the week-4
+> checkpoint**, because these classifications change the relevance denominator.
+
 **Recommended default.**
 
-| Account | Proposed class | Effect |
-| --- | --- | --- |
-| Kimberly-Clark | `fnb_adjacent` | Full facility/process/packaging/automation/utilities ontology; food-safety families suppressed |
-| Procter & Gamble | `fnb_adjacent` | Same |
-| Ecolab | `fnb_adjacent`, supplier routing | See D12 |
-| **Sherwin-Williams** | **`non_fnb`** | Out of Food & Beverage scope by default; excluded from the pursuit queue and from F&B relevance metrics — **but the commercial question stands** |
+| Account | Provisional class | Effect while provisional | Confirmation owner |
+| --- | --- | --- | --- |
+| Kimberly-Clark | `fnb_adjacent` *(provisional)* | Full facility/process/packaging/automation/utilities ontology; food-safety families suppressed | F&B market leader |
+| Procter & Gamble | `fnb_adjacent` *(provisional)* | Same | F&B market leader |
+| Ecolab | `fnb_adjacent`, supplier routing *(provisional)* | See D12, which remains open in its own right | F&B market leader, with BD lead |
+| **Sherwin-Williams** | **`non_fnb`** *(provisional)* | Out of Food & Beverage scope; excluded from the pursuit queue and from F&B relevance metrics — **and the commercial question stands** | F&B market leader |
 
 The four-value vocabulary — `fnb_core`, `fnb_adjacent`, `non_fnb`, `unknown` — comes from
 the external research and replaces v0.2's longer prose labels. `unknown` is a transient
@@ -267,6 +352,11 @@ are modeled). **Timing.** Before connector enablement in Phase 2.
 
 ### D14 — Event-data licence and governance
 
+> **Status: Handling model approved. Licence review and permission to import remain
+> blocked pending Legal/Commercial Contracts.** Approving the handling model is **not**
+> approval of the underlying licence and is **not** permission to import. The licence
+> review is **not** marked complete.
+
 **Recommended default.** Govern the PACK EXPO workbooks as **confidential third-party
 business data**: access-controlled, licence-bounded, retention-bounded, not
 redistributable, and never included in any briefing that can leave Haskell. Review the
@@ -274,13 +364,22 @@ event lead-retrieval agreement for retention, resale, and use restrictions befor
 import. Hold the personal-data control set specified in `10_DESIGN_RESPONSE.md` §6.5
 **dormant** until contact-level data actually arrives.
 
-**Correction from version 0.1.** The first design response described this data as "519
-rows of personal data." That was wrong. The "Pack Expo 2025 Email List" sheet contains a
-Company column only — 519 populated rows, 183 unique company strings — with no names,
-email addresses, or other direct personal identifiers, and the XPressLeads export's
-person-oriented columns are empty. **The obligation is contractual and confidentiality-
-based, not a privacy matter**, and it should not be presented to stakeholders as a
-privacy incident.
+**What the inspection found, stated to its actual scope.** The first design response
+described this data as "519 rows of personal data." That was wrong, and a later flat
+assertion that it *is not* personal data was also overstated. The accurate statement:
+
+> **Based on inspection of the two workbooks supplied, neither contains populated
+> individual contact fields.** The "Pack Expo 2025 Email List" sheet holds a Company column
+> only — 519 populated rows, 183 unique company strings — and the XPressLeads export's
+> person-oriented columns (`UserAccount`, `DeviceLabel`) are empty.
+
+That is a finding about **these two files as inspected**. It is not a determination about
+the dataset as a whole, about other exports from the same event, or about what a future
+export may contain, and it does not substitute for Legal's own conclusion. On the evidence
+inspected the obligation is contractual and confidentiality-based rather than a privacy
+matter, and it should not be raised internally as a privacy incident — but **the
+personal-data controls remain specified and dormant**, activating automatically before the
+first row is stored if any future export carries contact-level information.
 
 **Alternatives.** *Treat as ordinary internal data* — ignores the event organizer's
 contractual terms and the strategic sensitivity of Haskell's own targeting list.
@@ -436,6 +535,10 @@ Phase 4.
 
 ### D1 — Hub-embedded or separate application
 
+> **Status: Approved.** The Radar will be built as a separate internal application sharing
+> identity and infrastructure with the Haskell Hub. The entry below is retained as the
+> decision record.
+
 **Recommended default.** A separate application sharing identity and infrastructure with
 the Haskell Hub, not embedded in it.
 
@@ -453,21 +556,59 @@ though the ingestion and evidence kernel survives either way.
 
 **Owner.** Executive sponsor with engineering. **Timing.** Before Phase 1 start.
 
-### D2 — Approved platform services
+### D2a — Platform architecture
 
-**Recommended default.** PostgreSQL as system of record and queue; object storage for raw
-evidence; an approved LLM provider reached only through the model gateway; identity from
-the existing corporate provider.
+> **Status: Approved.** The architectural shape below is approved. The vendor selections it
+> depends on are **D2b, and remain open**.
 
-**Alternatives.** *A managed search or vector service* — defer until retrieval
-requirements are approved, per the note already in `schemas/database.sql`. *An external
+**Approved architecture.** Five structural choices, independent of which vendors supply
+them:
+
+1. **PostgreSQL as both system of record and job queue.**
+2. **Object storage for original source documents**, separate from the database.
+3. **All AI model access through a single controlled gateway** — no component calls a
+   model directly.
+4. **One identity source.** The Radar does not maintain its own user directory.
+5. **No managed search or vector service, and no external message broker, in the pilot.**
+
+**Why these, on the record.** Using PostgreSQL for the queue is what allows a source
+document and its follow-on processing work to commit in one transaction — the property
+that prevents records existing with no processing behind them (§4.5). The single model
+gateway is what makes classifications reproducible, auditable, and cost-bounded (ADR 0003).
+Deferring search, vector, and broker services follows the note already recorded in
+`schemas/database.sql`, which defers them until retrieval requirements are approved.
+
+The case rests on those properties. No claim is made about the components' familiarity to
+Haskell IT; nothing in this package documents that.
+
+**Alternatives.** *A managed search or vector service* — deferred, as above. *An external
 message broker* — unnecessary at pilot volume and adds an operational surface.
 
-**Operational consequence.** Determines the deployment shape and the security review
-path. Postgres-as-queue is what makes the transactional-outbox guarantee possible.
+**Cost and complexity.** S. **Owner.** Executive sponsor on engineering's recommendation.
+**Timing.** Before Phase 1 start.
 
-**Cost and complexity.** S to select, L to change after Phase 2. **Owner.** IT with
-engineering. **Timing.** Before Phase 1 start.
+### D2b — Vendor selections
+
+> **Status: Open.** Four selections are required before D2 is complete. **These are IT's to
+> make; they are not made here and must not be assumed.**
+
+**The package names no vendors.** The only provider references anywhere in it are the
+placeholders `approved_model_provider` and `approved_extraction_model` in
+`schemas/sample-opportunity.json`.
+
+| # | Selection required | Blocks |
+| --- | --- | --- |
+| **V1** | AI provider and model tier, plus data-processing terms confirming Haskell content is not used for provider model training | First AI-assisted classification |
+| **V2** | Identity provider and SSO standard | First user login |
+| **V3** | PostgreSQL hosting — managed service or self-hosted, and in which environment | Phase 1 infrastructure |
+| **V4** | Object storage service, with retention and access controls | First source document archived |
+
+**Operational consequence.** Each unmade selection blocks only the capability that depends
+on it. Phase 1 groundwork proceeds on D2a alone. V1 may involve procurement as well as IT,
+since data-processing terms are contractual.
+
+**Cost and complexity.** S to select, L to change after Phase 2. **Owner.** IT, with
+engineering; procurement for V1 terms. **Timing.** Each before the capability it gates.
 
 ### D16 — Confidence decomposition
 
@@ -640,23 +781,33 @@ Phase 2 scoring.
 
 ## What we are asking for at Gate 1
 
-A decision, a deferral with a date, or a different answer on each of the following.
-Everything else can follow at its own gate.
+Most of this section is now closed. What remains is listed last.
 
-1. **D9** — the definition of pilot success.
-2. **D11** — scope classes, and specifically **whether Sherwin-Williams is intended to be
-   in the Food & Beverage radar**.
-3. **D12** — whether Ecolab is a pursuit target or a partner lens.
-4. ~~**D15 and D18**~~ — **approved**. The temporal model and time-bounded ownership are
-   adopted ahead of their natural gate, as requested.
-5. **D14** — authorization to begin the event-data licence review.
-6. ~~**D23**~~ — **approved**; the staging layer is a Phase 1 requirement.
+**Settled.**
 
-Items 4 and 6 are now settled. **Item 5 (D14) remains open**, and its scope is narrow:
-the event-data licence review **blocks activation and use of the PACK EXPO data in
-Phase 1** — the import itself, the engagement layer built on it, and anything derived from
-it. It does **not** block Phase 1 as a whole, and it does **not** block review, approval,
-or merge of the design-only pull request that carries this packet. Phase 1 work that does
-not touch the event data may proceed while the review is outstanding.
+1. ~~**D9**~~ — the acceptance **framework** is approved. Numeric targets are deferred to
+   the week-4 checkpoint (D9-T) by decision, not by omission.
+2. ~~**D11**~~ — approved **provisionally**. All four classifications await F&B
+   market-leader confirmation before pilot metrics are finalized.
+3. ~~**D15 and D18**~~ — approved, ahead of their natural gate.
+4. ~~**D23**~~ — approved; the staging layer is a Phase 1 requirement.
+5. ~~**D14 handling model**~~ — approved.
+6. ~~**D1 and D2a**~~ — approved. Together with the D9 framework they constitute
+   implementation authorization for Phase 1.
 
-Items 1–3 are scope and success-definition questions rather than build blockers.
+**Still outstanding.**
+
+| Item | Who | What is needed |
+| --- | --- | --- |
+| **D2b** — vendor selections V1–V4 | IT, procurement for V1 terms | AI provider and data-processing terms, identity provider, PostgreSQL hosting, object storage. **Not selected here** |
+| **D9-T** — numeric targets | Executive sponsor + market leader | Four weeks of measured baseline, then the week-4 checkpoint |
+| **D11 confirmation** | F&B market leader | Confirm or overturn all four provisional classifications |
+| **D12** — Ecolab semantics | BD lead | Pursuit target or partner lens; related to D11 but decided separately |
+| **D14-L** — licence and import | Legal / commercial contracts | Review of the event lead-retrieval agreement. **Not complete** |
+
+**Scope of the D14 block, stated precisely.** The licence review blocks **activation and
+use of the PACK EXPO data in Phase 1** — the import itself, the engagement layer built on
+it, and anything derived from it. It does **not** block Phase 1 as a whole, and it does
+**not** block review, approval, or merge of the design-only pull request that carries this
+packet. Phase 1 work that does not touch the event data may proceed while the review is
+outstanding.
