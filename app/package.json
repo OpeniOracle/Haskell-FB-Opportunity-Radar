@@ -1,0 +1,41 @@
+{
+  "name": "haskell-fb-opportunity-radar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Haskell Food & Beverage Opportunity Radar — Phase 1 PR 1 application shell (fixture-backed)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.12.0",
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "eslint": "^9.12.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.12",
+    "globals": "^15.11.0",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.8.1",
+    "vite": "^5.4.9",
+    "vitest": "^2.1.3"
+  }
+}

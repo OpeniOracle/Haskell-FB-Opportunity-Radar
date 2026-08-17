@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Haskell Food and Beverage Opportunity Radar — interface preview built on illustrative fixture data. Not a source of market intelligence."
+    />
+    <!-- Preview build. Not indexed: it contains fabricated example content. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Haskell F&amp;B Opportunity Radar — Illustrative Preview</title>
+    <script>
+      // Applied before first paint so a chosen theme does not flash the other one.
+      try {
+        var stored = localStorage.getItem('radar.theme')
+        if (stored === 'light' || stored === 'dark') {
+          document.documentElement.setAttribute('data-theme', stored)
+        }
+      } catch (e) {
+        /* Storage unavailable — fall back to the system preference. */
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
