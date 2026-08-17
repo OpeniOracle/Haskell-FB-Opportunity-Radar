@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { OpportunityCard } from '@/components/OpportunityCard'
 import { OpportunityDrawer } from '@/components/OpportunityDrawer'
@@ -16,6 +16,7 @@ import { useLocalDecisions } from '@/hooks/useLocalDecisions'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
 import {
   DEFAULT_QUERY,
+  OPPORTUNITY_PARAM,
   activeFilterCount,
   applyQuery,
   capabilityOptions,
@@ -37,9 +38,12 @@ import type { Opportunity, OpportunityStatus } from '@/types/domain'
  */
 export function Opportunities() {
   const source = useDataSource()
-  const { search } = useLocation()
   const load = useCallback(() => source.getOpportunities(), [source])
-  const state = useSurfaceData(load, [load, search])
+  // Keyed on the DataSource alone, NOT on the query string. The fixture scenario
+  // already produces a new DataSource when it changes, so adding `search` here
+  // only meant that opening or closing the drawer tore down and rebuilt the whole
+  // list — which destroyed the card that focus was meant to return to.
+  const state = useSurfaceData(load, [load])
 
   const hasData =
     state.kind === 'ready' || state.kind === 'degraded' || state.kind === 'stale'
@@ -95,10 +99,53 @@ export function Opportunities() {
   )
 }
 
+/**
+ * Fallback focus target for a drawer that was opened by a URL rather than by a
+ * click. Prefers the matching card's review button; falls back to the main
+ * region so focus never drops to the document body.
+ */
+function restoreFocusToCard(opportunityId: string) {
+  const card = document.querySelector<HTMLElement>(
+    `[data-review-for="${CSS.escape(opportunityId)}"]`,
+  )
+  if (card) {
+    card.focus()
+    return
+  }
+  document.getElementById('main')?.focus()
+}
+
 function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] }) {
   const [query, setQuery] = useState<OpportunityQuery>(DEFAULT_QUERY)
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const { decisions, decide } = useLocalDecisions()
+
+  /**
+   * Drawer state lives in the URL, not in component state.
+   *
+   * That makes the address shareable and reload-safe, and gives the back button
+   * something to return to — Daily Pulse, when the user arrived from a
+   * "Needs attention today" link.
+   */
+  const openId = searchParams.get(OPPORTUNITY_PARAM)
+
+  const openOpportunity = useCallback(
+    (opportunityId: string) => {
+      const next = new URLSearchParams(searchParams)
+      next.set(OPPORTUNITY_PARAM, opportunityId)
+      // Pushed, so Back closes the drawer rather than leaving the surface.
+      setSearchParams(next)
+    },
+    [searchParams, setSearchParams],
+  )
+
+  const closeDrawer = useCallback(() => {
+    const next = new URLSearchParams(searchParams)
+    next.delete(OPPORTUNITY_PARAM)
+    // Replaced, so closing a directly loaded link drops the parameter without
+    // navigating out of the application — there may be nothing to go back to.
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const patch = useCallback(
     (next: Partial<OpportunityQuery>) => setQuery((current) => ({ ...current, ...next })),
@@ -116,6 +163,11 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
 
   const visible = useMemo(() => applyQuery(opportunities, query), [opportunities, query])
   const activeCount = activeFilterCount(query)
+
+  // Resolved against the FULL set, never the filtered one: a deep link must open
+  // the record it names even when the current filters would hide it. An id that
+  // matches nothing simply opens nothing — it never falls through to a
+  // neighbouring record.
   const open = openId ? opportunities.find((o) => o.id === openId) : undefined
 
   return (
@@ -157,7 +209,7 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
               opportunity={opportunity}
               decision={decisions[opportunity.id]}
               onDecide={decide}
-              onReview={setOpenId}
+              onReview={openOpportunity}
             />
           ))}
         </div>
@@ -168,7 +220,10 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
           opportunity={open}
           decision={decisions[open.id]}
           onDecide={decide}
-          onClose={() => setOpenId(null)}
+          onClose={closeDrawer}
+          // Arriving from a shared link means nothing was focused before the
+          // drawer opened, so name where focus should land when it closes.
+          restoreFocus={restoreFocusToCard}
         />
       )}
     </>

@@ -143,6 +143,9 @@ export function OpportunityCard({
           type="button"
           className="btn btn--primary opp__review"
           onClick={() => onReview(opportunity.id)}
+          // Lets the drawer hand focus back to this exact button when it was
+          // opened by a URL rather than by a click.
+          data-review-for={opportunity.id}
           // Starts with the visible label so it satisfies WCAG 2.5.3, then names
           // which of six identical buttons this one is.
           aria-label={`Review opportunity: ${opportunity.title}`}

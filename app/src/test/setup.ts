@@ -29,6 +29,8 @@ window.matchMedia = ((query: string) => ({
 afterEach(() => {
   cleanup()
   narrowViewport = false
+  // Drawer state lives in the URL, so one test's address must not leak into the next.
+  window.history.pushState({}, '', '/')
   document.documentElement.removeAttribute('data-theme')
   window.localStorage.clear()
 })

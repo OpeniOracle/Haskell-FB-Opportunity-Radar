@@ -18,6 +18,28 @@ import type {
 
 export const ANY = 'any' as const
 
+/**
+ * The query parameter that carries the open opportunity.
+ *
+ * Drawer state lives in the URL rather than in component state so the address is
+ * shareable, survives a reload, and gives the back button something to return
+ * to. Deriving the deep link in one place keeps Daily Pulse and Opportunities
+ * from drifting apart on the format.
+ */
+export const OPPORTUNITY_PARAM = 'opportunity'
+
+/**
+ * Build a link that opens one opportunity in its drawer.
+ *
+ * `currentSearch` is carried through so an existing parameter — the fixture
+ * state previewer, for instance — is not silently dropped by following the link.
+ */
+export function opportunityLink(opportunityId: string, currentSearch = ''): string {
+  const params = new URLSearchParams(currentSearch)
+  params.set(OPPORTUNITY_PARAM, opportunityId)
+  return `/opportunities?${params.toString()}`
+}
+
 export interface OpportunityQuery {
   search: string
   priority: PriorityBand | typeof ANY

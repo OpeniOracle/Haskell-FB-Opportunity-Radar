@@ -3,7 +3,7 @@
 **Status:** Implemented, refined after first visual review
 **Scope:** Phase 1 PR 1 — fixture-backed application shell
 **Milestone plan:** `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md`
-**Version:** 1.1
+**Version:** 1.2
 
 ---
 
@@ -456,3 +456,44 @@ and no webfont; local decisions are still not persisted, by design; and there is
 still no print stylesheet. The mobile-nav limitation from v1.0 is resolved. The
 card-length limitation is resolved — six opportunities now fit a comparison
 rather than filling six screens.
+
+---
+
+## 12. Deep linking from Daily Pulse (v1.2)
+
+The "Review opportunity" links under *Needs attention today* navigated to the
+Opportunities list and left the user to find the record themselves. They now open
+it directly.
+
+**URL as the source of truth.** Drawer state moved out of component state and into
+a query parameter, `?opportunity=<id>`. That is what makes the address shareable
+and reload-safe and gives the back button something to return to. `OPPORTUNITY_PARAM`
+and `opportunityLink()` live in `lib/opportunityFilters.ts` so Daily Pulse and
+Opportunities cannot drift apart on the format. Any other parameter already in the
+URL — the fixture state previewer, for instance — is carried through the link and
+preserved when the drawer closes.
+
+| Behaviour | How |
+|---|---|
+| Deep link opens the drawer | Push navigation, so **Back returns to Daily Pulse** |
+| Card opens the drawer | Push, so Back closes the drawer without leaving the surface |
+| Close | **Replace**, removing only `opportunity` — never navigates out of the application, which matters when a shared link is the first entry in history |
+| Reload | The parameter is the only state, so the same URL reproduces the same drawer |
+| Unknown, empty, or malformed id | Resolves to nothing and opens nothing; it never falls through to a neighbouring record |
+| Filter would hide the record | The drawer resolves against the **full** set, never the filtered view, and the active filter is left untouched |
+| Focus | Enters the drawer's close button on open. On close it returns to whatever opened it; when the drawer was opened by a URL there is nothing to return to, so it lands on that card's own review button, or the main region if the card is not rendered |
+
+**One real defect surfaced on the way.** Both surfaces keyed their data load on the
+whole query string. That was invisible until the drawer started writing to the
+URL: opening or closing it tore down and rebuilt the entire list, which destroyed
+the card focus was meant to return to. The scenario already reaches a surface
+through the `DataSource` identity, so the query string was never a data dependency
+and has been removed from both.
+
+The compiled CSS is byte-identical to v1.1 — this pass changed behaviour only.
+
+**Tests:** `src/test/deepLink.test.tsx`, 22 tests across six groups — link targets,
+query-driven opening, reload safety, invalid identifiers, close behaviour, browser
+back, and focus handling. A `renderAppWithHistory` helper was added because
+`MemoryRouter` cannot exercise the address bar or the back button. Suite total: 185
+tests across 13 files.

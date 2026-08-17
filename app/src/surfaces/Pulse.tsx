@@ -12,6 +12,7 @@ import { IllustrativeNote } from '@/components/Illustrative'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
 import { absoluteDateTime, relativeTime } from '@/lib/format'
+import { opportunityLink } from '@/lib/opportunityFilters'
 import type { ChangeEvent, PulseSnapshot } from '@/types/domain'
 
 const CHANGE_ICON: Record<string, IconName> = {
@@ -41,9 +42,10 @@ const CHANGE_ICON: Record<string, IconName> = {
  */
 export function Pulse() {
   const source = useDataSource()
-  const { search } = useLocation()
   const load = useCallback(() => source.getPulse(), [source])
-  const state = useSurfaceData(load, [load, search])
+  // See the note in Opportunities: the scenario reaches this through `source`,
+  // so the query string is not a data dependency.
+  const state = useSurfaceData(load, [load])
 
   const hasData =
     state.kind === 'ready' || state.kind === 'degraded' || state.kind === 'stale'
@@ -245,6 +247,8 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
 }
 
 function AttentionRow({ change }: { change: ChangeEvent }) {
+  const { search } = useLocation()
+
   return (
     <article className={`attention attention--${change.tone}`}>
       <span className="attention__icon" aria-hidden="true">
@@ -260,7 +264,14 @@ function AttentionRow({ change }: { change: ChangeEvent }) {
           {relativeTime(change.occurredAt)}
         </time>
         {change.opportunityId && (
-          <Link className="btn btn--primary attention__link" to="/opportunities">
+          // Deep link, not a jump to the list: the referenced opportunity opens
+          // directly in its drawer. Pushing a history entry means Back returns
+          // here rather than stranding the user on Opportunities.
+          <Link
+            className="btn btn--primary attention__link"
+            to={opportunityLink(change.opportunityId, search)}
+            aria-label={`Review opportunity: ${change.subjectLabel}`}
+          >
             Review opportunity
           </Link>
         )}

@@ -32,28 +32,44 @@ const SCORE_ROWS: { key: keyof typeof SCORE_CAPS; label: string }[] = [
  * complete capability list.
  *
  * Keyboard contract: focus moves to the close button on open, Escape closes, Tab
- * is held inside the panel, and focus returns to whatever opened it.
+ * is held inside the panel, and focus returns to whatever opened it. When the
+ * drawer was opened by a URL rather than by a click there is nothing to return
+ * to, so `restoreFocus` names a destination instead of letting focus fall to the
+ * document body.
  */
 export function OpportunityDrawer({
   opportunity,
   decision,
   onDecide,
   onClose,
+  restoreFocus,
 }: {
   opportunity: Opportunity
   decision: LocalDecision | undefined
   onDecide: (opportunityId: string, decision: LocalDecision) => void
   onClose: () => void
+  restoreFocus?: (opportunityId: string) => void
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
 
+  const opportunityId = opportunity.id
+  const restoreRef = useRef(restoreFocus)
+  restoreRef.current = restoreFocus
+
   useEffect(() => {
-    returnFocusRef.current = document.activeElement as HTMLElement | null
+    const previous = document.activeElement as HTMLElement | null
+    // `body` means the drawer was opened by a URL, not by a control.
+    returnFocusRef.current = previous && previous !== document.body ? previous : null
     closeRef.current?.focus()
-    return () => returnFocusRef.current?.focus()
-  }, [])
+
+    return () => {
+      const target = returnFocusRef.current
+      if (target && target.isConnected) target.focus()
+      else restoreRef.current?.(opportunityId)
+    }
+  }, [opportunityId])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

@@ -29,9 +29,11 @@ describe('daily pulse structure', () => {
     expect(
       within(section).getByText(/Worth a pursuit decision this week/),
     ).toBeInTheDocument()
-    expect(
-      within(section).getAllByRole('link', { name: 'Review opportunity' }).length,
-    ).toBe(2)
+    // The accessible name now names WHICH opportunity, so two identical-looking
+    // links are distinguishable to a screen-reader user.
+    const links = within(section).getAllByRole('link', { name: /^Review opportunity/ })
+    expect(links).toHaveLength(2)
+    expect(links[0]).toHaveAccessibleName(/Example Beverage Company/)
   })
 
   it('places market changes in the primary feed', async () => {
