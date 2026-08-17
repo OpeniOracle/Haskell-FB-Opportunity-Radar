@@ -1,9 +1,9 @@
 # 16 — Phase 1 PR 1 Implementation Notes
 
-**Status:** Implemented, pending visual review
+**Status:** Implemented, refined after first visual review
 **Scope:** Phase 1 PR 1 — fixture-backed application shell
 **Milestone plan:** `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md`
-**Version:** 1.0
+**Version:** 1.1
 
 ---
 
@@ -93,8 +93,8 @@ analytics, and no state-management library. Icons are hand-authored SVG in
 `src/components/Icon.tsx`, because status shapes must be distinguishable in
 greyscale and an interchangeable icon font would undermine that.
 
-Production bundle: **205 kB raw / 65 kB gzipped JS**, **24 kB raw / 5 kB gzipped
-CSS**.
+Production bundle after the v1.1 refinement: **221 kB raw / 69 kB gzipped JS**,
+**34 kB raw / 6 kB gzipped CSS**.
 
 ---
 
@@ -121,13 +121,17 @@ and `src/test/**` to import a fixture module.
 ### 3.2 `SurfaceState<T>` as a union
 
 ```ts
-export type SurfaceState<T> =
+export type SurfaceStatus<T> =
   | { kind: 'loading' }
   | { kind: 'empty'; reason: string }
   | { kind: 'unavailable'; reason: string; blockedBy: string }
   | { kind: 'degraded'; data: T; notice: string; affected: string[] }
   | { kind: 'stale'; data: T; notice: string; asOf: string }
   | { kind: 'ready'; data: T }
+
+// `checkedAt` rides on every state, including the failures: "when was this last
+// checked" is the one question a user cannot infer from anything else on screen.
+export type SurfaceState<T> = SurfaceStatus<T> & { checkedAt: string | null }
 ```
 
 Non-happy states are part of the type, so a surface cannot render a happy path for
@@ -141,9 +145,9 @@ reading. A notice that hides what it qualifies is worse than no notice.
 | Decision | How it is encoded |
 |---|---|
 | D15 / ADR 0004 — temporal precision | `TemporalValue` is an interval with `precision` and `basis`. There is no bare `Date` field in `domain.ts`. `formatTemporal()` renders at the recorded precision and prefers the source's own words. |
-| D16 / ADR 0009 — three confidence axes | `ConfidenceAxes` has `evidenceStrength`, `assessmentType`, `confidenceLevel` as separate fields. The card renders them separately; a test asserts the guardrails hold across every fixture. |
+| D16 / ADR 0009 — three confidence axes | `ConfidenceAxes` has `evidenceStrength`, `assessmentType`, `confidenceLevel` as separate fields. The drawer renders all three separately; a test asserts the guardrails hold across every fixture. |
 | D11 — scope classification | `OrganizationRef.scopeClassStatus` is `'provisional' \| 'confirmed'`. A provisional classification renders a visible "Provisional classification" indicator. |
-| ADR 0006 — evidence access modes | `EvidenceSummary.strongestAccessMode` is shown on every card, and the `reference_only` fixture demonstrates the resulting confidence ceiling. |
+| ADR 0006 — evidence access modes | `EvidenceSummary.strongestAccessMode` is shown in the detail drawer, and the `reference_only` fixture demonstrates the resulting confidence ceiling. |
 | ADR 0010 — health vs coverage | Daily Pulse shows account coverage and connector health as two independent figures with explanatory copy. They are never merged into one health number. |
 
 ---
@@ -326,3 +330,129 @@ evidence or company activity was used, neither PACK EXPO workbook was imported,
 Phase 1 PR 2 was not started, and the implementation pull request was not merged.
 
 Work stops here pending visual review of the Netlify preview.
+
+---
+
+## 11. UX refinement (v1.1)
+
+Stakeholder objective for this pass: **a Food & Beverage business-development
+user should understand what changed, what matters, and what to do next in under
+ten minutes.** The architecture, typed fixtures, `DataSource` boundary,
+accessibility protections, theme support, and milestone restrictions are
+unchanged.
+
+### 11.1 Daily Pulse — commercial first, operations second
+
+The page opened with a chronological mix of project confirmations and connector
+recoveries, three metric cards padded with implementation prose, and no statement
+of what to do. It now reads:
+
+1. **Needs attention today** — the changes flagged `needsAttention`, each with a
+   reason to act and a `Review opportunity` link.
+2. **Three summary figures** — one-line notes; the four-account coverage list and
+   the coverage-versus-health explanation moved behind disclosures.
+3. **Other market changes** — the remaining commercial changes.
+4. **Coverage and system notices** — quiet, compact, and collapsed unless
+   something needs a person.
+
+The split is structural, not cosmetic: `ChangeEvent.channel` is now `market` or
+`system` **in the data**, so a view cannot drift back to matching on `kind`. The
+operations section opens only when `connectorHealth.actionRequired > 0` or an
+account is below expected coverage. Coverage and connector health remain two
+separate figures, per ADR 0010.
+
+The caught-up state is now **"You're caught up" / "No material changes have been
+identified since your last visit."**
+
+### 11.2 Opportunities — a comparison surface
+
+Cards were fully expanded, so six opportunities ran to roughly 4,300px on desktop
+and 19,000px on a phone. Comparing two of them meant scrolling past both.
+
+The compact card now carries exactly the triage set: account, title, location or
+the named unresolved state, priority score **and band**, stage, pursuit status,
+confidence, expected timing, primary capability, evidence count, newest evidence
+date, one sentence, and `Review opportunity`.
+
+Moved into the drawer: the full assessment, the three confidence axes with what
+they mean, the score breakdown, publisher counts and access mode, operator
+attribution, provisional classification, timing caveats, and the complete
+capability list. The drawer moves focus to its close button, traps Tab, closes on
+Escape, and returns focus to the trigger.
+
+**Controls** (all fixture-backed, all in-browser — no request, no endpoint, no
+backend dependency): search across account, project, location and capability;
+filters for priority band, stage, pursuit status, confidence, geography and
+capability; and sort by priority, newest evidence, or expected timing. Filter
+options are derived from the data, so no filter is offered that would return
+nothing. Timing sort puts the undated opportunity last rather than inventing a
+position for it. On a phone the seven controls fold behind a summary so an
+opportunity is visible without scrolling.
+
+**Actions.** `Open account` was a disabled button; it is replaced by
+`Review opportunity`, which works. Pursue, Watch, Assign and Dismiss are live
+local previews held in component state — selecting the same one again clears it.
+They are deliberately *not* written to `localStorage`, because that would look
+like persistence without being it. The list says once, above the cards, that
+nothing is saved; a chosen decision then shows its own confirmation.
+
+### 11.3 Illustrative-data treatment
+
+The striped ribbon is the persistent marker. The full-width purple panel on
+Opportunities repeated it and pushed content below the fold, so it is gone,
+replaced by a compact note beside the results count. The boundary tests that
+prohibit real accounts, remote origins, credentials, and network calls are
+unchanged and still passing.
+
+### 11.4 Mobile navigation
+
+The icon-only bar is replaced by a **labelled bottom navigation bar** — icon plus
+short text label for all five destinations, with an active state — alongside a
+compact brand header. Exactly one navigation renders at a time (`useMediaQuery`
+rather than CSS), so there is a single `Primary` landmark in the accessibility
+tree instead of one visible and one hidden.
+
+### 11.5 States
+
+Each state answers four questions in order — what happened, does the user need to
+act, what happens next, and when it was last checked. `checkedAt` now rides on
+every `SurfaceState`, including the failures. Technical causes moved behind a
+"Technical detail" disclosure: the headline is now "Opportunities aren't ranked
+yet", not "scoring has not run against the current taxonomy version". The
+oversized centred containers are gone; states are compact horizontal panels.
+
+### 11.6 Visual
+
+Light stays the default; dark remains a preference. `--c-text-muted` was darkened
+from `#7d766d` to `#6f685f` (light) and lightened to `#979088` (dark), and
+`--c-text-secondary` likewise — both now clear **4.5:1 on every surface they are
+used on**, not just the 3:1 non-text floor, and the contrast suite asserts it.
+Vertical rhythm was tightened throughout without reducing the spacing scale. No
+UI library, charting package, or new visual dependency was added; the runtime
+dependency list is still three packages. The placeholder brand mark is unchanged
+pending official assets.
+
+One rendering defect was found and fixed on the way: the score bars in the
+breakdown were invisible, because `.score-row__bar` is a `<span>` and an inline
+box gives its fill nothing to grow into.
+
+### 11.7 Verification
+
+163 tests across 12 files, all passing. New coverage:
+
+| Area | File |
+|---|---|
+| Search, filters, sort, priority bands, derived options | `opportunityFilters.test.ts` (21) |
+| Filters/sort/actions through the real controls | `opportunityWorkspace.test.tsx` (12) |
+| Compact card contents, drawer contents, keyboard contract | `opportunityCard.test.tsx` (12) |
+| Market/system separation, attention section, metric disclosures | `pulse.test.tsx` (10) |
+| Revised empty, degraded, unavailable states | `surfaceStates.test.tsx` (11) |
+| Labelled mobile navigation, single landmark, folded filters | `navigation.test.tsx` (8) |
+
+### 11.8 Limitations that remain
+
+Tokens are still provisional (D10 open); there are still no Haskell brand assets
+and no webfont; local decisions are still not persisted, by design; and there is
+still no print stylesheet. The mobile-nav limitation from v1.0 is resolved. The
+card-length limitation is resolved — six opportunities now fit a comparison
+rather than filling six screens.

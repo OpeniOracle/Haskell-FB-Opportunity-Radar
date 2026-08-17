@@ -62,7 +62,7 @@ describe('accessibility contract', () => {
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
   })
 
-  it('opens the score disclosure from the keyboard', async () => {
+  it('opens the detail drawer from the keyboard and traps focus inside it', async () => {
     const user = userEvent.setup()
     renderApp('/opportunities')
     const cards = await screen.findAllByRole('article')
@@ -70,9 +70,35 @@ describe('accessibility contract', () => {
     expect(first).toBeDefined()
     if (!first) return
 
-    const summary = within(first).getByText('How this score was reached')
-    await user.click(summary)
-    expect(first.querySelector('details')?.open).toBe(true)
+    const trigger = within(first).getByRole('button', { name: /^Review opportunity/ })
+    trigger.focus()
+    await user.keyboard('{Enter}')
+
+    const dialog = await screen.findByRole('dialog')
+    const close = within(dialog).getByRole('button', { name: 'Close' })
+    // Focus lands inside the panel rather than staying behind it.
+    expect(close).toHaveFocus()
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+  })
+
+  it('gives every filter control a visible label', async () => {
+    renderApp('/opportunities')
+    await screen.findAllByRole('article')
+    for (const label of [
+      'Priority',
+      'Stage',
+      'Status',
+      'Confidence',
+      'Geography',
+      'Capability',
+      'Sort by',
+    ]) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    }
+    expect(screen.getByRole('searchbox', { name: 'Search opportunities' })).toBeInTheDocument()
   })
 })
 

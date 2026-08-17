@@ -27,7 +27,7 @@ function readStored(): ThemeChoice {
  * is defined twice in tokens.css: once under the media query and once under
  * `[data-theme='dark']`.
  */
-export function ThemeToggle() {
+export function ThemeToggle({ compact = false }: { compact?: boolean } = {}) {
   const [choice, setChoice] = useState<ThemeChoice>(readStored)
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className={`theme-toggle${compact ? ' theme-toggle--compact' : ''}`}
       onClick={() => setChoice(next)}
       aria-label={`${LABEL[choice]}. Activate to switch to ${next}.`}
     >
@@ -54,7 +54,7 @@ export function ThemeToggle() {
         name={choice === 'dark' ? 'moon' : choice === 'light' ? 'sun' : 'settings'}
         className="theme-toggle__icon"
       />
-      {LABEL[choice]}
+      <span className="theme-toggle__text">{LABEL[choice]}</span>
     </button>
   )
 }

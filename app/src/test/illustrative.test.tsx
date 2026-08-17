@@ -4,10 +4,10 @@ import { renderApp } from '@/test/render'
 import { ROUTES } from '@/routes'
 
 /**
- * The illustrative-data marker is a hard requirement of this milestone, not a
- * nicety: a fixture mistaken for a finding is the worst failure this preview
- * could produce. So it is asserted on EVERY route, including placeholders and the
- * not-found page.
+ * The striped ribbon is the persistent marker and must appear on every view,
+ * including placeholders and the not-found page. The large duplicate panel on
+ * Opportunities has been replaced by a compact contextual note — one marker in
+ * the chrome, one beside the results, and nothing said twice.
  */
 describe('illustrative data marking', () => {
   const paths = [
@@ -15,24 +15,34 @@ describe('illustrative data marking', () => {
     '/no-such-surface',
   ]
 
-  it.each(paths)('shows the persistent banner at %s', async (path) => {
+  it.each(paths)('shows the persistent ribbon at %s', async (path) => {
     renderApp(path)
     const note = await screen.findByRole('note')
     expect(note).toHaveTextContent('Illustrative data')
-    expect(note).toHaveTextContent(/No real company, project, evidence/)
+    expect(note).toHaveTextContent(/no real company, project, or evidence/)
   })
 
-  it('gives Opportunities the prominent block treatment as well as the banner', async () => {
+  it('adds one compact contextual note on Opportunities', async () => {
     renderApp('/opportunities')
+    await screen.findAllByRole('article')
     expect(
-      await screen.findByRole('heading', { name: 'These are not real opportunities' }),
+      screen.getByText('Fictional examples — not market intelligence'),
     ).toBeInTheDocument()
-    expect(screen.getByRole('note')).toHaveTextContent('Illustrative data')
   })
 
-  it('does not give Daily Pulse the block treatment reserved for Opportunities', async () => {
+  it('no longer renders the large duplicate disclaimer panel', async () => {
+    renderApp('/opportunities')
+    await screen.findAllByRole('article')
+    expect(screen.queryByText('These are not real opportunities')).toBeNull()
+    expect(screen.queryByText(/Do not use anything on this page as/)).toBeNull()
+  })
+
+  it('marks Daily Pulse too, without a second panel', async () => {
     renderApp('/')
     await screen.findByRole('heading', { level: 1, name: 'Daily Pulse' })
-    expect(screen.queryByRole('heading', { name: 'These are not real opportunities' })).toBeNull()
+    expect(screen.getByRole('note')).toHaveTextContent('Illustrative data')
+    expect(
+      screen.getByText('Fictional examples — not market intelligence'),
+    ).toBeInTheDocument()
   })
 })

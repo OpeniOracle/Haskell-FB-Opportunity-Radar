@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Icon, type IconName } from '@/components/Icon'
 import {
   DegradedNotice,
@@ -8,10 +8,11 @@ import {
   StaleNotice,
   UnavailableState,
 } from '@/components/SurfaceStates'
+import { IllustrativeNote } from '@/components/Illustrative'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
 import { absoluteDateTime, relativeTime } from '@/lib/format'
-import type { ChangeTone, PulseSnapshot } from '@/types/domain'
+import type { ChangeEvent, PulseSnapshot } from '@/types/domain'
 
 const CHANGE_ICON: Record<string, IconName> = {
   stage_promoted: 'check',
@@ -23,15 +24,20 @@ const CHANGE_ICON: Record<string, IconName> = {
 }
 
 /**
- * Daily Pulse — the answer to "what changed since I last looked?"
+ * Daily Pulse — "what changed, what matters, what do I do next", in that order.
  *
- * The surface is deliberately NOT a KPI dashboard. Three figures at the top,
- * then a chronological list of material changes with the reason attached to each.
- * `04_UX_DESIGN_SPEC.md` is explicit that a change with no explanation is noise.
+ * The page is structured for a business-development user with ten minutes, so
+ * commercial intelligence is primary and platform operations are secondary:
  *
- * Coverage and connector health are shown as two separate figures because ADR
- * 0010 forbids collapsing them into one "system health" number: a perfectly
- * healthy connector fleet can still be covering the wrong accounts.
+ *   1. Needs attention today   the two or three things worth acting on
+ *   2. Three summary figures   short, with the long lists behind a disclosure
+ *   3. Other market changes    everything else that moved at an account
+ *   4. Coverage and system     connectors and coverage, quiet, collapsed unless
+ *      notices                 something actually needs a person
+ *
+ * The market/system split comes from `ChangeEvent.channel` in the data, not from
+ * matching on `kind` here. Coverage and connector health stay separate figures —
+ * ADR 0010 forbids merging them, and they answer different questions anyway.
  */
 export function Pulse() {
   const source = useDataSource()
@@ -39,52 +45,64 @@ export function Pulse() {
   const load = useCallback(() => source.getPulse(), [source])
   const state = useSurfaceData(load, [load, search])
 
+  const hasData =
+    state.kind === 'ready' || state.kind === 'degraded' || state.kind === 'stale'
+
   return (
     <>
-      <header className="page-head">
+      <header className="page-head page-head--tight">
         <div>
           <h1 className="page-head__title">Daily Pulse</h1>
-          <p className="page-head__sub">
-            What changed across the monitored accounts since your last visit, and
-            why each change happened.
-          </p>
+          <p className="page-head__sub">What changed across your accounts since 14 August.</p>
         </div>
-        {(state.kind === 'ready' || state.kind === 'degraded' || state.kind === 'stale') && (
+        {hasData && (
           <div className="page-head__meta">
-            <span>
-              <Icon name="clock" className="stat__icon" /> Collected{' '}
+            <IllustrativeNote />
+            <span title={absoluteDateTime(state.data.generatedAt)}>
+              <Icon name="clock" className="stat__icon" /> Updated{' '}
               {relativeTime(state.data.generatedAt)}
             </span>
-            {state.data.lastVisitAt && (
-              <span>Last visit {absoluteDateTime(state.data.lastVisitAt)}</span>
-            )}
           </div>
         )}
       </header>
 
-      {state.kind === 'loading' && <LoadingState label="Loading the daily pulse" rows={3} />}
+      {state.kind === 'loading' && <LoadingState label="Loading the daily pulse" rows={2} />}
 
       {state.kind === 'empty' && (
-        <EmptyState title="Nothing has changed since your last visit" body={state.reason} />
+        <EmptyState
+          title="You’re caught up"
+          body={state.reason}
+          next="The next collection cycle runs automatically."
+          checkedAt={state.checkedAt}
+        />
       )}
 
       {state.kind === 'unavailable' && (
         <UnavailableState
-          title="The daily pulse is unavailable"
+          title="Today’s changes aren’t ready yet"
           reason={state.reason}
           blockedBy={state.blockedBy}
+          checkedAt={state.checkedAt}
         />
       )}
 
       {state.kind === 'degraded' && (
-        <DegradedNotice notice={state.notice} affected={state.affected} />
+        <DegradedNotice
+          notice={state.notice}
+          affected={state.affected}
+          checkedAt={state.checkedAt}
+        />
       )}
 
-      {state.kind === 'stale' && <StaleNotice notice={state.notice} asOf={state.asOf} />}
-
-      {(state.kind === 'ready' || state.kind === 'degraded' || state.kind === 'stale') && (
-        <PulseBody snapshot={state.data} />
+      {state.kind === 'stale' && (
+        <StaleNotice
+          notice={state.notice}
+          asOf={state.asOf}
+          checkedAt={state.checkedAt}
+        />
       )}
+
+      {hasData && <PulseBody snapshot={state.data} />}
     </>
   )
 }
@@ -92,18 +110,42 @@ export function Pulse() {
 function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
   const { coverage, connectorHealth, changesSinceLastVisit } = snapshot
 
+  const byRecency = [...changesSinceLastVisit].sort((a, b) =>
+    b.occurredAt.localeCompare(a.occurredAt),
+  )
+  const attention = byRecency.filter((c) => c.channel === 'market' && c.needsAttention)
+  const market = byRecency.filter((c) => c.channel === 'market' && !c.needsAttention)
+  const system = byRecency.filter((c) => c.channel === 'system')
+
+  // Collapsed unless something in the operations column actually needs a person.
+  const systemNeedsAction =
+    connectorHealth.actionRequired > 0 || coverage.accountsBelowExpected > 0
+
   return (
     <>
+      {attention.length > 0 && (
+        <section className="section section--attention" aria-labelledby="attention-title">
+          <div className="section__head">
+            <h2 className="section__title" id="attention-title">
+              Needs attention today
+            </h2>
+            <span className="section__count">{attention.length}</span>
+          </div>
+          <div className="attention-list">
+            {attention.map((change) => (
+              <AttentionRow key={change.id} change={change} />
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="pulse-grid">
         <section className="stat" aria-labelledby="stat-changes">
           <h2 className="stat__label" id="stat-changes">
-            <Icon name="pulse" className="stat__icon" /> Material changes
+            <Icon name="pulse" className="stat__icon" /> Changes
           </h2>
-          <p className="stat__value">{changesSinceLastVisit.length}</p>
-          <p className="stat__note">
-            Since your last visit. Only changes that alter what an analyst would do
-            are counted.
-          </p>
+          <p className="stat__value">{attention.length + market.length}</p>
+          <p className="stat__note">Market changes since your last visit</p>
         </section>
 
         <section className="stat" aria-labelledby="stat-coverage">
@@ -114,16 +156,17 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
             {coverage.accountsAtOrAboveExpected}
             <span className="stat__of">/{coverage.accountsMonitored}</span>
           </p>
-          <p className="stat__note">
-            Accounts meeting their expected source coverage.{' '}
-            {coverage.accountsBelowExpected > 0 ? (
-              <>
-                Below expected: {coverage.accountsUncovered.join(', ')}.
-              </>
-            ) : (
-              <>No account is below its expected coverage.</>
-            )}
-          </p>
+          <p className="stat__note">Accounts fully covered</p>
+          {coverage.accountsUncovered.length > 0 && (
+            <details className="stat__detail">
+              <summary>{coverage.accountsBelowExpected} below expected</summary>
+              <ul>
+                {coverage.accountsUncovered.map((account) => (
+                  <li key={account}>{account}</li>
+                ))}
+              </ul>
+            </details>
+          )}
         </section>
 
         <section className="stat" aria-labelledby="stat-health">
@@ -134,48 +177,114 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
             {connectorHealth.healthy}
             <span className="stat__of">/{connectorHealth.sourcesEnabled}</span>
           </p>
-          <p className="stat__note">
-            Sources healthy on the last cycle ({connectorHealth.degraded} degraded,{' '}
-            {connectorHealth.actionRequired} needing action). Tracked separately
-            from coverage — a healthy fleet can still be watching the wrong things.
-          </p>
+          <p className="stat__note">Sources healthy</p>
+          <details className="stat__detail">
+            <summary>
+              {connectorHealth.degraded} degraded, {connectorHealth.actionRequired} needs
+              action
+            </summary>
+            <p>
+              Connector health is whether the sources are working. Account coverage is
+              whether the right things are being watched. They are tracked separately.
+            </p>
+          </details>
         </section>
       </div>
 
-      <section className="section" aria-labelledby="changes-title">
-        <div className="section__head">
-          <h2 className="section__title" id="changes-title">
-            What changed
-          </h2>
-          <span className="section__count">{changesSinceLastVisit.length} items</span>
-          <span className="section__note">Newest first</span>
-        </div>
+      {market.length > 0 && (
+        <section className="section" aria-labelledby="market-title">
+          <div className="section__head">
+            <h2 className="section__title" id="market-title">
+              Other market changes
+            </h2>
+            <span className="section__count">{market.length}</span>
+            <span className="section__note">Newest first</span>
+          </div>
+          <div className="change-list">
+            {market.map((change) => (
+              <ChangeRow key={change.id} change={change} />
+            ))}
+          </div>
+        </section>
+      )}
 
-        <div className="change-list">
-          {[...changesSinceLastVisit]
-            .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-            .map((change) => (
-              <article className="change" key={change.id}>
-                <span
-                  className={`change__icon change__icon--${change.tone satisfies ChangeTone}`}
-                  aria-hidden="true"
-                >
-                  <Icon name={CHANGE_ICON[change.kind] ?? 'dot'} />
-                </span>
-                <div className="change__body">
-                  <h3 className="change__title">
+      <section className="section section--system" aria-labelledby="system-title">
+        <details className="system-notices" open={systemNeedsAction}>
+          <summary className="system-notices__summary">
+            <Icon name="settings" className="system-notices__icon" />
+            <span id="system-title">Coverage and system notices</span>
+            <span className="system-notices__count">{system.length}</span>
+            {systemNeedsAction && (
+              <span className="system-notices__flag">1 needs action</span>
+            )}
+          </summary>
+          <div className="system-notices__body">
+            {system.map((change) => (
+              <div className="notice-row" key={change.id}>
+                <Icon
+                  name={CHANGE_ICON[change.kind] ?? 'dot'}
+                  className={`notice-row__icon notice-row__icon--${change.tone}`}
+                />
+                <div className="notice-row__body">
+                  <p className="notice-row__title">
                     {change.title}
-                    <span className="change__subject"> — {change.subjectLabel}</span>
-                  </h3>
-                  <p className="change__detail">{change.detail}</p>
+                    <span className="notice-row__subject"> — {change.subjectLabel}</span>
+                  </p>
+                  <p className="notice-row__detail">{change.detail}</p>
                 </div>
-                <time className="change__when" dateTime={change.occurredAt}>
+                <time className="notice-row__when" dateTime={change.occurredAt}>
                   {relativeTime(change.occurredAt)}
                 </time>
-              </article>
+              </div>
             ))}
-        </div>
+          </div>
+        </details>
       </section>
     </>
+  )
+}
+
+function AttentionRow({ change }: { change: ChangeEvent }) {
+  return (
+    <article className={`attention attention--${change.tone}`}>
+      <span className="attention__icon" aria-hidden="true">
+        <Icon name={CHANGE_ICON[change.kind] ?? 'dot'} />
+      </span>
+      <div className="attention__body">
+        <h3 className="attention__title">{change.title}</h3>
+        <p className="attention__subject">{change.subjectLabel}</p>
+        {change.actionHint && <p className="attention__hint">{change.actionHint}</p>}
+      </div>
+      <div className="attention__aside">
+        <time className="attention__when" dateTime={change.occurredAt}>
+          {relativeTime(change.occurredAt)}
+        </time>
+        {change.opportunityId && (
+          <Link className="btn btn--primary attention__link" to="/opportunities">
+            Review opportunity
+          </Link>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function ChangeRow({ change }: { change: ChangeEvent }) {
+  return (
+    <article className="change">
+      <span className={`change__icon change__icon--${change.tone}`} aria-hidden="true">
+        <Icon name={CHANGE_ICON[change.kind] ?? 'dot'} />
+      </span>
+      <div className="change__body">
+        <h3 className="change__title">
+          {change.title}
+          <span className="change__subject"> — {change.subjectLabel}</span>
+        </h3>
+        <p className="change__detail">{change.detail}</p>
+      </div>
+      <time className="change__when" dateTime={change.occurredAt}>
+        {relativeTime(change.occurredAt)}
+      </time>
+    </article>
   )
 }

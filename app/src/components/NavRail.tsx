@@ -7,16 +7,12 @@ import { useDataSource } from '@/data/DataSourceContext'
 const SCENARIOS = ['ready', 'loading', 'empty', 'degraded', 'stale', 'unavailable'] as const
 
 /**
- * Navigation rail.
+ * Side navigation, shown from 901px up.
  *
- * Collapses to a horizontal icon bar under 900px (see base.css). Labels are kept
- * in the DOM and hidden visually rather than removed, so the accessible name
- * survives the collapse.
- *
- * The footer carries a state previewer. It exists because the five non-happy
- * states are a deliverable of this milestone and a reviewer should be able to
- * look at them, not take my word for it. It is fixture-only scaffolding and goes
- * away with the fixture DataSource.
+ * On narrow screens this is hidden and `<BottomNav>` takes over. The two are
+ * separate components rather than one responsive element because a side rail and
+ * a bottom bar want genuinely different markup — trying to make one collapse into
+ * the other is what produced the icon-only bar this replaces.
  */
 export function NavRail() {
   const { pathname, search } = useLocation()
@@ -34,24 +30,16 @@ export function NavRail() {
       </div>
 
       <div className="nav__group">
-        <span className="nav__group-label" id="nav-group-surfaces">
-          Surfaces
-        </span>
+        <span className="nav__group-label">Surfaces</span>
         {PRIMARY_ROUTES.map((route) => (
           <NavLink
             key={route.path}
             to={{ pathname: route.path, search }}
             end={route.path === '/'}
             className="nav__link"
-            // The label is hidden visually on narrow screens, so the accessible
-            // name is supplied explicitly and survives the collapse.
-            aria-label={route.label}
-            title={route.label}
           >
             <Icon name={route.icon} className="nav__icon" />
-            <span className="nav__link-text" aria-hidden="true">
-              {route.label}
-            </span>
+            <span className="nav__link-text">{route.label}</span>
             {!route.implemented && (
               <span className="nav__tag" aria-hidden="true">
                 Later
@@ -90,10 +78,53 @@ export function NavRail() {
         <ThemeToggle />
 
         <p className="env-note">
-          Fixture build — no connectors, no database, no model calls. Design tokens
-          are provisional pending the design-system decision.
+          Fixture build — no connectors, no database, no model calls. Design tokens are
+          provisional.
         </p>
       </div>
     </nav>
+  )
+}
+
+/**
+ * Bottom navigation for narrow screens.
+ *
+ * Every destination carries a short text label under its icon. An occasional user
+ * should not have to decode a glyph to find Opportunities, and the previous
+ * icon-only bar asked exactly that. Labels are short enough that five fit at
+ * 320px without truncation.
+ */
+export function BottomNav() {
+  const { search } = useLocation()
+
+  return (
+    <nav className="bottom-nav" aria-label="Primary">
+      {PRIMARY_ROUTES.map((route) => (
+        <NavLink
+          key={route.path}
+          to={{ pathname: route.path, search }}
+          end={route.path === '/'}
+          className="bottom-nav__link"
+        >
+          <Icon name={route.icon} className="bottom-nav__icon" />
+          <span className="bottom-nav__label">{route.shortLabel}</span>
+          {!route.implemented && <span className="bottom-nav__dot" aria-hidden="true" />}
+        </NavLink>
+      ))}
+    </nav>
+  )
+}
+
+/** Compact brand bar for narrow screens, since the rail is hidden there. */
+export function MobileHeader() {
+  return (
+    <header className="mobile-head">
+      <span className="nav__mark">
+        <Icon name="pulse" className="nav__mark-glyph" />
+        Haskell
+      </span>
+      <span className="mobile-head__product">F&amp;B Opportunity Radar</span>
+      <ThemeToggle compact />
+    </header>
   )
 }

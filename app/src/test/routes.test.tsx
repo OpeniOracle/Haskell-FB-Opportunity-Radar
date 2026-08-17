@@ -47,7 +47,7 @@ describe('route structure', () => {
     ).toBeInTheDocument()
 
     const nav = screen.getByRole('navigation', { name: 'Primary' })
-    expect(within(nav).queryByRole('link', { name: 'Opportunity detail' })).toBeNull()
+    expect(within(nav).queryByRole('link', { name: /Opportunity detail/ })).toBeNull()
   })
 
   it('shows an explicit not-found state rather than redirecting', async () => {
@@ -61,7 +61,9 @@ describe('route structure', () => {
     renderApp('/')
     const nav = await screen.findByRole('navigation', { name: 'Primary' })
     for (const route of PRIMARY_ROUTES) {
-      expect(within(nav).getByRole('link', { name: route.label })).toBeInTheDocument()
+      expect(
+        within(nav).getByRole('link', { name: new RegExp(route.label) }),
+      ).toBeInTheDocument()
     }
   })
 })

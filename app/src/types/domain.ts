@@ -91,6 +91,24 @@ export interface ScoreComponents {
   finalScore: number
 }
 
+/**
+ * Priority band.
+ *
+ * A raw score of 78 means nothing to someone opening this for the first time.
+ * The band is the part that is actually decision-critical, so it is rendered as
+ * a word next to the number and is what the priority filter operates on.
+ */
+export type PriorityBand = 'critical' | 'high' | 'moderate' | 'low'
+
+/**
+ * A pursuit decision taken in the interface.
+ *
+ * In this milestone these are LOCAL PREVIEW ONLY — held in component state and
+ * discarded on reload. There is no persistence layer to write them to, and
+ * pretending otherwise would be worse than the disabled button it replaces.
+ */
+export type LocalDecision = 'pursue' | 'watch' | 'dismiss' | 'assign'
+
 /** Caps come from `02_DATA_AND_SIGNAL_MODEL.md` and are used to render bars. */
 export const SCORE_CAPS = {
   haskellFit: 30,
@@ -157,14 +175,34 @@ export type ChangeKind =
   | 'coverage_degraded'
   | 'source_recovered'
 
+/**
+ * Which audience a change is for.
+ *
+ * `market` is commercial intelligence — something happened at an account.
+ * `system` is platform operations — something happened to a connector.
+ *
+ * These are separated in the data, not by string-matching on `kind` in the view,
+ * because Daily Pulse leads with commercial intelligence and files operations
+ * underneath. A business-development user should not have to read past a
+ * connector recovery to find a confirmed project.
+ */
+export type ChangeChannel = 'market' | 'system'
+
 export interface ChangeEvent {
   id: string
   kind: ChangeKind
+  channel: ChangeChannel
   tone: ChangeTone
   title: string
   detail: string
   occurredAt: string
   subjectLabel: string
+  /** Surfaces into "Needs attention today" when true. */
+  needsAttention: boolean
+  /** What to do about it, in the user's terms. Shown only when it needs attention. */
+  actionHint: string | null
+  /** Links the change to an opportunity so the user can act on it. */
+  opportunityId: string | null
 }
 
 export interface CoverageSummary {
@@ -199,13 +237,22 @@ export interface PulseSnapshot {
  * type means a surface cannot forget to handle them — `04_UX_DESIGN_SPEC.md`
  * requires empty, loading, stale, degraded, and failed states to be explicit.
  */
-export type SurfaceState<T> =
+export type SurfaceStatus<T> =
   | { kind: 'loading' }
   | { kind: 'empty'; reason: string }
   | { kind: 'unavailable'; reason: string; blockedBy: string }
   | { kind: 'degraded'; data: T; notice: string; affected: string[] }
   | { kind: 'stale'; data: T; notice: string; asOf: string }
   | { kind: 'ready'; data: T }
+
+/**
+ * `checkedAt` rides on every state, including the failures.
+ *
+ * "When was this last checked?" is one of the four questions a status message
+ * has to answer, and it is the one a user cannot infer from anything else on
+ * screen. A surface that cannot show its data can still show when it tried.
+ */
+export type SurfaceState<T> = SurfaceStatus<T> & { checkedAt: string | null }
 
 /** Provenance of everything on screen. PR 1 is always `fixture`. */
 export interface DataSourceMeta {

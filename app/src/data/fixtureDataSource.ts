@@ -66,16 +66,21 @@ function envelope<T>(
     stale: { notice: string; asOf: string }
   },
 ): SurfaceState<T> {
+  // Every state carries the time of the last check, including the ones that
+  // have no data to show.
+  const checkedAt = CHECKED_AT
+
   switch (scenario) {
     case 'loading':
-      return { kind: 'loading' }
+      return { kind: 'loading', checkedAt }
     case 'empty':
-      return { kind: 'empty', reason: copy.empty }
+      return { kind: 'empty', reason: copy.empty, checkedAt }
     case 'unavailable':
       return {
         kind: 'unavailable',
         reason: copy.unavailable.reason,
         blockedBy: copy.unavailable.blockedBy,
+        checkedAt,
       }
     case 'degraded':
       return {
@@ -83,13 +88,23 @@ function envelope<T>(
         data,
         notice: copy.degraded.notice,
         affected: copy.degraded.affected,
+        checkedAt,
       }
     case 'stale':
-      return { kind: 'stale', data, notice: copy.stale.notice, asOf: copy.stale.asOf }
+      return {
+        kind: 'stale',
+        data,
+        notice: copy.stale.notice,
+        asOf: copy.stale.asOf,
+        checkedAt,
+      }
     case 'ready':
-      return { kind: 'ready', data }
+      return { kind: 'ready', data, checkedAt }
   }
 }
+
+/** When the platform last attempted a collection cycle. */
+const CHECKED_AT = '2026-08-17T06:15:00Z'
 
 export function createFixtureDataSource(
   scenario: FixtureScenario = 'ready',
@@ -98,22 +113,25 @@ export function createFixtureDataSource(
     meta: fixtureMeta,
 
     async getPulse(): Promise<SurfaceState<PulseSnapshot>> {
+      // State copy answers four questions in order: what happened, do you need
+      // to act, what happens next, and when this was last checked (`checkedAt`,
+      // added by `envelope`). Technical causes go in `blockedBy`, never in the
+      // headline.
       return envelope<PulseSnapshot>(scenario, pulseFixture, {
-        empty:
-          'Nothing has changed across the monitored accounts since your last visit. This is a real answer, not a failure — the surface says so rather than showing an empty list.',
+        empty: 'No material changes have been identified since your last visit.',
         unavailable: {
           reason:
-            'The daily pulse cannot be assembled because the most recent collection cycle did not complete.',
-          blockedBy: 'Collection cycle incomplete',
+            'The last collection cycle did not finish, so today’s changes have not been assembled. Nothing is required from you — the next cycle will retry automatically.',
+          blockedBy: 'Collection cycle did not complete',
         },
         degraded: {
           notice:
-            'One source failed its last two runs, so coverage for the accounts below is incomplete. What is shown is accurate; it is not complete.',
+            'One source has failed twice, so a few accounts may be missing changes. What is shown is accurate but incomplete.',
           affected: ['Example Confectionery Group', 'Regional permit index'],
         },
         stale: {
           notice:
-            'No collection cycle has completed in the last 26 hours. You are looking at the last good snapshot, not current state.',
+            'No cycle has completed for over a day, so this is the last good snapshot rather than current state.',
           asOf: '2026-08-15T06:15:00Z',
         },
       })
@@ -121,24 +139,20 @@ export function createFixtureDataSource(
 
     async getOpportunities(): Promise<SurfaceState<Opportunity[]>> {
       return envelope<Opportunity[]>(scenario, opportunityFixtures, {
-        empty:
-          'No opportunities match the current view. Nothing has been hidden or filtered away silently.',
+        empty: 'There are no open opportunities to review.',
         unavailable: {
           reason:
-            'Opportunities cannot be listed because scoring has not run against the current taxonomy version.',
+            'Opportunities have not been ranked yet, so the list cannot be shown. Nothing is required from you — ranking is queued and will run automatically.',
           blockedBy: 'Scoring run pending',
         },
         degraded: {
           notice:
-            'Scores below were computed before the most recent evidence arrived for two opportunities. Rankings may shift once scoring re-runs.',
-          affected: [
-            'Example Snack Foods, Inc.',
-            'Example Cold Chain Partners',
-          ],
+            'Two opportunities were ranked before their newest evidence arrived, so their position may change.',
+          affected: ['Example Snack Foods, Inc.', 'Example Cold Chain Partners'],
         },
         stale: {
           notice:
-            'These rankings are from the last completed scoring run. Newer evidence has been collected but not yet scored.',
+            'These rankings are from the last completed run. Newer evidence has arrived but has not been scored yet.',
           asOf: '2026-08-15T06:15:00Z',
         },
       })

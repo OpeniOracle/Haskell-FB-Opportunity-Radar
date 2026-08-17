@@ -13,11 +13,11 @@ export function useSurfaceData<T>(
   load: () => Promise<SurfaceState<T>>,
   deps: readonly unknown[],
 ): SurfaceState<T> {
-  const [state, setState] = useState<SurfaceState<T>>({ kind: 'loading' })
+  const [state, setState] = useState<SurfaceState<T>>({ kind: 'loading', checkedAt: null })
 
   useEffect(() => {
     let active = true
-    setState({ kind: 'loading' })
+    setState({ kind: 'loading', checkedAt: null })
 
     load()
       .then((next) => {
@@ -28,8 +28,9 @@ export function useSurfaceData<T>(
         setState({
           kind: 'unavailable',
           reason:
-            'This surface could not be loaded. The failure has been surfaced rather than shown as an empty result.',
+            'This surface could not be loaded. Nothing is required from you — reloading the page will try again.',
           blockedBy: error instanceof Error ? error.message : 'Unknown error',
+          checkedAt: null,
         })
       })
 

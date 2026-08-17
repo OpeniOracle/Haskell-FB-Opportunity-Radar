@@ -29,8 +29,8 @@
   --c-border-interactive: #8a8177;
 
   --c-text: #1e1c19;
-  --c-text-secondary: #57514a;
-  --c-text-muted: #7d766d;
+  --c-text-secondary: #4d473f;
+  --c-text-muted: #6f685f;
   --c-text-inverse: #faf8f5;
 
   /* ---- Accent: deep petrol. Industrial, not consumer-tech. ---- */
@@ -143,8 +143,8 @@
     --c-border-interactive: #857f76;
 
     --c-text: #eceae6;
-    --c-text-secondary: #b3aea6;
-    --c-text-muted: #8b857d;
+    --c-text-secondary: #c2bcb3;
+    --c-text-muted: #979088;
     --c-text-inverse: #14161a;
 
     --c-accent: #6fb3bf;
@@ -168,7 +168,7 @@
     --c-attention-bg: #2d1a17;
     --c-attention-border: #57312b;
 
-    --c-neutral-status: #b3aea6;
+    --c-neutral-status: #c2bcb3;
     --c-neutral-status-bg: #22262c;
     --c-neutral-status-border: #3a4048;
 
@@ -194,8 +194,8 @@
   --c-border-interactive: #857f76;
 
   --c-text: #eceae6;
-  --c-text-secondary: #b3aea6;
-  --c-text-muted: #8b857d;
+  --c-text-secondary: #c2bcb3;
+  --c-text-muted: #979088;
   --c-text-inverse: #14161a;
 
   --c-accent: #6fb3bf;
@@ -219,7 +219,7 @@
   --c-attention-bg: #2d1a17;
   --c-attention-border: #57312b;
 
-  --c-neutral-status: #b3aea6;
+  --c-neutral-status: #c2bcb3;
   --c-neutral-status-bg: #22262c;
   --c-neutral-status-border: #3a4048;
 

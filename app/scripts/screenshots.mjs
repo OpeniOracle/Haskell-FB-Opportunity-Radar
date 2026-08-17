@@ -101,20 +101,96 @@ const server = createServer(async (req, res) => {
   }
 })
 
-const VIEWPORTS = [
-  { name: 'desktop', width: 1440, height: 1000, scale: 2 },
-  { name: 'mobile', width: 390, height: 844, scale: 3 },
-]
+const DESKTOP = { name: 'desktop', width: 1440, height: 1000, scale: 2 }
+const MOBILE = { name: 'mobile', width: 390, height: 844, scale: 2 }
 
+/**
+ * Shots are declared rather than looped so each one can specify its own
+ * interaction. `fullPage: false` is used where the point is what fits above the
+ * fold — the ten-minute test is about what a user sees on arrival.
+ */
 const SHOTS = [
-  { name: 'pulse', path: '/' },
-  { name: 'opportunities', path: '/opportunities' },
-  { name: 'opportunities-degraded', path: '/opportunities?state=degraded' },
-  { name: 'opportunities-unavailable', path: '/opportunities?state=unavailable' },
-  { name: 'pulse-empty', path: '/?state=empty' },
+  { name: 'pulse-desktop-light', viewport: DESKTOP, theme: 'light', path: '/' },
+  {
+    name: 'opportunities-desktop-light',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/opportunities',
+  },
+  {
+    name: 'pulse-desktop-light-abovefold',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/',
+    fullPage: false,
+  },
+  {
+    name: 'opportunities-filtered',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/opportunities',
+    async act(page) {
+      await page.selectOption('select >> nth=1', 'confirmed')
+      await page.selectOption('select >> nth=6', 'newest_evidence')
+      await page.waitForTimeout(150)
+    },
+  },
+  {
+    name: 'opportunity-drawer',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/opportunities',
+    fullPage: false,
+    async act(page) {
+      await page.getByRole('button', { name: /^Review opportunity/ }).first().click()
+      await page.waitForSelector('[role="dialog"]')
+      await page.waitForTimeout(200)
+    },
+  },
+  { name: 'pulse-desktop-dark', viewport: DESKTOP, theme: 'dark', path: '/' },
+  {
+    name: 'opportunities-desktop-dark',
+    viewport: DESKTOP,
+    theme: 'dark',
+    path: '/opportunities',
+  },
+  { name: 'pulse-mobile-light', viewport: MOBILE, theme: 'light', path: '/' },
+  {
+    name: 'opportunities-mobile-light',
+    viewport: MOBILE,
+    theme: 'light',
+    path: '/opportunities',
+  },
+  {
+    name: 'mobile-navigation',
+    viewport: MOBILE,
+    theme: 'light',
+    path: '/opportunities',
+    fullPage: false,
+  },
+  { name: 'pulse-mobile-dark', viewport: MOBILE, theme: 'dark', path: '/' },
+  {
+    name: 'state-empty',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/?state=empty',
+    fullPage: false,
+  },
+  {
+    name: 'state-degraded',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/opportunities?state=degraded',
+    fullPage: false,
+  },
+  {
+    name: 'state-unavailable',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/opportunities?state=unavailable',
+    fullPage: false,
+  },
 ]
-
-const THEMES = ['light', 'dark']
 
 await mkdir(outDir, { recursive: true })
 await new Promise((resolve) => server.listen(PORT, resolve))
@@ -123,38 +199,29 @@ console.log(`Serving dist/ on http://localhost:${PORT}`)
 const browser = await chromium.launch()
 
 try {
-  for (const viewport of VIEWPORTS) {
-    for (const theme of THEMES) {
-      const context = await browser.newContext({
-        viewport: { width: viewport.width, height: viewport.height },
-        deviceScaleFactor: viewport.scale,
-        colorScheme: theme,
-        reducedMotion: 'reduce',
-      })
-      const page = await context.newPage()
+  for (const shot of SHOTS) {
+    const context = await browser.newContext({
+      viewport: { width: shot.viewport.width, height: shot.viewport.height },
+      deviceScaleFactor: shot.viewport.scale,
+      colorScheme: shot.theme,
+      reducedMotion: 'reduce',
+    })
+    const page = await context.newPage()
 
-      for (const shot of SHOTS) {
-        // Only the two primary surfaces need both themes and both viewports;
-        // the state variants are captured once each, on desktop light.
-        const isVariant = shot.name.includes('-')
-        if (isVariant && !(viewport.name === 'desktop' && theme === 'light')) continue
+    await page.goto(`http://localhost:${PORT}${shot.path}`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('main', { state: 'visible' })
+    // Let the fixture promise resolve into a rendered surface.
+    await page.waitForTimeout(250)
 
-        await page.goto(`http://localhost:${PORT}${shot.path}`, {
-          waitUntil: 'networkidle',
-        })
-        await page.waitForSelector('main', { state: 'visible' })
-        // Let the fixture promise resolve into a rendered surface.
-        await page.waitForTimeout(250)
+    if (shot.act) await shot.act(page)
 
-        const file = isVariant
-          ? `${shot.name}.png`
-          : `${shot.name}-${viewport.name}-${theme}.png`
-        await page.screenshot({ path: join(outDir, file), fullPage: true })
-        console.log(`  captured ${file}`)
-      }
+    await page.screenshot({
+      path: join(outDir, `${shot.name}.png`),
+      fullPage: shot.fullPage !== false,
+    })
+    console.log(`  captured ${shot.name}.png`)
 
-      await context.close()
-    }
+    await context.close()
   }
 } finally {
   await browser.close()
