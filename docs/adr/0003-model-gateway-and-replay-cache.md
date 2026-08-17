@@ -1,6 +1,8 @@
 # ADR 0003 — All model calls go through a gateway with a replay cache
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** D2
+**Status: Accepted** · **Approved via:** D2a — all AI model access routes through a single
+controlled gateway. **The provider and model tier are not selected**; that is D2b/V1, open
+with IT and procurement. · **Relates to:** D2a, D2b
 
 ## Context
 
@@ -22,9 +24,37 @@ provider credentials. It enforces schema-constrained output, resolves prompts fr
 versioned registry, applies cost and rate limits, redacts before send, and records the
 full call.
 
-Critically, it maintains a **replay cache keyed by
-`(content_hash, task, prompt_version, model, schema_version)`**. A cache hit returns the
-stored output verbatim.
+Critically, it maintains a **replay cache keyed by every effective input**. A cache hit
+returns the stored output verbatim.
+
+```text
+replay_key = hash(
+    content_hash,                -- the evidence bytes
+    preprocessing_version,       -- extractor / OCR version that produced the text
+    task,                        -- extract | classify | align | summarize | cluster
+    provider, model,             -- provider-side identity
+    model_parameters,            -- temperature, top_p, max_tokens, seed, tool config
+    system_instructions_hash,    -- the system prompt itself, not just its label
+    prompt_version,              -- the task prompt template version
+    schema_version,              -- the output contract
+    taxonomy_version,            -- sectors, capabilities, families, event types
+    structured_context_digest    -- injected account / facility / prior-signal context
+)
+```
+
+**An incomplete key is worse than no cache**, because it serves stale output as if it
+were fresh. The v0.1 formulation of this ADR omitted preprocessing version, taxonomy
+version, model parameters, system instructions, and injected context — all of which
+change the output while leaving that narrower key unchanged.
+
+`structured_context_digest` is the component most easily forgotten and the most
+dangerous. Classification prompts include resolved account and facility context, so the
+same article legitimately classifies differently once a facility resolves. Without it in
+the key, the cache would pin the pre-resolution answer forever.
+
+Each row stores the components as well as the hash, so a version bump can be scoped
+precisely — "reprocess everything affected by taxonomy v3" is a query, not a full
+recompute.
 
 Consequences of that key: reprocessing unchanged evidence returns byte-identical
 classifications at near-zero cost; a prompt or model version bump becomes an explicit,
@@ -42,7 +72,11 @@ mechanism" true structurally rather than by convention.
 - **Determinism through temperature 0 alone.** Rejected: not actually deterministic
   across provider-side updates, which is precisely the case that matters.
 - **Caching keyed on prompt text.** Rejected: a whitespace edit invalidates the world.
-  Versioned prompt identity is the stable key.
+  Versioned prompt identity is the stable key — with the system prompt hashed separately,
+  because it changes independently of the task template.
+- **A narrower key (content + prompt version + model + schema version).** Rejected in the
+  reconciliation pass: five further inputs change the output while leaving that key
+  unchanged.
 
 ## Consequences
 

@@ -1,6 +1,8 @@
 # ADR 0005 — Unresolved is a valid terminal state for entity resolution
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** C1, C12, C13, D13
+**Status: Accepted in part** · **Approved via:** D18 — the time-bounded, evidence-backed
+ownership corollary is approved. The conservative-resolution ladder itself remains
+**Proposed** pending Gate G-4. · **Relates to:** C1, C12, C13, D13, D18
 
 ## Context
 
@@ -35,11 +37,22 @@ recorded as a successful outcome rather than an error. Unresolved candidates acc
 in `organization_candidates` and surface in an admin queue, where a human approval
 becomes a durable rule that improves every future run.
 
-Two corollaries. The global unique index on `lower(canonical_name)` is dropped (C12):
+Three corollaries. The global unique index on `lower(canonical_name)` is dropped (C12):
 two legitimately distinct entities may share a name, and forcing a merge at the storage
-layer is the failure this ADR exists to prevent. And related-entity structure is modeled
-explicitly (D13) — bottlers, co-manufacturers, and NA subsidiaries are separate
-organizations with typed relationships, not aliases of the brand owner.
+layer is the failure this ADR exists to prevent. Source verification produced a live
+example — searching for Niagara Bottling surfaces several unrelated registrants whose
+names begin "Niagara", none of which is the bottler.
+
+Related-entity structure is modeled explicitly (D13) — bottlers, co-manufacturers, and
+North American subsidiaries are separate organizations with typed relationships, not
+aliases of the brand owner. Coca-Cola Consolidated is not an alias of The Coca-Cola
+Company; it is the entity that operates the plants.
+
+And relationships are **time-bounded and evidence-backed** (C24, D18). Verification found
+four completed corporate reorganizations across the fifteen pilot accounts in roughly
+twenty months, with two more in flight. Resolution therefore takes an as-at date: a 2023
+Poland Spring project resolves to Nestlé Waters North America, a 2026 one to Primo
+Brands. A current-state pointer would silently reattribute the first to the second.
 
 ## Alternatives considered
 
@@ -56,6 +69,22 @@ human effort compounds into durable rules rather than being spent repeatedly.
 
 Bad: coverage looks lower early on, and the unresolved queue is real work in Phase 1.
 That work is bounded and front-loaded, and it is the honest version of the number.
+
+## A rejected external proposal
+
+An adversarial automation review proposed a pilot exit criterion of "95% of conflicting
+entity data automatically resolved using confidence scoring/temporal decay without
+requiring a human review queue." **Rejected.** A resolution *percentage* can always be met
+by lowering the threshold, which makes a wrong merge cheaper than an honest unresolved
+record — the exact inversion this ADR exists to prevent. The cost is asymmetric: a missed
+match costs one opportunity, a bad merge corrupts an account timeline and every score
+computed from it.
+
+The metric is instead **zero incorrect merges** on the adversarial set, with unresolved
+rate reported but not targeted. The review's own worked example makes the case: in its
+scenario, a correction reattributes a facility expansion from PepsiCo to an independent
+bottler — and the correct automated behavior is to hold both hypotheses until the
+correction is processed, not to force a resolution within a quota.
 
 ## Revisit when
 

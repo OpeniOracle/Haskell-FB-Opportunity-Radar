@@ -1,6 +1,9 @@
 # ADR 0001 — Modular monolith over microservices for the pilot
 
-**Status:** Proposed · **Ratified at:** Gate G-4 · **Relates to:** D1, D2
+**Status: Accepted** · **Approved via:** D1 (separate application sharing identity and
+infrastructure) and D2a (platform architecture). The vendor selections behind it — **D2b**,
+covering AI provider, identity provider, PostgreSQL hosting, and object storage — **remain
+open and are IT's to make**. · **Relates to:** D1, D2a, D2b
 
 ## Context
 
@@ -30,6 +33,16 @@ object storage holds raw evidence.
 
 The A/B split is for blast radius and deploy independence. The C split is a security
 boundary and is not negotiable on volume grounds.
+
+Runtime B is internally partitioned into **queue classes** — `collect`, `extract`,
+`resolve`, `classify`, `score`, `notify`, `maintain` — each with its own concurrency
+limit, so one saturated stage cannot starve the others. The governing rule for
+transactions is one sentence: **a database transaction never spans a network call, and a
+job is never enqueued outside the transaction that produced its cause.** Delivery from
+the transactional outbox is at-least-once, so every consumer is idempotent on a natural
+key. Full responsibilities, queue and transaction boundaries, outbox behavior, failure
+isolation, and the gateway's five collection profiles are specified in
+`docs/design/10_DESIGN_RESPONSE.md` §4.4–4.6.
 
 ## Alternatives considered
 
