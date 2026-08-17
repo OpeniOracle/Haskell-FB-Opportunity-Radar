@@ -1,6 +1,11 @@
 # Phase 1 Implementation Plan
 
-Haskell Food & Beverage Opportunity Radar · Version 0.1 · **For engineering review**
+Haskell Food & Beverage Opportunity Radar · Version 0.2 · **For engineering review**
+
+**v0.2** consolidates the PR sequence from 24 to 10 implementation PRs plus a parallel
+spike track, and reconciles the surface inventory at **seven surfaces**, not six. Every
+epic, dependency, acceptance test, conflict-register mapping, and authorization boundary
+from v0.1 is preserved unchanged.
 
 Authorized by **D1** (separate application), **D2a** (platform architecture), and the
 **D9 framework**. Companion to `10_DESIGN_RESPONSE.md`, `12_PILOT_SOURCE_COVERAGE_MATRIX.md`,
@@ -28,7 +33,7 @@ tells the truth about what is and is not being watched.
 
 | # | Deliverable |
 | --- | --- |
-| 1 | Deployable frontend application shell with Netlify branch previews, rendering all six Phase 1 surfaces |
+| 1 | Deployable frontend application shell with Netlify branch previews, rendering all **seven** Phase 1 surfaces |
 | 2 | Canonical schema for organizations, facilities, sources, runs, attempts, evidence, and the research-claim staging layer |
 | 3 | Egress gateway as the sole outbound network path, with allowlist, SSRF protection, and rate limiting |
 | 4 | Connector framework with logical runs, retry attempts, parked messages, and circuit breakers |
@@ -72,8 +77,9 @@ import is a data operation later, not a schema change.
 
 ### 1.5 Completion boundary — Phase 1 is done when
 
-1. The application renders all six surfaces from a **real database**, not fixtures, for the
-   surfaces backed by real data (Company/Facility, Evidence, Source Health & Coverage).
+1. The application renders all seven surfaces, with those backed by real data — Company,
+   Facility, Evidence, Source Health & Coverage — served from a **real database** rather
+   than fixtures.
 2. At least **three public API connectors** have run on schedule for **two full expected
    cadence cycles each** with no manual intervention.
 3. Re-running any connector against unchanged content produces **zero new evidence rows and
@@ -104,9 +110,9 @@ P1a  (no vendor selection required — Netlify-renderable)
   E-A1 Repo & CI foundation
     └─ E-A2 Design system & app shell
          └─ E-A3 Domain types & fixture data layer
-              └─ E-A4 Six surfaces on fixtures  ◀── FIRST NETLIFY MILESTONE
+              └─ E-A4 Seven surfaces on fixtures  ◀── PR 1 renders the first four
                    └─ E-A5 Accessibility & responsive pass
-  E-A6 Connector dry-run spike (independent; no decision required)
+  E-A6 Connector dry-run spike  ── TRACK S, parallel, gated by nothing
 
 P1b  (requires V3 PostgreSQL hosting; V4 for raw archiving)
   E-B1 Schema & migration harness
@@ -133,9 +139,9 @@ P1c  (integration)
 | **E-A1** Repo & CI foundation | Monorepo layout, typed language toolchain, linting, formatting, test runner, CI on every PR, Netlify build config with branch previews | — | A PR from a fork-free branch produces a Netlify preview URL; CI fails on a lint or type error; no secrets in the repo |
 | **E-A2** Design system & app shell | Tokens (colour, type, spacing), layout primitives, navigation, empty/loading/error/stale states, theme handling | E-A1 | Every state has a rendered component in a component gallery; contrast passes WCAG 2.2 AA in both themes |
 | **E-A3** Domain types & fixture data layer | Types generated from `platform.schema.json` + the delta proposal; a `DataSource` interface with a fixture adapter; the API-adapter seam | E-A1 | Types compile against the schema; swapping adapters is one build-time flag; **no surface imports fixtures directly** |
-| **E-A4** Six surfaces on fixtures | Daily Pulse, Opportunities, Company & Facility, Evidence detail, Source Health & Coverage, Saved Pursuits & Watches | E-A2, E-A3 | All six render from fixtures on a Netlify preview; every surface shows its empty, loading, and degraded states; **Opportunities is visibly labelled as illustrative** |
+| **E-A4** Seven surfaces on fixtures | Daily Pulse, Opportunities, Company, Facility, Evidence detail, Source Health & Coverage, Saved Pursuits & Watches (§11.2) | E-A2, E-A3 | All seven render from fixtures on a Netlify preview; every surface shows its empty, loading, and degraded states; **Opportunities is visibly labelled as illustrative** |
 | **E-A5** Accessibility & responsive | Keyboard paths, focus states, semantic regions, colour-independent status, mobile review layouts | E-A4 | Automated a11y scan clean; keyboard-only walkthrough of all six surfaces; status meaning survives a greyscale screenshot |
-| **E-A6** Connector dry-run spike | Non-production script: resolve ~30 newsroom/IR endpoints, record feed/sitemap/HTML shape, re-confirm 15 CIKs against EDGAR | **Nothing** | A written report updating every *Unverified* cell in the coverage matrix; **writes to no Haskell system** |
+| **E-A6** Connector dry-run spike | Non-production script: resolve ~30 newsroom/IR endpoints, record feed/sitemap/HTML shape, re-confirm 15 CIKs against EDGAR | **Nothing — runs in parallel with PR 1 and PR 2, gated by neither** | A written report updating every *Unverified* cell in the coverage matrix; **writes to no Haskell system** |
 | **E-B1** Schema & migration harness | Canonical tables per the delta proposal; migration runner; forward migration from empty **and** from the v0.1 baseline | **V3** | Migration suite passes from empty and from the v0.1 fixture; rollback tested; temporal, confidence-axis, and interval constraints enforced by the database |
 | **E-B2** Audit, access control, retention | `audit_events` on every mutation; role model; `data_sensitivity_class`; retention job | E-B1 | Every mutating operation writes an audit row in an integration run; a restricted-class row is unreachable from the API surface |
 | **E-B3** Egress gateway | Sole outbound path: allowlist, DNS/IP validation, redirect policy, byte/MIME caps, per-host rate limits, robots posture, full telemetry | E-B1 | Non-allowlisted host, plain HTTP, private IP, and DNS-rebind fixtures all fail closed and are logged; **no other module can open a socket** (enforced in CI) |
@@ -205,6 +211,12 @@ uncalled, so Phase 2 wires a provider in rather than retrofitting a boundary.
 
 **Depends on no decision and can begin immediately.** It is a non-production spike that
 reads public endpoints and writes to no Haskell system.
+
+**It runs as a parallel track (Track S), not as a numbered implementation PR.** It starts
+on day one alongside PR 1, is gated by nothing, and blocks nothing. Its output is a
+documentation change to the coverage matrix, so it can merge at any point without touching
+application code. Sequencing it behind the frontend work — as v0.1 did by placing it at
+PR 8 — would delay the programme's largest unknown for no reason.
 
 Per endpoint, record: whether it resolves; whether it offers RSS/Atom, JSON Feed, sitemap,
 structured HTML, or plain HTML; whether it requires JavaScript rendering; robots posture;
@@ -381,14 +393,17 @@ adapter implements, and it stays as the test double.
 
 ### 11.2 Surfaces
 
-| Surface | Phase 1 content | Data source at Phase 1 end |
-| --- | --- | --- |
-| **Daily Pulse** | What changed since your last visit; coverage banner; freshness | Live (evidence-level change) |
-| **Opportunities** | Queue and detail drawer, score explanation layout, evidence links | **Fixtures, visibly labelled illustrative** — no opportunities exist yet |
-| **Company & Facility** | Account summary, related entities, facility list and detail, timeline, coverage status | **Live** |
-| **Evidence detail** | Source, retrieval and publication time, excerpt, locator, access mode, temporal precision and basis, correction relationships | **Live** |
-| **Source Health & Coverage** | Two panels, never merged: connector health; expected coverage per account | **Live** |
-| **Saved Pursuits & Watches** | Saved views, watch list, action affordances | Live for the view mechanics; empty of opportunities |
+**Seven surfaces**, reconciled in §11.4.
+
+| # | Surface | Route | Nav | Phase 1 content | Data source at Phase 1 end |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **Daily Pulse** | `/` | Primary | What changed since your last visit; coverage banner; freshness | Live (evidence-level change) |
+| 2 | **Opportunities** | `/opportunities`, `/opportunities/:id` | Primary | Queue and detail drawer, score explanation layout, evidence links | **Fixtures, visibly labelled illustrative** — no opportunities exist yet |
+| 3 | **Company** | `/accounts`, `/accounts/:id` | Primary | Account summary, related entities, facility list, timeline, coverage status, provisional scope class | **Live** |
+| 4 | **Facility** | `/facilities/:id` | **Contextual** | Facility detail, operating status, identifiers, evidence timeline, operator as at date | **Live** |
+| 5 | **Evidence detail** | `/evidence/:id` | **Contextual** | Source, retrieval and publication time, excerpt, locator, access mode, temporal precision and basis, correction relationships | **Live** |
+| 6 | **Source Health & Coverage** | `/admin/health` | Primary | Two panels, never merged: connector health; expected coverage per account | **Live** |
+| 7 | **Saved Pursuits & Watches** | `/views` | Primary | Saved views, watch list, action affordances | Live for the view mechanics; empty of opportunities |
 
 ### 11.3 Provisional classification in the interface
 
@@ -397,6 +412,29 @@ classification appears, and provisional accounts are excluded from relevance met
 Confirming a classification is a **data change, not a code change** (D11).
 
 ---
+
+### 11.4 Surface inventory reconciliation
+
+v0.1 said "six surfaces" while naming seven things, because it combined Company and
+Facility into one row. **The correct count is seven distinct surfaces across five primary
+navigation entries and two contextual routes.**
+
+- **Five primary navigation entries** in Phase 1: Pulse, Opportunities, Company,
+  Source Health & Coverage, Saved Pursuits & Watches.
+- **Two contextual surfaces** with their own routes and no navigation entry: **Facility**
+  and **Evidence detail**.
+
+This is not a simplification for the pilot — it follows the approved design.
+`10_DESIGN_RESPONSE.md` §5.2 states that facilities "intentionally have no top-level
+entry — they are reached from Accounts, Opportunities, and Map," and `04_UX_DESIGN_SPEC.md`
+requires that evidence be revealed progressively rather than browsed as a list. Both are
+full surfaces with their own layouts, states, and acceptance criteria; neither is a
+destination a user navigates to cold.
+
+Three primary entries from `04`'s navigation — Market Trends, Map, and Briefings — are
+**not built in Phase 1**, because all three depend on signals, opportunities, or alerting.
+The navigation reserves their positions and renders them as explicitly unavailable rather
+than hiding them, so the eventual shape is visible from the first preview.
 
 ## 12. UX direction
 
@@ -447,73 +485,119 @@ visible focus, semantic regions, map results mirrored as a synchronized list.
 
 ## 14. Proposed PR sequence
 
-Small, reviewable, each independently mergeable. **No PR mixes schema, connector, and UI
-changes.**
+**Ten implementation PRs plus one parallel spike track**, consolidated from the 24-PR
+sequence in v0.1. Every epic, dependency, acceptance test, and register mapping above is
+preserved; only the packaging changed.
 
-| # | PR | Epic | Reviewable in | Needs |
+The consolidation holds three separations that must not be collapsed: **schema is never
+mixed with connectors**, **connectors are never mixed with production UI integration**, and
+**nothing that requires a vendor selection is bundled with anything that does not**.
+
+### Track S — Connector dry-run spike *(parallel, starts day one)*
+
+| PR | Scope | Epic | Gated by | Merges |
 | --- | --- | --- | --- | --- |
-| 1 | Repo scaffold, CI, Netlify config | E-A1 | 30 min | — |
-| 2 | Design tokens, layout primitives, state components, component gallery | E-A2 | 1 h | — |
-| 3 | Domain types generated from schema + `DataSource` interface + fixture adapter | E-A3 | 1 h | — |
-| 4 | Pulse and Opportunities surfaces on fixtures | E-A4 | 1 h | — |
-| 5 | Company, Facility, and Evidence surfaces on fixtures | E-A4 | 1 h | — |
-| 6 | Source Health & Coverage, Saved Pursuits surfaces on fixtures | E-A4 | 45 min | **← FIRST NETLIFY MILESTONE** |
-| 7 | Accessibility and responsive pass | E-A5 | 45 min | — |
-| 8 | Connector dry-run spike + coverage-matrix update | E-A6 | 1 h | — |
-| 9 | Migration harness + reference data + sources/runs/attempts | E-B1 | 1 h | **V3** |
-| 10 | Evidence, temporal model, access modes, evidence relationships | E-B1, E-B6 | 1.5 h | V3 |
-| 11 | Organizations, facilities, time-bounded ownership, seeded pilot accounts | E-B8 | 1 h | V3 |
-| 12 | Research-claim staging + activation gate + staged graph files | E-B7 | 1 h | V3 |
-| 13 | Audit events, roles, sensitivity class, retention job | E-B2 | 1 h | V3 |
-| 14 | Egress gateway + SSRF/allowlist tests | E-B3 | 1.5 h | V3 |
-| 15 | Connector framework: logical runs, attempts, parked queue, breakers | E-B4 | 1.5 h | V3 |
-| 16 | SEC EDGAR connector + fixtures | E-B5 | 1 h | V3 |
-| 17 | openFDA + FSIS recalls connectors + fixtures | E-B5 | 1 h | V3 |
-| 18 | FSIS MPI establishments + EPA FRS identity connectors | E-B5 | 1 h | V3 |
-| 19 | Extraction, hashing, locators, raw archive | E-B6 | 1.5 h | V3, **V4** |
-| 20 | Source health, cadence baselines, expected coverage | E-C1 | 1.5 h | V3 |
-| 21 | Change ledger and read models | E-C2 | 1 h | V3 |
-| 22 | D9 instrumentation | E-C4 | 1 h | V3 |
-| 23 | Auth adapter + surfaces switched to the API adapter | E-C3 | 1 h | **V2** |
-| 24 | Failure-injection suite | E-C5 | 1 h | V3 |
+| **S1** | Non-production spike: resolve ~30 newsroom/IR endpoints, record machine-readability verdicts, re-confirm 15 CIKs against EDGAR; update the coverage matrix | E-A6 | **Nothing** | Any time — documentation only |
 
-PRs 1–8 need **no vendor selection at all** and can start immediately.
+**S1 runs alongside PR 1 and PR 2 and is gated by neither.** It writes to no Haskell
+system, touches no application code, and blocks nothing. It closes V10 and V13, the
+programme's largest remaining unknown, and its findings feed D5 and D13.
+
+### Implementation PRs
+
+| PR | Scope | Epics | Gated by | Review size |
+| --- | --- | --- | --- | --- |
+| **1** | **Application shell and first Netlify preview.** Frontend scaffold, CI, Netlify configuration with branch previews, design tokens, responsive shell, navigation and route structure, typed fixture adapter behind the `DataSource` interface, **Daily Pulse** and **Opportunities** surfaces, visible illustrative-data labelling | E-A1, E-A2, E-A3, E-A4 (part) | **Nothing** | Large but coherent — one reviewable subject: "does the application shell work and look right" |
+| **2** | **Remaining fixture-backed surfaces.** Company, Facility, Evidence detail, Source Health & Coverage, Saved Pursuits & Watches; responsive and accessibility validation across all seven | E-A4 (rest), E-A5 | **Nothing** | Medium |
+| **3** | **Database schema and migrations.** Migration harness; the full data-model sequence from §7, steps 1–12, with constraints landing alongside their tables. **DDL only — no connectors, no application logic** | E-B1 | **V3** | Large, single-subject |
+| **4** | **Audit, access control, retention, and the egress gateway.** `audit_events` on every mutation, role model, sensitivity classes, retention job; egress gateway with allowlist, SSRF protection, redirect policy, caps, rate limits, robots posture, and the CI rule forbidding network imports elsewhere | E-B2, E-B3 | V3 | Medium — the security boundary reviewed as one unit |
+| **5** | **Connector framework and public-source connectors.** Logical runs, retry attempts, parked queue, circuit breakers, the seven-state status model; SEC EDGAR, openFDA, FSIS recalls, FSIS MPI establishments, EPA FRS. **All unauthenticated public APIs** | E-B4, E-B5 | V3 | Large |
+| **6** | **Evidence preservation, extraction, and research staging.** Raw archive, content hashing, native-PDF-then-OCR, locators, the full temporal model with precision and basis, access modes, evidence families and correction relationships; research-claim staging with the fail-closed activation gate and both pilot graph files staged | E-B6, E-B7 | V3, **V4** | Large |
+| **7** | **Identity graph and authenticated access.** Resolution ladder, durable approved mappings, the 15 pilot accounts seeded from the coverage matrix, time-bounded ownership with as-at-date attribution; `AuthAdapter` wired to the selected identity provider | E-B8, auth half of E-C3 | V3; **V2 for the auth half** | Medium |
+| **8** | **Health, coverage, change ledger, and D9 instrumentation.** Per-source cadence baselines, anomaly detection, `account_source_expectations` seeded, the two independent metric families; `change_events` and read projections; D9 session, adoption, presented-set, action, and outcome capture | E-C1, E-C2, E-C4 | V3 | Large |
+| **9** | **Live-data adapters and production surfaces.** Swap the fixture adapter for the API adapter on Company, Facility, Evidence, Source Health & Coverage, and Pulse. **Opportunities stays fixture-backed and labelled** | E-C3 | V2, V3, V4 | Medium |
+| **10** | **Failure-injection suite.** Tests 1, 2, 3, and 7 from `10` §8.7 running in CI against staging fixtures | E-C5 | V3 | Small |
+
+### What each separation protects
+
+- **PR 3 is schema only.** A migration reviewed alongside a connector gets reviewed as a
+  connector, and the constraints — temporal precision, confidence guardrails, half-open
+  intervals — are exactly what a reviewer must not skim.
+- **PR 9 is the only PR that changes what real users see with real data**, so the switch
+  from fixtures to live data is a single, revertible commit rather than a drift.
+- **PRs 1, 2, and S1 need no vendor selection at all** and can proceed while IT works
+  through V1–V4.
+
+### If a vendor selection lags
+
+**PR 7 splits cleanly if V2 lags behind V3.** The identity graph — resolution, seeding,
+time-bounded ownership — depends only on V3 and can merge as **PR 7a**, leaving the
+`AuthAdapter` as **PR 7b** when the identity provider lands. This is the only PR in the
+sequence with two different blockers, and it is the only one designed to split.
+
+If V4 lags, PR 6 can merge with the filesystem-backed archive implementation and switch to
+object storage behind the same interface, since `EvidenceArchive` is an adapter. **PR 3 has
+no such fallback** — V3 is a hard gate for everything from PR 3 onward.
 
 ---
 
 ## 15. First Netlify-renderable milestone
 
-**PR 6 — all six surfaces rendering from typed fixtures on a Netlify branch preview.**
+**PR 1.**
 
-At that point a reviewer opens a URL and sees the real product: Pulse with change and
-coverage, the opportunity queue and its evidence drawer, company and facility views, the
-evidence record with its temporal precision and access mode, health and coverage as two
-separate panels, and saved pursuits. Every empty, loading, stale, and degraded state is
-reachable.
+### What PR 1 renders
 
-**What it proves:** the information architecture, the visual direction, the surface
-inventory, and the honesty markers — all reviewable by the market leader and BD before a
-single connector exists.
+| Element | Detail |
+| --- | --- |
+| **Application shell** | Responsive layout, header, primary navigation with all destinations visible — including Market Trends, Map, and Briefings marked explicitly unavailable |
+| **Route structure** | Every Phase 1 route resolves, including the two contextual routes; unbuilt routes render a defined "not in Phase 1" state rather than a 404 |
+| **Design tokens** | Colour, type, spacing, elevation; light and dark; all status colours paired with icon and text so meaning survives greyscale |
+| **Daily Pulse** | Change since last visit, coverage banner, freshness indicator, empty and degraded states |
+| **Opportunities** | Queue with cards, detail drawer, score-component layout, evidence-count affordance — all fixture-backed |
+| **Illustrative-data labelling** | A persistent, visible marker on every fixture-backed surface, plus an unmissable label on Opportunities. A reviewer cannot mistake fixtures for real findings |
+| **Fixture adapter** | The typed `DataSource` implementation the API adapter will later replace — the same interface, not a throwaway mock |
 
-**What it does not prove:** anything about data. It is fixture-backed, visibly marked, and
-carries no real evidence. Reaching it requires **no vendor selection, no database, no
-connector, and no AI provider**.
+### What PR 1 does not include
+
+No database, no authentication, no AI provider, no live connectors, no real evidence, and
+no vendor selection of any kind. The preview is fixture-only by construction: the `api`
+adapter is not buildable without configuration that previews do not have.
+
+### What it proves and does not prove
+
+It proves the information architecture, the visual direction, the navigation model, and the
+honesty markers — reviewable by the market leader and BD in week one, before a connector
+exists. It proves nothing about data.
+
+**PR 2 completes the surface inventory** — Company, Facility, Evidence, Source Health &
+Coverage, and Saved Pursuits — so the full seven-surface product is reviewable on a preview
+before any backend work begins.
 
 ---
 
 ## 16. Sequencing summary
 
 ```text
-week 0 ──▶ PRs 1-8   no vendor selection required
-              PR 6 = FIRST NETLIFY MILESTONE
-              PR 8 = dry-run spike closes V10/V13
+day 1 ──┬── PR 1  application shell + Pulse + Opportunities  ◀── FIRST NETLIFY PREVIEW
+        │     └── PR 2  remaining five surfaces + a11y       ◀── FULL SURFACE INVENTORY
+        │
+        └── TRACK S1  connector dry-run spike (parallel, gated by nothing)
+                      closes V10 and V13; feeds D5 and D13
    │
-   ├─ V3 lands ──▶ PRs 9-22   schema, gateway, connectors, evidence, health, D9
-   ├─ V4 lands ──▶ PR 19      raw archiving
-   ├─ V2 lands ──▶ PR 23      real auth, live surfaces  ──▶ D9 baseline clock starts
-   └─ V1 lands ──▶ Phase 2    classification, signals, opportunities
+   ├─ V3 lands ──▶ PR 3  schema and migrations
+   │                 └─ PR 4  audit, access, retention, egress gateway
+   │                      └─ PR 5  connector framework + public connectors
+   │                           └─ PR 8  health, coverage, change ledger, D9
+   │                                └─ PR 10 failure injection
+   ├─ V4 lands ──▶ PR 6  evidence, extraction, research staging
+   ├─ V2 lands ──▶ PR 7  identity graph + authenticated access  (7a/7b if V2 lags)
+   │
+   └─ V2+V3+V4 ─▶ PR 9  live-data adapters and production surfaces
+                        └── D9 twelve-week measurement window starts here
+   │
+   └─ V1 lands ──▶ Phase 2  classification, signals, opportunities
 ```
 
-The D9 twelve-week measurement window begins at **PR 23**, not at merge and not at PR 6.
-The weeks 1–4 measured baseline requires PR 22 complete, or metrics will be missing from
-the period whose entire purpose is to produce them.
+The D9 measurement window begins at **PR 9**, not at merge and not at PR 1. The weeks 1–4
+measured baseline requires PR 8 complete, or metrics will be missing from the period whose
+entire purpose is to produce them.
