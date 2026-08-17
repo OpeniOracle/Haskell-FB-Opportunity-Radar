@@ -1,0 +1,39 @@
+# Netlify configuration — Haskell F&B Opportunity Radar
+#
+# Phase 1 PR 1 is a fixture-backed frontend. There is no API, no database, and no
+# outbound network call from the browser, which is why the CSP below can forbid
+# connections entirely. When PR 9 introduces the API-backed DataSource, `connect-src`
+# is the line that must change, deliberately and in review.
+
+[build]
+  base = "app"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Chromium is only needed for the local screenshot script, never for the build.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+
+# SPA fallback. Duplicated in app/public/_redirects so the behaviour survives if
+# this file is ever replaced by UI-configured settings.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+    # This preview contains fabricated example content and must not be indexed.
+    X-Robots-Tag = "noindex, nofollow"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

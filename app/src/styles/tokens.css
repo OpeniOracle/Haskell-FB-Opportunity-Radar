@@ -1,0 +1,240 @@
+/*
+ * Design tokens — Haskell Food & Beverage Opportunity Radar
+ *
+ * PROVISIONAL. D10 (design system and brand assets) is OPEN. Every value here is
+ * a considered placeholder chosen to satisfy 04_UX_DESIGN_SPEC.md, not an
+ * approved Haskell brand token. When D10 lands, the accent ramp and typeface
+ * stack are the only things that should need to change — everything else is
+ * structural.
+ *
+ * Principles this palette enforces:
+ *   - Warm, low-chroma ground. Not stark white, not blue-grey "SaaS default".
+ *   - ONE accent, used sparingly, never decoratively.
+ *   - Status colour is always paired with an icon and a text label
+ *     (04 §Accessibility: "status meanings remain understandable without colour").
+ *   - No gradients on surfaces. No glass. No purple-indigo AI-dashboard palette.
+ */
+
+:root {
+  /* ---- Neutrals: warm, so the product reads as paper rather than screen ---- */
+  --c-ground: #faf8f5;
+  --c-surface: #ffffff;
+  --c-surface-sunken: #f3efe9;
+  --c-surface-raised: #ffffff;
+  --c-border: #e4ddd3;
+  --c-border-strong: #cfc5b8;
+  /* Boundary of an interactive control. Meets WCAG 1.4.11 (3:1) against both
+     --c-surface and --c-ground; --c-border-strong is a divider emphasis and is
+     deliberately lighter, so it is never used to delimit a control. */
+  --c-border-interactive: #8a8177;
+
+  --c-text: #1e1c19;
+  --c-text-secondary: #57514a;
+  --c-text-muted: #7d766d;
+  --c-text-inverse: #faf8f5;
+
+  /* ---- Accent: deep petrol. Industrial, not consumer-tech. ---- */
+  --c-accent: #0f5661;
+  --c-accent-hover: #0b444d;
+  --c-accent-soft: #e2eef0;
+  --c-accent-border: #a9cbd1;
+
+  /* ---- Status. Each pairs with an icon + label in <StatusPill>. ---- */
+  --c-confirmed: #14532d;
+  --c-confirmed-bg: #e6f0e9;
+  --c-confirmed-border: #b3d1bf;
+
+  --c-developing: #7a4a06;
+  --c-developing-bg: #fbf0dd;
+  --c-developing-border: #e3c48e;
+
+  --c-emerging: #1e4a6d;
+  --c-emerging-bg: #e6eef5;
+  --c-emerging-border: #a9c4da;
+
+  --c-attention: #8a2b22;
+  --c-attention-bg: #fbeae7;
+  --c-attention-border: #e5b1a9;
+
+  --c-neutral-status: #4a453e;
+  --c-neutral-status-bg: #efeae3;
+  --c-neutral-status-border: #d4cabc;
+
+  /* ---- Illustrative-data marker. Deliberately unmissable. ---- */
+  --c-illustrative: #6b3fa0;
+  --c-illustrative-bg: #f2ecfa;
+  --c-illustrative-border: #c9b3e3;
+  --c-illustrative-stripe: rgba(107, 63, 160, 0.14);
+
+  /* ---- Type ---- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --fs-display: 1.9rem;
+  --fs-title: 1.3rem;
+  --fs-heading: 1.05rem;
+  --fs-body: 0.95rem;
+  --fs-small: 0.85rem;
+  --fs-label: 0.72rem;
+
+  --lh-tight: 1.2;
+  --lh-normal: 1.55;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --ls-label: 0.07em;
+  --ls-display: -0.02em;
+
+  /* ---- Space: 4px base, generous by default ---- */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+  --sp-8: 4rem;
+
+  /* ---- Shape and depth: restrained. One soft shadow, one radius family. ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgba(30, 28, 25, 0.04), 0 2px 8px rgba(30, 28, 25, 0.04);
+  --shadow-raised: 0 2px 4px rgba(30, 28, 25, 0.06), 0 8px 24px rgba(30, 28, 25, 0.07);
+
+  --border-hairline: 1px solid var(--c-border);
+
+  /* ---- Layout ---- */
+  --nav-width: 232px;
+  --content-max: 1180px;
+  --reading-max: 68ch;
+
+  /* ---- Motion. Respects prefers-reduced-motion below. ---- */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  --focus-ring: 2px solid var(--c-accent);
+  --focus-offset: 2px;
+}
+
+/* Dark theme. Explicit choice wins in both directions; system default is honoured. */
+:root[data-theme='dark'],
+:root:not([data-theme='light']) {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --c-ground: #14161a;
+    --c-surface: #1b1e23;
+    --c-surface-sunken: #101216;
+    --c-surface-raised: #22262c;
+    --c-border: #2f343b;
+    --c-border-strong: #434a53;
+    --c-border-interactive: #857f76;
+
+    --c-text: #eceae6;
+    --c-text-secondary: #b3aea6;
+    --c-text-muted: #8b857d;
+    --c-text-inverse: #14161a;
+
+    --c-accent: #6fb3bf;
+    --c-accent-hover: #8ac6d1;
+    --c-accent-soft: #16323a;
+    --c-accent-border: #2c5c68;
+
+    --c-confirmed: #86c8a1;
+    --c-confirmed-bg: #16281d;
+    --c-confirmed-border: #2c5138;
+
+    --c-developing: #e0b269;
+    --c-developing-bg: #2b2113;
+    --c-developing-border: #57432250;
+
+    --c-emerging: #8fbadd;
+    --c-emerging-bg: #16232e;
+    --c-emerging-border: #2b465c;
+
+    --c-attention: #e79c90;
+    --c-attention-bg: #2d1a17;
+    --c-attention-border: #57312b;
+
+    --c-neutral-status: #b3aea6;
+    --c-neutral-status-bg: #22262c;
+    --c-neutral-status-border: #3a4048;
+
+    --c-illustrative: #c4a7e8;
+    --c-illustrative-bg: #241c33;
+    --c-illustrative-border: #453562;
+    --c-illustrative-stripe: rgba(196, 167, 232, 0.12);
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.24);
+    --shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --c-ground: #14161a;
+  --c-surface: #1b1e23;
+  --c-surface-sunken: #101216;
+  --c-surface-raised: #22262c;
+  --c-border: #2f343b;
+  --c-border-strong: #434a53;
+  --c-border-interactive: #857f76;
+
+  --c-text: #eceae6;
+  --c-text-secondary: #b3aea6;
+  --c-text-muted: #8b857d;
+  --c-text-inverse: #14161a;
+
+  --c-accent: #6fb3bf;
+  --c-accent-hover: #8ac6d1;
+  --c-accent-soft: #16323a;
+  --c-accent-border: #2c5c68;
+
+  --c-confirmed: #86c8a1;
+  --c-confirmed-bg: #16281d;
+  --c-confirmed-border: #2c5138;
+
+  --c-developing: #e0b269;
+  --c-developing-bg: #2b2113;
+  --c-developing-border: #574322;
+
+  --c-emerging: #8fbadd;
+  --c-emerging-bg: #16232e;
+  --c-emerging-border: #2b465c;
+
+  --c-attention: #e79c90;
+  --c-attention-bg: #2d1a17;
+  --c-attention-border: #57312b;
+
+  --c-neutral-status: #b3aea6;
+  --c-neutral-status-bg: #22262c;
+  --c-neutral-status-border: #3a4048;
+
+  --c-illustrative: #c4a7e8;
+  --c-illustrative-bg: #241c33;
+  --c-illustrative-border: #453562;
+  --c-illustrative-stripe: rgba(196, 167, 232, 0.12);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.24);
+  --shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+}

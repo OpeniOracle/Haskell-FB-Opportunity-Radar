@@ -1,0 +1,4 @@
+# SPA fallback. Client-side routing owns every path, so any unmatched request
+# must return index.html with a 200 rather than Netlify's 404 page — otherwise a
+# deep link such as /opportunities would fail on a hard refresh.
+/*  /index.html  200

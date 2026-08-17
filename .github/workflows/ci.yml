@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Application checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # `npm ci`, not `npm install` — the lockfile is the contract, and a build
+      # that silently resolves different versions is not the build we reviewed.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  boundaries:
+    name: Milestone boundary checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # These mirror the constraints on this milestone. They are cheap, and they
+      # fail loudly if a later change crosses a line that was meant to hold.
+      - name: No database migrations in the application tree
+        run: |
+          if ls migrations 2>/dev/null | grep -q .; then
+            echo "A migrations/ directory has appeared. PR 1 must not add migrations."
+            exit 1
+          fi
+
+      - name: No environment or secret files committed
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)|\.pem$|\.p12$|id_rsa'; then
+            echo "A credential-shaped file is tracked in git."
+            exit 1
+          fi
+
+      - name: Netlify configuration is present and points at the app
+        run: |
+          grep -q 'base = "app"' netlify.toml
+          grep -q 'publish = "dist"' netlify.toml
+          grep -q 'status = 200' netlify.toml
+          test -f app/public/_redirects
