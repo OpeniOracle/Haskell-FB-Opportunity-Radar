@@ -170,7 +170,13 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
           checkedAt={null}
         />
       ) : (
-        <div className="opp-list">
+        <div className="opp-list" aria-labelledby="opp-results">
+          {/* Card titles are h3. Without this the document jumps h1 → h3, which
+              leaves a screen-reader user navigating by heading with no anchor for
+              the list itself. Visually hidden: nothing about the layout changes. */}
+          <h2 className="visually-hidden" id="opp-results">
+            Matching opportunities
+          </h2>
           {visible.map((opportunity) => (
             <OpportunityCard
               key={opportunity.id}

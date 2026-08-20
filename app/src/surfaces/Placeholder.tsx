@@ -4,7 +4,11 @@ import { UnavailableState } from '@/components/SurfaceStates'
 import type { ReservedDestination, SurfaceDescriptor } from '@/routes'
 
 /**
- * Placeholder for a Phase 1 surface whose fixture-backed build is roadmap PR 2.
+ * Placeholder for a Phase 1 surface that is registered but not yet built.
+ *
+ * All seven surfaces are built, so nothing routes here today. It stays as the
+ * failure mode for a route added to the inventory ahead of its component: a
+ * scheduled surface should say it is scheduled rather than 404.
  *
  * It uses the established `UnavailableState`, not a bespoke panel, so the
  * not-yet-built case reads the same as every other "we cannot show you this"
@@ -22,9 +26,9 @@ export function SurfacePlaceholder({ surface }: { surface: SurfaceDescriptor }) 
       </header>
 
       <UnavailableState
-        title="Arrives in roadmap PR 2"
-        reason="This is a Phase 1 surface. The route is wired and reachable; the fixture-backed surface itself is built in roadmap PR 2, which covers the remaining five surfaces."
-        blockedBy="Scheduled work — roadmap PR 2 (plan §14), epics E-A4 and E-A5"
+        title="Scheduled, not yet built"
+        reason="This is a Phase 1 surface. The route is wired and reachable; the fixture-backed surface itself has not been built yet."
+        blockedBy="Scheduled work — the surface is registered in the inventory ahead of its component"
         checkedAt={null}
         icon={surface.icon}
         role="status"
@@ -55,9 +59,10 @@ export function SurfacePlaceholder({ surface }: { surface: SurfaceDescriptor }) 
 /**
  * A navigation position reserved for a later phase.
  *
- * Deliberately worded differently from the PR 2 placeholder. "Not part of
- * Phase 1" and "arrives in roadmap PR 2" are different facts, and a reviewer
- * counting Phase 1 surfaces must be able to tell them apart at a glance.
+ * Deliberately worded differently from the scheduled-surface placeholder. "Not
+ * part of Phase 1" and "a Phase 1 surface that is not built yet" are different
+ * facts, and a reviewer counting Phase 1 surfaces must be able to tell them
+ * apart at a glance.
  */
 export function ReservedPlaceholder({
   destination,

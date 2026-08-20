@@ -260,3 +260,329 @@ export interface DataSourceMeta {
   illustrative: boolean
   description: string
 }
+
+/* ==================================================================== */
+/* Roadmap PR 2 — the five remaining Phase 1 surfaces                    */
+/* ==================================================================== */
+
+/* ------------------------------------------------------ Licence gating */
+
+/**
+ * An attribute that exists in the model but cannot be populated yet.
+ *
+ * D14-L (event-data licence review) is **blocked pending external legal
+ * review**. Plan §13 names four things it blocks: the trade-show attendance
+ * import, the engagement layer, tier attributes and `account_strategy` scoring.
+ * Those fields are modelled as this type rather than as `string | null`, because
+ * a nullable string invites a fixture author to fill it in "just for the demo".
+ * There is no value member on this type at all — the interface can only render
+ * the reason.
+ */
+export interface UnavailableAttribute {
+  readonly available: false
+  /** Shown to the user. Never a value, never a placeholder that looks like one. */
+  reason: string
+  /** What would unblock it. */
+  blockedBy: string
+}
+
+/* ------------------------------------------------- Organization graph */
+
+/**
+ * Relationship vocabulary, taken verbatim from `organization_relationships` in
+ * `11_SCHEMA_DELTA_PROPOSAL.sql`.
+ */
+export type OrganizationRelationshipType =
+  | 'parent_subsidiary'
+  | 'brand_owner'
+  | 'division'
+  | 'joint_venture'
+  | 'franchise_bottler'
+  | 'co_manufacturer'
+  | 'former_parent'
+  | 'minority_interest'
+
+export type OwnershipPercentBasis = 'stated' | 'approximate' | 'inferred'
+
+/**
+ * A time-bounded, evidence-backed relationship between two organizations.
+ *
+ * ADR 0005 is **Accepted in part** via D18 — this corollary is the accepted
+ * half. Intervals are HALF-OPEN: `fromDate` is INCLUSIVE, `toDate` is
+ * **EXCLUSIVE**, `null` means open-ended. A relationship that ends on the day
+ * another begins therefore has no overlap and no gap.
+ */
+export interface OrganizationRelationship {
+  id: string
+  counterpartyId: string
+  counterpartyName: string
+  relationship: OrganizationRelationshipType
+  /** Required by the schema for `minority_interest`, null otherwise. */
+  ownershipPercent: number | null
+  ownershipPercentBasis: OwnershipPercentBasis | null
+  /** Inclusive. */
+  fromDate: string | null
+  /** EXCLUSIVE. `null` = still in force. */
+  toDate: string | null
+  /** The evidence record that establishes it. */
+  evidenceId: string | null
+  note: string | null
+}
+
+/**
+ * A dated event on a company's own timeline.
+ *
+ * `scope` matters and is not decoration. The schema delta is explicit that an
+ * organization-level milestone "belongs to the organization, never against any
+ * individual plant. Facility timelines MAY DISPLAY it for context — but the
+ * platform must not assert it as a facility-specific event." `organization`
+ * scope is what a facility timeline is allowed to borrow and must label as
+ * borrowed.
+ */
+export interface CompanyTimelineEntry {
+  id: string
+  scope: 'organization' | 'facility'
+  kind: 'ownership' | 'operational' | 'evidence' | 'opportunity'
+  title: string
+  detail: string
+  occurredOn: TemporalValue
+  evidenceId: string | null
+  facilityId: string | null
+}
+
+export interface CoverageDetail {
+  expectedSources: string[]
+  observedSources: string[]
+  missingSources: string[]
+  lastCheckedAt: string
+  /** Plain-language reason for any gap. Empty when fully covered. */
+  gapReason: string | null
+}
+
+export interface CompanySummary {
+  id: string
+  canonicalName: string
+  parentName: string | null
+  role: string
+  sectors: string[]
+  scopeClass: ScopeClass
+  scopeClassStatus: ScopeClassStatus
+  facilityCount: number
+  openOpportunityCount: number
+  latestActivityAt: string
+  coverage: CoverageDetail
+  /** D14-L. Never populated. */
+  targetTier: UnavailableAttribute
+  engagement: UnavailableAttribute
+}
+
+/**
+ * A pointer to another record, carrying the label the interface must show.
+ *
+ * An id is an address, not a name. Rendering `fac-fixture-3` where a plant
+ * belongs asks a business-development user to memorise the key space, so a
+ * reference always travels with the words a person would use for it.
+ */
+export interface RecordRef {
+  id: string
+  label: string
+  /** One line of context — a location, a status, a stage. */
+  detail: string | null
+}
+
+export interface Company extends CompanySummary {
+  aliases: string[]
+  relationships: OrganizationRelationship[]
+  facilities: RecordRef[]
+  openOpportunities: RecordRef[]
+  timeline: CompanyTimelineEntry[]
+  /** D14-L. Never populated. */
+  accountStrategyScore: UnavailableAttribute
+}
+
+/* ------------------------------------------------------------ Facility */
+
+export type FacilityResolution = 'confirmed' | 'candidate'
+
+export type FacilityOperatingStatus =
+  | 'operating'
+  | 'under_construction'
+  | 'announced'
+  | 'idle'
+  | 'closed'
+  | 'unknown'
+
+export interface FacilityIdentifier {
+  scheme: string
+  value: string
+  /** Deterministic identifiers come from a registry; source-provided do not. */
+  origin: 'deterministic' | 'source_provided'
+}
+
+export interface FacilityRecord {
+  id: string
+  name: string
+  /** Brand owner. The operator as at a date comes from the ownership graph. */
+  organizationId: string
+  organizationName: string
+  addressLine: string | null
+  locality: string | null
+  region: string | null
+  facilityType: string
+  operatingStatus: FacilityOperatingStatus
+  resolution: FacilityResolution
+  /** Why a candidate is only a candidate. Null when confirmed. */
+  candidateReason: string | null
+  identifiers: FacilityIdentifier[]
+  evidence: RecordRef[]
+  opportunities: RecordRef[]
+  timeline: CompanyTimelineEntry[]
+}
+
+/* ------------------------------------------------------------ Evidence */
+
+export type EvidenceAccessMode =
+  | 'structured_primary'
+  | 'archived_full_text'
+  | 'licensed_full_text'
+  | 'reference_only'
+  | 'metadata_only'
+
+/** ADR 0012 relationship vocabulary, verbatim. */
+export type CorrectionRelationship =
+  | 'corrects'
+  | 'retracts'
+  | 'withdraws'
+  | 'contradicts'
+  | 'supersedes'
+  | 'delays'
+  | 'cancels'
+
+export interface CorrectionLink {
+  relationship: CorrectionRelationship
+  /** The evidence on the other end. Always still readable. */
+  evidenceId: string
+  evidenceTitle: string
+  occurredAt: string
+  note: string
+}
+
+/**
+ * One assertion carried by a piece of evidence.
+ *
+ * `basis` separates what the source said from what the platform concluded. The
+ * UX spec requires that distinction to be visible rather than implied.
+ */
+export interface EvidenceAssertion {
+  id: string
+  statement: string
+  basis: 'source_fact' | 'system_inference'
+  /** Present only for an inference: how it was reached. */
+  inferenceNote: string | null
+}
+
+export interface EvidenceRecord {
+  id: string
+  title: string
+  sourceName: string
+  publisher: string
+  /** Distinct values, never conflated. */
+  publishedAt: TemporalValue
+  retrievedAt: string
+  /** Absent for reference-only and metadata-only access modes. */
+  excerpt: string | null
+  locator: string | null
+  accessMode: EvidenceAccessMode
+  /** What the evidence says about WHEN something happens. */
+  subjectTiming: TemporalValue | null
+  assertions: EvidenceAssertion[]
+  relatedCompany: RecordRef | null
+  relatedFacility: RecordRef | null
+  relatedOpportunity: RecordRef | null
+  /** Named but never linked: the staging queue is not a Phase 1 surface. */
+  relatedClaim: RecordRef | null
+  /** Corrections in both directions; nothing is ever overwritten. */
+  corrections: CorrectionLink[]
+  /** True when a later record supersedes this one. It stays readable. */
+  supersededByEvidenceId: string | null
+}
+
+/* -------------------------------------------- Source health & coverage */
+
+export type ConnectorState =
+  | 'healthy'
+  | 'degraded'
+  | 'action_required'
+  | 'disabled'
+  | 'unsupported'
+
+export interface ConnectorRun {
+  id: string
+  startedAt: string
+  outcome: 'success' | 'partial_success' | 'failure'
+  note: string
+}
+
+export interface ConnectorRecord {
+  id: string
+  name: string
+  state: ConnectorState
+  lastRunAt: string
+  lastOutcome: ConnectorRun['outcome']
+  consecutiveFailures: number
+  lastSuccessfulCollectionAt: string | null
+  /** Hours since the last successful collection, against its cadence. */
+  freshnessHours: number
+  expectedCadenceHours: number
+  /** Failure history is appended, never overwritten. */
+  runHistory: ConnectorRun[]
+  /** A bounded maintenance task, when one is open. Never routine data entry. */
+  maintenance: { task: string; openedAt: string } | null
+}
+
+export interface CompanyCoverageRow {
+  companyId: string
+  companyName: string
+  coverage: CoverageDetail
+}
+
+/**
+ * Two independent metric families.
+ *
+ * ADR 0010 is **Proposed** and D17 is **Open**. This models the separation the
+ * ADR recommends; it does not implement a coverage measurement policy, and the
+ * surface says so.
+ */
+export interface SourceHealthSnapshot {
+  connectors: ConnectorRecord[]
+  coverage: CompanyCoverageRow[]
+  lastCycleCompletedAt: string
+}
+
+/* ------------------------------------------ Saved pursuits and watches */
+
+export type WatchKind = 'company' | 'facility' | 'opportunity'
+
+export interface WatchItem {
+  id: string
+  kind: WatchKind
+  targetId: string
+  label: string
+  context: string
+  addedAt: string
+}
+
+export interface SavedViewRecord {
+  id: string
+  name: string
+  surface: 'opportunities' | 'accounts'
+  /** Human-readable summary of the filters the view carries. */
+  filterSummary: string[]
+  resultCount: number
+  createdAt: string
+}
+
+export interface SavedWorkspace {
+  views: SavedViewRecord[]
+  watches: WatchItem[]
+}

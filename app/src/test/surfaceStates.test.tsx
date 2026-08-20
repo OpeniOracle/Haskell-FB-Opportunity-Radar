@@ -97,3 +97,78 @@ describe('degraded and stale', () => {
     expect(screen.getByText(/Last checked/)).toBeInTheDocument()
   })
 })
+
+/**
+ * All five states on all seven surfaces.
+ *
+ * PR 1 covered Daily Pulse and Opportunities. The five surfaces added in this
+ * milestone have to reach the same bar, so the matrix below drives every route
+ * through every scenario rather than sampling.
+ */
+const ALL_ROUTES = [
+  '/',
+  '/opportunities',
+  '/opportunities/opp-fixture-1',
+  '/accounts',
+  '/accounts/org-fixture-1',
+  '/facilities/fac-fixture-1',
+  '/evidence/ev-fixture-1',
+  '/admin/health',
+  '/views',
+]
+
+describe('every state on every surface', () => {
+  it.each(ALL_ROUTES)('announces the loading state at %s', async (route) => {
+    renderApp(`${route}?state=loading`)
+    const busy = await screen.findByRole('status', { busy: true })
+    expect(busy).toHaveAttribute('aria-live', 'polite')
+    expect(within(busy).getByText(/Loading/)).toBeInTheDocument()
+  })
+
+  it.each(ALL_ROUTES)('shows a recoverable empty state at %s', async (route) => {
+    renderApp(`${route}?state=empty`)
+    const heading = await screen.findByRole('heading', { level: 2 })
+    expect(heading.textContent?.length ?? 0).toBeGreaterThan(0)
+    // What happens next, and when it was last checked — on every surface.
+    expect(screen.getAllByText(/Last checked/).length).toBeGreaterThan(0)
+  })
+
+  it.each(ALL_ROUTES)('explains the unavailable state in plain language at %s', async (route) => {
+    renderApp(`${route}?state=unavailable`)
+    const heading = await screen.findByRole('heading', { level: 2 })
+    expect(heading.textContent).not.toMatch(/taxonomy|null|undefined|error 5\d\d/i)
+    // The technical cause exists but stays behind a disclosure.
+    expect(screen.getByText('Technical detail')).toBeInTheDocument()
+    const details = screen.getByText('Technical detail').closest('details') as HTMLDetailsElement
+    expect(details.open).toBe(false)
+  })
+
+  it.each(ALL_ROUTES)('keeps content readable in the degraded state at %s', async (route) => {
+    renderApp(`${route}?state=degraded`)
+    expect(await screen.findByText(/Partial coverage/)).toBeInTheDocument()
+    // Degraded sits ABOVE content that is still worth reading.
+    expect(screen.getByRole('main').textContent?.length ?? 0).toBeGreaterThan(200)
+  })
+
+  it.each(ALL_ROUTES)('states the as-of time in the stale state at %s', async (route) => {
+    renderApp(`${route}?state=stale`)
+    expect(await screen.findByText(/Showing data from/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Last checked/).length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * An address that names a record that does not exist is a state, not a crash and
+ * not a redirect. It must never fall through to a neighbouring record.
+ */
+describe('unknown record identifiers', () => {
+  it.each([
+    ['/accounts/nope', /No company matches that address/],
+    ['/facilities/nope', /No facility matches that address/],
+    ['/evidence/nope', /No evidence record matches that address/],
+  ])('reports %s as unavailable', async (route, message) => {
+    renderApp(route)
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(screen.getByText(/Unknown identifier: nope/)).toBeInTheDocument()
+  })
+})

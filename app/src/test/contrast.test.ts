@@ -78,6 +78,25 @@ const TEXT_PAIRS: [string, string][] = [
   ['--c-neutral-status', '--c-neutral-status-bg'],
   ['--c-illustrative', '--c-illustrative-bg'],
   ['--c-text-inverse', '--c-accent'],
+
+  /* Combinations introduced by the five surfaces added in roadmap PR 2. Each is
+     real body text somewhere, so each is held to 4.5:1 rather than 3:1. */
+  ['--c-text-secondary', '--c-surface-sunken'],
+  ['--c-neutral-status', '--c-surface-sunken'],
+  /* A missing source and a failed run are named in the status colour on plain
+     card and page grounds, not only inside a tinted pill. */
+  ['--c-attention', '--c-surface'],
+  ['--c-attention', '--c-ground'],
+  ['--c-confirmed', '--c-surface'],
+  /* Correction cards and in-force ownership rows put ordinary prose on a tinted
+     background. */
+  ['--c-text', '--c-attention-bg'],
+  ['--c-text-secondary', '--c-attention-bg'],
+  ['--c-text', '--c-confirmed-bg'],
+  ['--c-text-muted', '--c-confirmed-bg'],
+  ['--c-text-muted', '--c-ground'],
+  /* The system-inference marker on the sunken assertion card. */
+  ['--c-emerging', '--c-surface-sunken'],
 ]
 
 // WCAG 1.4.11: the boundary of an interactive control needs 3:1. Divider

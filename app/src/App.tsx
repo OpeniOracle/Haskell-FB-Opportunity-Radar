@@ -8,16 +8,35 @@ import {
   opportunityDetailPath,
 } from '@/lib/opportunityFilters'
 import { RESERVED_DESTINATIONS, SURFACES } from '@/routes'
+import { CompanyDetail } from '@/surfaces/CompanyDetail'
+import { CompanyList } from '@/surfaces/CompanyList'
+import { EvidenceDetail } from '@/surfaces/EvidenceDetail'
+import { FacilityDetail } from '@/surfaces/FacilityDetail'
 import { Opportunities } from '@/surfaces/Opportunities'
 import { OpportunityDetailPage } from '@/surfaces/OpportunityDetailPage'
 import { NotFound, ReservedPlaceholder, SurfacePlaceholder } from '@/surfaces/Placeholder'
 import { Pulse } from '@/surfaces/Pulse'
+import { SavedViews } from '@/surfaces/SavedViews'
+import { SourceHealth } from '@/surfaces/SourceHealth'
 
-/** Routes with a built surface. Everything else renders its placeholder. */
+/**
+ * Routes with a built surface.
+ *
+ * All seven Phase 1 surfaces are now built, so the placeholder fallback below is
+ * unreachable in practice. It stays as the failure mode for a route registered
+ * in `routes.ts` before its component exists: a scheduled surface should say so,
+ * not 404.
+ */
 const BUILT: Record<string, ReactNode> = {
   '/': <Pulse />,
   '/opportunities': <OpportunitiesRoute />,
   '/opportunities/:opportunityId': <OpportunityDetailPage />,
+  '/accounts': <CompanyList />,
+  '/accounts/:accountId': <CompanyDetail />,
+  '/facilities/:facilityId': <FacilityDetail />,
+  '/evidence/:evidenceId': <EvidenceDetail />,
+  '/admin/health': <SourceHealth />,
+  '/views': <SavedViews />,
 }
 
 /**

@@ -53,3 +53,27 @@ describe('illustrative data marking', () => {
     ).toBeInTheDocument()
   })
 })
+
+/**
+ * The five surfaces added in roadmap PR 2 carry the same contextual marker as
+ * the two merged ones — one in the chrome, one beside the content, nothing said
+ * twice. The routes above exercise the unknown-record state; these use real
+ * fixture ids so the marker is asserted against rendered content.
+ */
+describe('illustrative marking on the record surfaces', () => {
+  it.each([
+    ['/accounts', 'Company'],
+    ['/accounts/org-fixture-1', 'Example Beverage Company'],
+    ['/facilities/fac-fixture-1', 'Example Beverage Southeast Plant'],
+    ['/evidence/ev-fixture-1', 'Example Beverage Company announces Southeast plant investment'],
+    ['/admin/health', 'Source Health & Coverage'],
+    ['/views', 'Saved Pursuits & Watches'],
+  ])('marks %s beside its content', async (path, heading) => {
+    renderApp(path)
+    await screen.findByRole('heading', { level: 1, name: heading })
+    expect(screen.getByRole('note')).toHaveTextContent('Illustrative data')
+    expect(
+      screen.getByText('Fictional examples — not market intelligence'),
+    ).toBeInTheDocument()
+  })
+})
