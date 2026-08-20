@@ -1,15 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderApp } from '@/test/render'
 import { setViewport } from '@/test/setup'
-import { PRIMARY_ROUTES } from '@/routes'
+import { PRIMARY_SURFACES, RESERVED_DESTINATIONS } from '@/routes'
 
 describe('wide-screen navigation', () => {
   it('renders the side rail with a full label per destination', async () => {
     renderApp('/')
     const nav = await screen.findByRole('navigation', { name: 'Primary' })
-    for (const route of PRIMARY_ROUTES) {
-      expect(within(nav).getByRole('link', { name: new RegExp(route.label) })).toBeInTheDocument()
+    for (const surface of PRIMARY_SURFACES) {
+      expect(
+        within(nav).getByRole('link', { name: new RegExp(surface.label) }),
+      ).toBeInTheDocument()
+    }
+    // Reserved positions are visible but grouped apart from the Phase 1 surfaces.
+    for (const destination of RESERVED_DESTINATIONS) {
+      expect(
+        within(nav).getByRole('link', { name: new RegExp(destination.label) }),
+      ).toBeInTheDocument()
     }
     expect(screen.queryByRole('button', { name: /Theme: system/ })).toBeInTheDocument()
   })
@@ -24,10 +33,11 @@ describe('narrow-screen navigation', () => {
     expect(nav).toHaveClass('bottom-nav')
 
     // Every destination carries visible text, not just an icon.
-    for (const route of PRIMARY_ROUTES) {
-      const link = within(nav).getByRole('link', { name: new RegExp(route.shortLabel) })
-      expect(link.textContent?.trim()).toContain(route.shortLabel)
+    for (const surface of PRIMARY_SURFACES) {
+      const link = within(nav).getByRole('link', { name: new RegExp(surface.shortLabel) })
+      expect(link.textContent?.trim()).toContain(surface.shortLabel)
     }
+    expect(within(nav).getAllByRole('link')).toHaveLength(5)
   })
 
   it('keeps exactly one primary landmark', async () => {
@@ -79,5 +89,44 @@ describe('narrow-screen filters', () => {
     await screen.findAllByRole('article')
     const summary = screen.getByText('Filters and sort')
     expect((summary.closest('details') as HTMLDetailsElement).open).toBe(true)
+  })
+})
+
+
+describe('reserved destinations', () => {
+  it('groups them apart from the Phase 1 surfaces on a wide screen', async () => {
+    renderApp('/')
+    const nav = await screen.findByRole('navigation', { name: 'Primary' })
+    expect(within(nav).getByText('Surfaces')).toBeInTheDocument()
+    expect(within(nav).getByText('Later phases')).toBeInTheDocument()
+    expect(within(nav).getAllByText('Reserved')).toHaveLength(3)
+  })
+
+  it('keeps them reachable from a labelled menu on a phone', async () => {
+    const user = userEvent.setup()
+    setViewport('narrow')
+    renderApp('/')
+    await screen.findByRole('navigation', { name: 'Primary' })
+
+    const menu = screen.getByRole('navigation', { name: 'Later phases' })
+    const toggle = within(menu).getByRole('button', { name: /Later/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    for (const destination of RESERVED_DESTINATIONS) {
+      expect(
+        within(menu).getByRole('link', { name: new RegExp(destination.label) }),
+      ).toBeInTheDocument()
+    }
+  })
+
+  it('does not put a reserved destination in the bottom bar', async () => {
+    setViewport('narrow')
+    renderApp('/')
+    const nav = await screen.findByRole('navigation', { name: 'Primary' })
+    for (const destination of RESERVED_DESTINATIONS) {
+      expect(within(nav).queryByText(destination.shortLabel)).toBeNull()
+    }
   })
 })

@@ -92,19 +92,27 @@ export function UnavailableState({
   reason,
   blockedBy,
   checkedAt,
+  icon = 'clock',
+  role = 'alert',
 }: {
   title: string
   reason: string
   blockedBy: string
   checkedAt: string | null
+  icon?: IconName
+  /**
+   * `alert` for something that has gone wrong now. `status` for a surface that is
+   * deliberately not built yet — a scheduled placeholder is not an emergency.
+   */
+  role?: 'status' | 'alert'
 }) {
   return (
     <Panel
       tone="unavailable"
-      icon="clock"
+      icon={icon}
       title={title}
       checkedAt={checkedAt}
-      role="alert"
+      role={role}
     >
       <p className="state__body">{reason}</p>
       <details className="state__detail">

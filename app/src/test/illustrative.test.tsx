@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderApp } from '@/test/render'
-import { ROUTES } from '@/routes'
+import { RESERVED_DESTINATIONS, SURFACES } from '@/routes'
 
 /**
  * The striped ribbon is the persistent marker and must appear on every view,
@@ -11,7 +11,14 @@ import { ROUTES } from '@/routes'
  */
 describe('illustrative data marking', () => {
   const paths = [
-    ...ROUTES.map((r) => r.path.replace(':opportunityId', 'x').replace(':accountId', 'x')),
+    ...SURFACES.flatMap((s) => s.routes).map((r) =>
+      r
+        .replace(':opportunityId', 'opp-fixture-1')
+        .replace(':accountId', 'x')
+        .replace(':facilityId', 'x')
+        .replace(':evidenceId', 'x'),
+    ),
+    ...RESERVED_DESTINATIONS.map((d) => d.path),
     '/no-such-surface',
   ]
 

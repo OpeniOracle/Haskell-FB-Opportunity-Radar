@@ -220,6 +220,8 @@ a {
   border-radius: var(--radius-pill);
   padding: 1px 6px;
   font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  flex: none;
 }
 
 .nav__footer {
@@ -1174,6 +1176,128 @@ a {
   color: var(--c-text-muted);
 }
 
+/* --------------------------------------------- Full-page opportunity detail */
+
+.detail-back {
+  font-size: var(--fs-small);
+  margin-bottom: var(--sp-3);
+}
+
+.detail-back a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  text-decoration: none;
+  font-weight: var(--fw-semibold);
+}
+
+.detail-back a:hover {
+  text-decoration: underline;
+}
+
+.detail-back__icon {
+  width: 13px;
+  height: 13px;
+  transform: rotate(180deg);
+}
+
+.detail__eyebrow {
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  font-weight: var(--fw-semibold);
+}
+
+.detail__band {
+  color: var(--c-accent);
+}
+
+.detail__title {
+  text-wrap: balance;
+  max-width: 32ch;
+}
+
+.detail {
+  max-width: 760px;
+}
+
+.detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 760px;
+  background: var(--c-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-5);
+}
+
+/* The drawer's route into the shareable address. */
+.drawer__full {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+/* ------------------------------------------------- Reserved nav positions */
+
+.nav__link--reserved {
+  color: var(--c-text-muted);
+}
+
+.nav__link--reserved:hover {
+  color: var(--c-text-secondary);
+}
+
+.mobile-more {
+  position: relative;
+  margin-left: auto;
+}
+
+.mobile-more__button {
+  padding: 5px var(--sp-2);
+}
+
+.mobile-more__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  margin: 0;
+  padding: var(--sp-1);
+  list-style: none;
+  min-width: 210px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-interactive);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raised);
+}
+
+.mobile-more__link {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--c-text-secondary);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+}
+
+.mobile-more__link:hover {
+  background: var(--c-surface-sunken);
+  color: var(--c-text);
+}
+
+.mobile-more__link[aria-current='page'] {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+.mobile-more__link .nav__tag {
+  margin-left: auto;
+}
+
 /* ------------------------------------------------------------------ Buttons */
 
 .btn {
@@ -1958,5 +2082,17 @@ a {
   .drawer__head,
   .drawer__body {
     padding: var(--sp-4);
+  }
+
+  .detail {
+  max-width: 760px;
+}
+
+.detail__body {
+    padding: var(--sp-4);
+  }
+
+  .detail__title {
+    max-width: none;
   }
 }

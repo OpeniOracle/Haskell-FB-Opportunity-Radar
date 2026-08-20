@@ -209,7 +209,10 @@ describe('local preview actions', () => {
       screen.getByText(/Pursue, Watch, Assign and Dismiss are not saved/),
     ).toBeInTheDocument()
 
-    for (const node of screen.getAllByText(/saved/i)) {
+    // Scoped to the surface: "Saved Pursuits & Watches" is a navigation entry,
+    // not a persistence claim about a decision.
+    const main = screen.getByRole('main')
+    for (const node of within(main).getAllByText(/saved/i)) {
       expect(node.textContent).toMatch(/not saved/i)
     }
   })

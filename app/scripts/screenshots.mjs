@@ -136,6 +136,32 @@ const SHOTS = [
     },
   },
   {
+    name: 'opportunity-detail-desktop',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/opportunities/opp-fixture-1',
+  },
+  {
+    name: 'opportunity-detail-mobile',
+    viewport: MOBILE,
+    theme: 'light',
+    path: '/opportunities/opp-fixture-1',
+  },
+  {
+    name: 'placeholder-company',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts',
+    fullPage: false,
+  },
+  {
+    name: 'reserved-market-trends',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/trends',
+    fullPage: false,
+  },
+  {
     name: 'opportunity-drawer',
     viewport: DESKTOP,
     theme: 'light',
