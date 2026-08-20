@@ -26,8 +26,8 @@ import type { IconName } from '@/components/Icon'
 export type SurfaceStatus =
   /** Shipped and rendering fixtures. */
   | 'implemented'
-  /** A Phase 1 surface whose fixture-backed build is roadmap PR 2. */
-  | 'pr2'
+  /** A Phase 1 surface whose fixture-backed build is still scheduled. */
+  | 'scheduled'
 
 export interface SurfaceDescriptor {
   id: string
@@ -39,7 +39,11 @@ export interface SurfaceDescriptor {
   routes: string[]
   status: SurfaceStatus
   summary: string
-  /** What the surface will do once built. Shown on the PR 2 placeholders. */
+  /**
+   * What the surface will do once built. Shown on the placeholder a scheduled
+   * surface renders. Empty for every surface now that all seven are built; the
+   * field stays so a later surface can be registered before it exists.
+   */
   scheduled: string[]
 }
 
@@ -73,15 +77,10 @@ export const SURFACES: SurfaceDescriptor[] = [
     icon: 'building',
     placement: 'primary',
     routes: ['/accounts', '/accounts/:accountId'],
-    status: 'pr2',
+    status: 'implemented',
     summary:
       'Account summary, related entities, facility list, timeline, and coverage status.',
-    scheduled: [
-      'Account list with per-account coverage against expected sources',
-      'Time-bounded ownership shown with half-open intervals and as-at-date attribution',
-      'Provisional scope classification rendered as provisional and excluded from relevance metrics',
-      'Facility roll-up reached from the account, and the no-facilities-resolved state',
-    ],
+    scheduled: [],
   },
   {
     id: 'facility',
@@ -90,13 +89,9 @@ export const SURFACES: SurfaceDescriptor[] = [
     icon: 'pin',
     placement: 'contextual',
     routes: ['/facilities/:facilityId'],
-    status: 'pr2',
+    status: 'implemented',
     summary: 'One site: operating status, identifiers, evidence timeline, operator as at a date.',
-    scheduled: [
-      'Facility detail with operating status and identifiers',
-      'Operator attribution as at a chosen date',
-      'Candidate facilities shown as visually distinct from confirmed ones',
-    ],
+    scheduled: [],
   },
   {
     id: 'evidence',
@@ -105,15 +100,10 @@ export const SURFACES: SurfaceDescriptor[] = [
     icon: 'document',
     placement: 'contextual',
     routes: ['/evidence/:evidenceId'],
-    status: 'pr2',
+    status: 'implemented',
     summary:
       'One piece of evidence: source, timing, excerpt, locator, access mode, and corrections.',
-    scheduled: [
-      'Source, retrieval time, publication time, excerpt and locator',
-      'Temporal value rendered at its recorded precision and basis',
-      'Correction relationships shown as supersession, never as an overwrite',
-      'Access mode recorded and displayed',
-    ],
+    scheduled: [],
   },
   {
     id: 'health',
@@ -122,14 +112,10 @@ export const SURFACES: SurfaceDescriptor[] = [
     icon: 'settings',
     placement: 'primary',
     routes: ['/admin/health'],
-    status: 'pr2',
+    status: 'implemented',
     summary:
       'Two panels that are never merged: connector health, and expected coverage per account.',
-    scheduled: [
-      'Per-source run history with failures kept visible rather than overwritten',
-      'Expected coverage per account, named rather than only counted',
-      'An account with every connector healthy but no expected coverage reported as uncovered, not quiet',
-    ],
+    scheduled: [],
   },
   {
     id: 'views',
@@ -138,13 +124,9 @@ export const SURFACES: SurfaceDescriptor[] = [
     icon: 'inbox',
     placement: 'primary',
     routes: ['/views'],
-    status: 'pr2',
+    status: 'implemented',
     summary: 'Saved views, watch list, and action affordances.',
-    scheduled: [
-      'Saved views and watch list mechanics',
-      'Action affordances consistent with the local previews on Opportunities',
-      'Empty of opportunities, because none exist yet in Phase 1',
-    ],
+    scheduled: [],
   },
 ]
 

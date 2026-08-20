@@ -1,9 +1,9 @@
-# 16 — Phase 1 PR 1 Implementation Notes
+# 16 — Phase 1 Implementation Notes (PR 1 and PR 2)
 
-**Status:** Implemented; route inventory and decision-status claims corrected in the reconciliation pass (§14)
-**Scope:** Phase 1 PR 1 — fixture-backed application shell
+**Status:** All seven Phase 1 surfaces implemented against fixtures
+**Scope:** Phase 1 PR 1 (application shell) and roadmap PR 2 (the five remaining surfaces)
 **Milestone plan:** `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md`
-**Version:** 1.3
+**Version:** 2.0
 
 ---
 
@@ -216,13 +216,13 @@ contents. The authoritative inventory is `15_PHASE_1_IMPLEMENTATION_PLAN.md` §1
 
 | # | Surface | Route(s) | Nav | Status |
 |---|---|---|---|---|
-| 1 | Daily Pulse | `/` | Primary | **Built** |
-| 2 | Opportunities | `/opportunities`, `/opportunities/:opportunityId` | Primary | **Built** |
-| 3 | Company | `/accounts`, `/accounts/:accountId` | Primary | Roadmap PR 2 |
-| 4 | Facility | `/facilities/:facilityId` | **Contextual** | Roadmap PR 2 |
-| 5 | Evidence detail | `/evidence/:evidenceId` | **Contextual** | Roadmap PR 2 |
-| 6 | Source Health & Coverage | `/admin/health` | Primary | Roadmap PR 2 |
-| 7 | Saved Pursuits & Watches | `/views` | Primary | Roadmap PR 2 |
+| 1 | Daily Pulse | `/` | Primary | **Built** (PR 1) |
+| 2 | Opportunities | `/opportunities`, `/opportunities/:opportunityId` | Primary | **Built** (PR 1) |
+| 3 | Company | `/accounts`, `/accounts/:accountId` | Primary | **Built** (PR 2) |
+| 4 | Facility | `/facilities/:facilityId` | **Contextual** | **Built** (PR 2) |
+| 5 | Evidence detail | `/evidence/:evidenceId` | **Contextual** | **Built** (PR 2) |
+| 6 | Source Health & Coverage | `/admin/health` | Primary | **Built** (PR 2) |
+| 7 | Saved Pursuits & Watches | `/views` | Primary | **Built** (PR 2) |
 
 A surface may own more than one route. `/opportunities/:id` and `/accounts/:id` are routes
 of their parent surface, **not separate surfaces** — counting them as such is exactly the
@@ -234,7 +234,9 @@ alerting. §11.4: "the navigation reserves their positions and renders them as e
 unavailable rather than hiding them, so the eventual shape is visible from the first
 preview." They are modelled separately in `routes.ts` so they can never be counted among
 the seven again, and their placeholder wording ("Not part of Phase 1") is deliberately
-different from the PR 2 placeholders ("Arrives in roadmap PR 2").
+different from the scheduled-surface placeholder ("Scheduled, not yet built"). All seven
+surfaces are now built, so nothing routes to that placeholder today; it remains as the
+failure mode for a route registered in the inventory ahead of its component.
 
 `*` renders an explicit not-found state rather than redirecting, because a silent redirect
 hides the mistake.
@@ -592,3 +594,170 @@ No roadmap PR 2 surface was implemented — `/accounts`, `/accounts/:id`,
 from the established `UnavailableState`. No real pilot-account name, no PACK EXPO data, no
 network call, no database, no migration, no authentication, no connector, no model call,
 no vendor selection, and no new visual dependency.
+
+---
+
+## 15. Roadmap PR 2 — the five remaining surfaces (v2.0)
+
+The five Phase 1 surfaces that PR 1 left as placeholders are implemented against fixtures,
+and epic **E-A5** (responsive and accessibility validation) is completed across all seven.
+
+### 15.1 What each surface is for
+
+**Company — `/accounts`, `/accounts/:accountId`.** The list is a scanning surface: who,
+what role, how many sites, how many open opportunities, coverage, and when it last moved.
+The detail page is organised around an **as-at date**, because ADR 0005's accepted
+corollary is that relationships are time-bounded, which means "who owns this" and "who
+operates this site" have no answer until you say *when*. The date lives in the URL, so a
+shared link reproduces the same attribution instead of silently re-resolving to today.
+
+**Facility — `/facilities/:facilityId`.** A contextual surface with no navigation entry,
+always reached from a company, an opportunity or an evidence record, and always showing
+where it was reached from. Two distinctions carry the page: candidate versus confirmed
+resolution, and company-level versus site-level events.
+
+**Evidence detail — `/evidence/:evidenceId`.** Provenance with publication and retrieval
+as separate values, content or an explicit withheld state, stated timing at its recorded
+precision, source facts separated from system inferences, and correction relationships.
+
+**Source Health & Coverage — `/admin/health`.** Two panels that are never merged.
+
+**Saved Pursuits & Watches — `/views`.** Saved views, watched records, and rename/delete
+affordances that are local to the preview session and say so.
+
+### 15.2 The rules each surface had to keep honest
+
+**Half-open intervals `[from, to)` — ADR 0005, accepted in part via D18.** `fromDate` is
+inclusive, `toDate` is **exclusive**. The exclusivity is the whole point: a relationship
+ending on the same date another begins produces neither an overlap nor a gap, so asking
+"who owned this on the handover date" returns exactly one answer. An inclusive upper bound
+would return two. `src/lib/ownership.ts` implements this and `src/test/ownership.test.ts`
+tests the boundary from both sides.
+
+The resolution ladder in ADR 0005 is still **Proposed** pending Gate G-4 and is **not**
+implemented. Only the ownership corollary is.
+
+**A demerger is not a clean termination.** The fixture history has three relationship rows
+for one company: two parent edges and a retained `minority_interest`. Recording only the
+ended parent edge would assert a complete separation that did not happen and would lose a
+holding large enough to matter commercially. The interface shows ended relationships
+rather than hiding them, and prints the interval notation — `[2027-06-30, ∞)` — so the
+convention is visible rather than implied.
+
+**A company milestone is not a facility event.** The operational-separation entry is
+`scope: 'organization'` with `facilityId: null`. It appears on the company timeline and
+not on any facility timeline, and the facility page says where such events live. No fixture
+evidence states that any individual site changed hands, and writing one row per plant would
+manufacture that claim once per plant.
+
+**A date is never rendered finer than the source stated it — ADR 0004 / D15, Accepted.**
+A record published in a month renders as that month with "(month precision)"; a record
+dated to a year renders as the year. Rendering either as the first of the period asserts a
+precision the publisher did not give.
+
+**Corrections supersede — ADR 0012 / D24, Accepted.** The superseded record stays readable,
+carries a "Superseded, not replaced" notice, and links to the record that replaced it; the
+replacement links back. Nothing is deleted; what changes is only which record the presented
+view selects.
+
+**Health is not coverage — ADR 0010, Proposed / D17, Open.** Two panels, each stating its
+own question, and a leading notice for the case the ADR exists for: four of six connectors
+healthy while four companies sit below expected coverage. Gaps are **named**, not counted,
+and each carries a plain-language reason. **No coverage measurement policy or threshold is
+defined here** — D17 is open and this surface does not pre-empt it.
+
+**Failures survive recovery.** A recovered connector keeps its failed runs in its history,
+styled as failures. A health trend that silently rewrites itself cannot be trusted.
+
+**Provisional classifications are excluded from relevance metrics — D11, approved
+provisionally.** The account list states which population its denominator counted: three
+count toward relevance metrics and three are provisionally classified and excluded.
+
+### 15.3 What is deliberately unavailable
+
+**D14-L** blocks the trade-show attendance import, the engagement layer, tier attributes
+and `account_strategy` scoring pending an external licence review that has not concluded.
+Target tier, engagement and the account-strategy score are therefore modelled as
+`UnavailableAttribute` — an interface with **no value member at all**, so no fixture author
+can fill one in "just for the demo". They render as "Not available" with the reason and the
+blocker. `src/test/boundaries.test.ts` asserts the shape.
+
+**The research-claim staging queue is not built.** Plan §11.2 scopes Source Health &
+Coverage to two panels and staging is not one of them. An evidence record that references a
+staged claim names it and does **not** link it, because offering a link to a page that does
+not exist is worse than naming the reference plainly.
+
+**Saved views have no owner.** D8 (ownership of tier changes and overrides) is **open**, so
+the surface models no ownership, sharing, assignment or approval. Adding an owner field now
+would encode an answer to a question that has not been decided.
+
+**Nothing persists.** Renames and deletions live in React state for the life of the tab. No
+`localStorage`, no request, no storage of any kind — and the surface says so at the top
+rather than letting a reviewer infer durability from a control that appears to work.
+
+### 15.4 Two changes to merged surfaces
+
+Both are additive and both carry regression tests in
+`src/test/mergedSurfaceRegression.test.tsx`.
+
+**A visually hidden `<h2>` inside two result lists.** Card titles are `<h3>`, so the
+document jumped `h1 → h3` and left a screen-reader user navigating by heading with no
+anchor for the list. The heading is `visually-hidden`, so the approved layout is unchanged.
+Applied to Opportunities and to the new Company list for consistency.
+
+**An `empty` branch on the full-page opportunity detail.** The page handled loading,
+unavailable, degraded and stale but not empty, so `?state=empty` rendered a back link and
+nothing else. "No opportunities to open" is distinct from "No such opportunity": the first
+means nothing has been ranked, the second means the set exists and this id is not in it.
+
+### 15.5 An id is an address, not a name
+
+Related-record links originally rendered the identifier — `fac-fixture-3` where a plant
+belongs. That asks a business-development user to memorise the key space, which is the
+opposite of what a related-records list is for. A reference now travels as a `RecordRef`
+carrying the label and one line of context; the id remains the address and the `title`
+attribute. `src/test/sevenSurfaces.test.tsx` asserts that no fixture identifier appears as
+visible text on any record surface.
+
+### 15.6 E-A5 — responsive and accessibility validation
+
+Run across all seven surfaces, not sampled.
+
+- One `main` landmark and exactly one `h1` per surface; no skipped heading levels.
+- Every icon `aria-hidden`; every status pill carries a text label; every control has an
+  accessible name.
+- The skip link is the first tab stop everywhere; content is reachable by tabbing.
+- Narrow viewport renders the bottom navigation on every surface.
+- Driven in a real browser at **320 / 390 / 768 / 1024 / 1440 px**: no horizontal overflow
+  on any of the nine routes, and a visible focus ring on every tab stop.
+
+Two genuine overflows were found this way and fixed, both with CSS-contract regression
+tests:
+
+1. **Daily Pulse at 320 px** — a `1fr` grid column sized by its content rather than by the
+   container pushed the review button past the viewport edge. Fixed with `minmax(0, 1fr)`
+   and `min-width: 0`; the button now takes its own row when the label no longer fits.
+2. **Source Health at 320 px** — the connector name and its state pill were a rigid
+   `space-between` row. Fixed by letting the head wrap.
+
+The as-at date field reports four tab stops with no accessible name in a naive audit. That
+is Chromium splitting one native `<input type="date">` into shadow-DOM segments; the
+control itself is labelled "Attribution as at" and carries the standard focus ring.
+
+Contrast is asserted against the token file in CI for both themes. Eleven new colour
+pairings introduced by these surfaces were added to that list; every one clears 4.5:1 in
+light and dark.
+
+### 15.7 Verification
+
+Clean `npm ci`, strict typecheck, ESLint with zero warnings, **485 tests across 22 files**,
+production build, and the boundary suite green — including the real-name check, which
+forced the trade show to be described by what D14-L blocks rather than named.
+
+### 15.8 What this milestone deliberately did not do
+
+No Market Trends, Map or Briefings. No migration, infrastructure, D2b vendor selection,
+authentication, model call, connector, or production data. No API-backed `DataSource`. No
+new dependency of any kind — D10 is open, so every surface composes the existing token
+scale, palette and radius family. No decision status was changed, and
+`13_GATE_1_DECISION_PACKET.md` was not modified.

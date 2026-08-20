@@ -73,18 +73,9 @@ describe('surface inventory', () => {
     ])
   })
 
-  it('marks exactly the surfaces PR 1 built as implemented', () => {
-    expect(SURFACES.filter((s) => s.status === 'implemented').map((s) => s.label)).toEqual([
-      'Daily Pulse',
-      'Opportunities',
-    ])
-    expect(SURFACES.filter((s) => s.status === 'pr2').map((s) => s.label)).toEqual([
-      'Company',
-      'Facility',
-      'Evidence detail',
-      'Source Health & Coverage',
-      'Saved Pursuits & Watches',
-    ])
+  it('marks every Phase 1 surface as implemented', () => {
+    expect(SURFACES.filter((s) => s.status === 'implemented')).toHaveLength(7)
+    expect(SURFACES.filter((s) => s.status === 'scheduled')).toHaveLength(0)
   })
 })
 
@@ -105,16 +96,18 @@ describe('rendering', () => {
 
   it.each([
     ['/accounts', 'Company'],
-    ['/accounts/acc-1', 'Company'],
-    ['/facilities/fac-1', 'Facility'],
-    ['/evidence/ev-1', 'Evidence detail'],
     ['/admin/health', 'Source Health & Coverage'],
     ['/views', 'Saved Pursuits & Watches'],
-  ])('renders the PR 2 placeholder at %s', async (path, label) => {
+  ])('renders the built surface at %s', async (path, label) => {
     renderApp(path)
     expect(await screen.findByRole('heading', { level: 1, name: label })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: 'Arrives in roadmap PR 2' }))
-      .toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 2, name: /not yet built/i })).toBeNull()
+  })
+
+  it('renders a record surface at each contextual route', async () => {
+    renderApp('/accounts/org-fixture-1')
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 2, name: /not yet built/i })).toBeNull()
   })
 
   it.each(RESERVED_DESTINATIONS.map((d) => [d.path, d.label]))(
@@ -122,17 +115,17 @@ describe('rendering', () => {
     async (path, label) => {
       renderApp(path)
       expect(await screen.findByRole('heading', { level: 1, name: label })).toBeInTheDocument()
-      // Distinct wording from the PR 2 placeholder — different facts.
+      // Distinct wording from the scheduled-surface placeholder — different facts.
       expect(
         screen.getByRole('heading', { level: 2, name: 'Not part of Phase 1' }),
       ).toBeInTheDocument()
-      expect(screen.queryByText('Arrives in roadmap PR 2')).toBeNull()
+      expect(screen.queryByText('Scheduled, not yet built')).toBeNull()
     },
   )
 
   it('does not offer a nav entry for a contextual surface', async () => {
-    renderApp('/facilities/fac-1')
-    await screen.findByRole('heading', { level: 1, name: 'Facility' })
+    renderApp('/facilities/fac-fixture-1')
+    await screen.findByRole('heading', { level: 1 })
     const nav = screen.getByRole('navigation', { name: 'Primary' })
     expect(within(nav).queryByRole('link', { name: /Facility/ })).toBeNull()
     expect(within(nav).queryByRole('link', { name: /Evidence/ })).toBeNull()

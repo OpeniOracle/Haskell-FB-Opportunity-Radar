@@ -1945,6 +1945,931 @@ a {
 
 /* ------------------------------------------------------------------ Mobile */
 
+
+/* ============================================================== Roadmap PR 2
+ *
+ * Company, Facility, Evidence detail, Source Health & Coverage, and Saved
+ * Pursuits & Watches. No new tokens, no new dependencies — D10 is open, so
+ * everything below composes the existing scale, palette and radius family.
+ * ========================================================================= */
+
+/* --------------------------------------------------------- Detail scaffolding */
+
+.detail--wide {
+  max-width: var(--content-max);
+}
+
+.detail__section {
+  margin-top: var(--sp-6);
+}
+
+.detail__h2 {
+  font-size: var(--fs-heading);
+  font-weight: var(--fw-semibold);
+  padding-bottom: var(--sp-2);
+  border-bottom: var(--border-hairline);
+  margin-bottom: var(--sp-4);
+}
+
+.detail__pills {
+  margin-top: var(--sp-3);
+}
+
+/* A candidate site and a superseded record both carry a standing qualification,
+   so the qualification is a property of the whole page, not one banner in it. */
+.detail--candidate,
+.detail--superseded {
+  border-left: 3px solid var(--c-developing);
+  padding-left: var(--sp-5);
+  margin-left: calc(var(--sp-5) * -1);
+}
+
+.detail--superseded {
+  border-left-color: var(--c-attention);
+}
+
+/* ------------------------------------------------------------- Company list */
+
+.company-row {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+  justify-content: space-between;
+  background: var(--c-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.company-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.company-row__title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-display);
+  text-wrap: balance;
+}
+
+.company-row__title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.company-row__title a:hover {
+  color: var(--c-accent);
+  text-decoration: underline;
+}
+
+.company-row__aside {
+  flex: 0 0 auto;
+}
+
+/* -------------------------------------------------------- As-at date control */
+
+.as-of {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.as-of__icon {
+  width: 16px;
+  height: 16px;
+  color: var(--c-text-secondary);
+  flex: 0 0 auto;
+}
+
+.as-of__field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.as-of__label {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-secondary);
+}
+
+.as-of__input {
+  font: inherit;
+  font-size: var(--fs-small);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-interactive);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.as-of__reset {
+  margin-left: auto;
+}
+
+.as-of__note {
+  flex: 1 1 100%;
+  font-size: var(--fs-small);
+  color: var(--c-text-muted);
+  max-width: var(--reading-max);
+}
+
+.as-of__note code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--c-text-secondary);
+}
+
+/* ------------------------------------------------------- Ownership intervals */
+
+.ownership {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.ownership__row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) auto auto;
+  gap: var(--sp-3);
+  align-items: start;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--c-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+/* An ended relationship stays legible rather than being greyed out of use — a
+   demerger with a retained stake is not a clean termination, and the row that
+   records it has to remain readable. */
+.ownership__row--active {
+  border-color: var(--c-confirmed-border);
+  background: var(--c-confirmed-bg);
+}
+
+.ownership__state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-secondary);
+}
+
+.ownership__row--active .ownership__state {
+  color: var(--c-confirmed);
+}
+
+.ownership__state-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.ownership__party {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  font-size: var(--fs-small);
+}
+
+.ownership__kind,
+.ownership__note {
+  color: var(--c-text-secondary);
+}
+
+.ownership__note {
+  color: var(--c-text-muted);
+  max-width: var(--reading-max);
+}
+
+.ownership__interval {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  text-align: right;
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  white-space: nowrap;
+}
+
+/* The interval notation is shown, not just implied: `)` is the whole point. */
+.ownership__notation {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  color: var(--c-text-muted);
+}
+
+.ownership__evidence {
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------- Unavailable fields */
+
+.unavailable-field dd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.unavailable-field__tag {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--sp-1);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: var(--fw-semibold);
+  color: var(--c-neutral-status);
+  background: var(--c-neutral-status-bg);
+  border: 1px solid var(--c-neutral-status-border);
+  border-radius: var(--radius-pill);
+  padding: 2px var(--sp-2);
+}
+
+.unavailable-field__icon {
+  width: 12px;
+  height: 12px;
+}
+
+.unavailable-field__reason {
+  color: var(--c-text-secondary);
+  max-width: var(--reading-max);
+}
+
+.unavailable-field__blocked {
+  font-size: var(--fs-small);
+  color: var(--c-text-muted);
+}
+
+/* ------------------------------------------------------------------ Coverage */
+
+.coverage-card {
+  background: var(--c-surface);
+  border: var(--border-hairline);
+  border-left: 3px solid var(--c-confirmed);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.coverage-card--gap {
+  border-left-color: var(--c-attention);
+}
+
+.coverage-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.coverage-card__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--c-confirmed);
+}
+
+.coverage-card--gap .coverage-card__icon {
+  color: var(--c-attention);
+}
+
+.coverage-card__summary {
+  font-size: var(--fs-body);
+}
+
+.coverage-card__head .state__checked {
+  margin-left: auto;
+}
+
+.coverage-card__lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+
+/* Named, never only counted. */
+.coverage-card__missing {
+  color: var(--c-attention);
+  font-weight: var(--fw-semibold);
+}
+
+.coverage-card__reason {
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  max-width: var(--reading-max);
+}
+
+/* ----------------------------------------------------------------- Timelines */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  list-style: none;
+  padding-left: var(--sp-2);
+}
+
+.timeline__item {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: var(--sp-3);
+  position: relative;
+}
+
+.timeline__item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 16px;
+  bottom: calc(var(--sp-4) * -1);
+  width: 1px;
+  background: var(--c-border-strong);
+}
+
+.timeline__marker {
+  width: 11px;
+  height: 11px;
+  margin-top: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--c-surface);
+  border: 2px solid var(--c-accent);
+}
+
+.timeline__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.timeline__when {
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  font-weight: var(--fw-semibold);
+}
+
+.timeline__title {
+  font-size: var(--fs-heading);
+  font-weight: var(--fw-semibold);
+}
+
+.timeline__detail {
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  max-width: var(--reading-max);
+}
+
+.timeline__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-small);
+}
+
+/* Company-level and site-level are different claims, so the scope is labelled
+   on the entry rather than inferred from which page you happen to be on. */
+.timeline__scope {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-pill);
+  padding: 1px var(--sp-2);
+}
+
+/* A section's closing explanation is prose about what is above it, not another
+   row of it. Without this it reads as a continuation of the last grid cell. */
+.detail__section > .drawer__prose,
+.detail__section > .notice,
+.section > .drawer__prose {
+  margin-top: var(--sp-4);
+}
+
+.detail__section > dl + .notice,
+.detail__section > ul + .drawer__prose,
+.detail__section > ol + .drawer__prose {
+  margin-top: var(--sp-4);
+}
+
+/* A locator or any other long single value takes the whole row rather than
+   wrapping mid-token inside a narrow grid column. */
+.fact--wide {
+  grid-column: 1 / -1;
+}
+
+/* ------------------------------------------------------------- Record links */
+
+.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  list-style: none;
+}
+
+.record-link {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--c-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-small);
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.record-link:hover {
+  border-color: var(--c-accent-border);
+  color: var(--c-accent);
+}
+
+.record-link--static {
+  color: var(--c-text-secondary);
+}
+
+.record-link__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.record-link__label {
+  font-weight: var(--fw-medium);
+}
+
+.record-link__detail {
+  font-size: var(--fs-label);
+  color: var(--c-text-muted);
+}
+
+.record-link__icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: var(--c-text-muted);
+}
+
+.record-link__chevron {
+  width: 13px;
+  height: 13px;
+  margin-left: auto;
+  color: var(--c-text-muted);
+}
+
+/* -------------------------------------------------------- Facility identifiers */
+
+.identifier-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  list-style: none;
+}
+
+.identifier {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-surface-sunken);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-small);
+}
+
+.identifier__scheme {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-secondary);
+  min-width: 7rem;
+}
+
+.identifier__value {
+  font-family: var(--font-mono);
+  color: var(--c-text);
+}
+
+/* A deterministic registry match and a value a source simply asserted are not
+   the same evidence, and the row says which one it is. */
+.identifier__origin {
+  margin-left: auto;
+  font-size: var(--fs-label);
+  border-radius: var(--radius-pill);
+  padding: 1px var(--sp-2);
+  border: 1px solid var(--c-neutral-status-border);
+  background: var(--c-neutral-status-bg);
+  color: var(--c-neutral-status);
+}
+
+.identifier__origin--deterministic {
+  border-color: var(--c-confirmed-border);
+  background: var(--c-confirmed-bg);
+  color: var(--c-confirmed);
+}
+
+/* --------------------------------------------------------- Evidence detail */
+
+.excerpt {
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  background: var(--c-surface-sunken);
+  border-left: 3px solid var(--c-border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--sp-3) var(--sp-4);
+  max-width: var(--reading-max);
+}
+
+.locator {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  word-break: break-all;
+}
+
+.assertions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  list-style: none;
+}
+
+.assertion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+}
+
+/* What the source said and what the platform worked out are never the same
+   claim, so they never share a treatment. */
+.assertion--source_fact {
+  border-left: 3px solid var(--c-confirmed);
+}
+
+.assertion--system_inference {
+  border-left: 3px solid var(--c-emerging);
+  background: var(--c-surface-sunken);
+}
+
+.assertion__icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--c-text-muted);
+}
+
+.assertion--source_fact .assertion__icon {
+  color: var(--c-confirmed);
+}
+
+.assertion--system_inference .assertion__icon {
+  color: var(--c-emerging);
+}
+
+.assertion__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.assertion__badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--sp-1);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-secondary);
+}
+
+.assertion__statement {
+  font-size: var(--fs-body);
+  max-width: var(--reading-max);
+}
+
+.assertion__note {
+  font-size: var(--fs-small);
+  color: var(--c-text-muted);
+  max-width: var(--reading-max);
+}
+
+.corrections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  list-style: none;
+}
+
+.correction {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--c-attention-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-attention-bg);
+}
+
+.correction__relationship {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: var(--fw-bold);
+  color: var(--c-attention);
+}
+
+.correction__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-small);
+  color: var(--c-text);
+  max-width: var(--reading-max);
+}
+
+.correction__when,
+.correction__note {
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+}
+
+/* ------------------------------------------------- Source health & coverage */
+
+/* Each panel states its own question, so neither can be read as the other. */
+.panel-scope {
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  max-width: var(--reading-max);
+  margin-bottom: var(--sp-4);
+}
+
+.connector-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+  gap: var(--sp-4);
+}
+
+.connector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--c-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.connector__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.connector__name {
+  font-size: var(--fs-heading);
+  font-weight: var(--fw-semibold);
+  min-width: 0;
+}
+
+.connector__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--sp-3);
+}
+
+.connector__bad {
+  color: var(--c-attention);
+  font-weight: var(--fw-semibold);
+}
+
+.connector__maintenance {
+  margin: 0;
+}
+
+.connector__history > summary {
+  cursor: pointer;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  color: var(--c-accent);
+  padding: var(--sp-1) 0;
+}
+
+.connector__history ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+
+.run {
+  display: grid;
+  grid-template-columns: 7rem auto;
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-small);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-sunken);
+}
+
+/* A failure that stopped happening still happened. Recovered connectors keep
+   their failed runs, styled as failures. */
+.run--failure {
+  background: var(--c-attention-bg);
+  color: var(--c-attention);
+}
+
+.run__outcome {
+  font-weight: var(--fw-semibold);
+  text-transform: capitalize;
+}
+
+.run__when {
+  color: var(--c-text-secondary);
+  text-align: right;
+}
+
+.run__note {
+  grid-column: 1 / -1;
+  color: var(--c-text-secondary);
+}
+
+.run--failure .run__when,
+.run--failure .run__note {
+  color: var(--c-attention);
+}
+
+.coverage-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.coverage-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.coverage-row__title {
+  font-size: var(--fs-heading);
+  font-weight: var(--fw-semibold);
+}
+
+.coverage-row__title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.coverage-row__title a:hover {
+  color: var(--c-accent);
+  text-decoration: underline;
+}
+
+.coverage-list + .drawer__prose {
+  margin-top: var(--sp-4);
+}
+
+/* -------------------------------------------------- Saved pursuits & watches */
+
+.saved-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  list-style: none;
+}
+
+.saved-card {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--c-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.saved-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.saved-card__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+}
+
+.saved-card__icon {
+  width: 14px;
+  height: 14px;
+  color: var(--c-text-muted);
+}
+
+.saved-card__title {
+  font-size: var(--fs-heading);
+  font-weight: var(--fw-semibold);
+  text-wrap: balance;
+}
+
+.saved-card__title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.saved-card__title a:hover {
+  color: var(--c-accent);
+  text-decoration: underline;
+}
+
+.saved-card__rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.saved-card__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  list-style: none;
+}
+
+.saved-card__filter {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-secondary);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-pill);
+  padding: 2px var(--sp-2);
+}
+
+.saved-card__note {
+  font-size: var(--fs-small);
+  color: var(--c-text-muted);
+  max-width: var(--reading-max);
+}
+
+.saved-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+  width: 10rem;
+}
+
+.saved-card__actions .btn {
+  justify-content: center;
+}
+
 @media (max-width: 900px) {
   .shell__content {
     padding: var(--sp-4) var(--sp-4) var(--sp-6);
@@ -2013,15 +2938,28 @@ a {
   }
 
   .attention {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: var(--sp-3);
+  }
+
+  .attention__body {
+    min-width: 0;
   }
 
   .attention__aside {
     grid-column: 1 / -1;
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    text-align: left;
+  }
+
+  /* On the narrowest phones the label and the button stop fitting on one line,
+     so the button takes its own full-width row rather than overhanging. */
+  .attention__link {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .change,
@@ -2084,15 +3022,76 @@ a {
     padding: var(--sp-4);
   }
 
-  .detail {
-  max-width: 760px;
-}
-
-.detail__body {
+  .detail__body {
     padding: var(--sp-4);
   }
 
   .detail__title {
     max-width: none;
+  }
+
+  .company-row,
+  .saved-card {
+    flex-direction: column;
+    padding: var(--sp-4);
+  }
+
+  .company-row__aside .btn,
+  .saved-card__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .company-row__aside {
+    width: 100%;
+  }
+
+  .saved-card__actions {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .saved-card__actions .btn {
+    flex: 1 1 8rem;
+    width: auto;
+  }
+
+  /* The interval stops being a right-hand column and becomes its own line, so
+     the half-open notation never truncates. */
+  .ownership__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+  }
+
+  .ownership__interval {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .as-of__reset {
+    margin-left: 0;
+  }
+
+  .detail--candidate,
+  .detail--superseded {
+    margin-left: 0;
+    padding-left: var(--sp-4);
+  }
+
+  .connector-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .run {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .run__when {
+    text-align: left;
+  }
+
+  .identifier__origin {
+    margin-left: 0;
   }
 }

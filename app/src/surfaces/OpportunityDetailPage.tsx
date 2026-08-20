@@ -5,6 +5,7 @@ import { IllustrativeNote } from '@/components/Illustrative'
 import { OpportunityDetail } from '@/components/OpportunityDetail'
 import {
   DegradedNotice,
+  EmptyState,
   LoadingState,
   StaleNotice,
   UnavailableState,
@@ -58,6 +59,18 @@ export function OpportunityDetailPage() {
       </p>
 
       {state.kind === 'loading' && <LoadingState label="Loading the opportunity" rows={1} />}
+
+      {/* Nothing has been ranked at all, so there is no record to resolve the
+          address against. Distinct from "no such opportunity", which means the
+          set exists and this id is not in it. */}
+      {state.kind === 'empty' && (
+        <EmptyState
+          title="No opportunities to open"
+          body={state.reason}
+          next="This address will resolve once opportunities have been ranked."
+          checkedAt={state.checkedAt}
+        />
+      )}
 
       {state.kind === 'unavailable' && (
         <UnavailableState
