@@ -19,26 +19,35 @@ import type {
 export const ANY = 'any' as const
 
 /**
- * The query parameter that carries the open opportunity.
+ * Legacy query parameter from the first milestone, kept only so an address that
+ * was already shared still works.
  *
- * Drawer state lives in the URL rather than in component state so the address is
- * shareable, survives a reload, and gives the back button something to return
- * to. Deriving the deep link in one place keeps Daily Pulse and Opportunities
- * from drifting apart on the format.
+ * `10_DESIGN_RESPONSE.md` §5.3 requires that deep links resolve to the FULL PAGE,
+ * not to a reopened drawer. `/opportunities?opportunity=<id>` therefore redirects
+ * to `/opportunities/<id>` rather than opening the drawer.
  */
-export const OPPORTUNITY_PARAM = 'opportunity'
+export const LEGACY_OPPORTUNITY_PARAM = 'opportunity'
+
+/** The shareable, reload-safe address for one opportunity. */
+export function opportunityDetailPath(opportunityId: string, currentSearch = ''): string {
+  const params = new URLSearchParams(currentSearch)
+  // The drawer parameter never belongs on a full-page address.
+  params.delete(LEGACY_OPPORTUNITY_PARAM)
+  const query = params.toString()
+  return `/opportunities/${encodeURIComponent(opportunityId)}${query ? `?${query}` : ''}`
+}
 
 /**
- * Build a link that opens one opportunity in its drawer.
+ * Deep link used from Daily Pulse.
  *
- * `currentSearch` is carried through so an existing parameter — the fixture
- * state previewer, for instance — is not silently dropped by following the link.
+ * Points at the full page, so a link pasted into a brief or a chat lands
+ * somewhere shareable rather than on a list with a drawer over it.
  */
 export function opportunityLink(opportunityId: string, currentSearch = ''): string {
-  const params = new URLSearchParams(currentSearch)
-  params.set(OPPORTUNITY_PARAM, opportunityId)
-  return `/opportunities?${params.toString()}`
+  return opportunityDetailPath(opportunityId, currentSearch)
 }
+
+/* ------------------------------------------------------------ Query model */
 
 export interface OpportunityQuery {
   search: string

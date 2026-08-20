@@ -1,9 +1,9 @@
 # 16 — Phase 1 PR 1 Implementation Notes
 
-**Status:** Implemented, refined after first visual review
+**Status:** Implemented; route inventory and decision-status claims corrected in the reconciliation pass (§14)
 **Scope:** Phase 1 PR 1 — fixture-backed application shell
 **Milestone plan:** `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md`
-**Version:** 1.2
+**Version:** 1.3
 
 ---
 
@@ -140,17 +140,29 @@ asymmetry: `empty` and `unavailable` carry no data and replace the content;
 `degraded` and `stale` carry data and sit *above* content that is still worth
 reading. A notice that hides what it qualifies is worse than no notice.
 
-### 3.3 Approved decisions encoded structurally
+### 3.3 Decisions encoded structurally — and their actual status
 
-| Decision | How it is encoded |
-|---|---|
-| D15 / ADR 0004 — temporal precision | `TemporalValue` is an interval with `precision` and `basis`. There is no bare `Date` field in `domain.ts`. `formatTemporal()` renders at the recorded precision and prefers the source's own words. |
-| D16 / ADR 0009 — three confidence axes | `ConfidenceAxes` has `evidenceStrength`, `assessmentType`, `confidenceLevel` as separate fields. The drawer renders all three separately; a test asserts the guardrails hold across every fixture. |
-| D11 — scope classification | `OrganizationRef.scopeClassStatus` is `'provisional' \| 'confirmed'`. A provisional classification renders a visible "Provisional classification" indicator. |
-| ADR 0006 — evidence access modes | `EvidenceSummary.strongestAccessMode` is shown in the detail drawer, and the `reference_only` fixture demonstrates the resulting confidence ceiling. |
-| ADR 0010 — health vs coverage | Daily Pulse shows account coverage and connector health as two independent figures with explanatory copy. They are never merged into one health number. |
+**Corrected in v1.3.** An earlier version of this table was headed "Approved decisions"
+and listed five rows as though all five were approved. Three were not. Decision status in
+`13_GATE_1_DECISION_PACKET.md` and ADR status in `docs/adr/README.md` are authoritative;
+this table now restates each at its real status.
 
----
+| Decision / ADR | Status | How it is encoded |
+|---|---|---|
+| **D15 / ADR 0004** — temporal precision | **Approved / Accepted** | `TemporalValue` is an interval with `precision` and `basis`. No bare `Date` field exists. "by spring 2029" renders as *spring 2029*, never as a fabricated 31 March. |
+| **D24 / ADR 0012** — corrections | **Approved / Accepted** | Corrections supersede rather than overwrite. Encoded in the model; rendered by the Evidence detail surface in roadmap PR 2. |
+| **D18 / ADR 0005** — entity resolution | **Approved / Accepted IN PART** — the time-bounded, evidence-backed ownership corollary only. The conservative-resolution ladder remains **Proposed** pending Gate G-4. | Half-open `[from, to)` intervals with as-at-date attribution. |
+| **D11** — scope class for four non-core accounts | **Approved provisionally**; confirmation required before pilot metrics are finalised | `scopeClassStatus` surfaces a provisional classification rather than presenting it as settled. |
+| **D16 / ADR 0009** — three confidence axes | **D16 is OPEN** (owner: market leader + SMEs, due before the Phase 3 UI build). **ADR 0009 is Proposed**, to be ratified at Gate G-2. | Three independent axes are displayed on illustrative fixture data as the ADR's recommended default. **This is not an implementation of a ratified decision and must not be cited as one.** |
+| **D19 / ADR 0006** — evidence access modes | **D19 is OPEN. ADR 0006 is Proposed**, ratified at G-2 (rules) and G-3 (licensing). | Access mode is displayed as a recorded attribute. **No promotion rule is implemented.** |
+| **D17 / ADR 0010** — health vs coverage | **D17 is OPEN. ADR 0010 is Proposed**, ratified at G-3 and G-6. | Coverage and connector health are rendered as two independent figures, never merged. The *separation* follows the proposed default; **no coverage measurement model is implemented.** |
+
+`docs/adr/README.md` defines **Proposed** as "recommended default from the design
+response; not yet ratified." Following a proposed default in a fixture preview is
+legitimate. Describing it as approved is not.
+
+**No decision status was changed by this milestone.** `13_GATE_1_DECISION_PACKET.md` is
+untouched.
 
 ## 4. Design tokens — provisional, and marked as such
 
@@ -198,23 +210,34 @@ what delimits interactive controls.
 
 ## 5. Routes
 
-Seven surfaces: five primary navigation entries plus two contextual routes,
-matching §3 of the Phase 1 plan.
+**Corrected in v1.3.** The table PR 1 originally shipped had the right count and the wrong
+contents. The authoritative inventory is `15_PHASE_1_IMPLEMENTATION_PLAN.md` §11.2 and
+§11.4: **seven surfaces across five primary navigation entries and two contextual routes.**
 
-| Route | Placement | Status |
-|---|---|---|
-| `/` — Daily Pulse | Primary | **Implemented** |
-| `/opportunities` — Opportunities | Primary | **Implemented** |
-| `/accounts` — Accounts | Primary | Placeholder |
-| `/trends` — Trends | Primary | Placeholder |
-| `/operations` — Operations | Primary | Placeholder |
-| `/opportunities/:opportunityId` — Opportunity detail | Contextual | Placeholder |
-| `/accounts/:accountId` — Account detail | Contextual | Placeholder |
+| # | Surface | Route(s) | Nav | Status |
+|---|---|---|---|---|
+| 1 | Daily Pulse | `/` | Primary | **Built** |
+| 2 | Opportunities | `/opportunities`, `/opportunities/:opportunityId` | Primary | **Built** |
+| 3 | Company | `/accounts`, `/accounts/:accountId` | Primary | Roadmap PR 2 |
+| 4 | Facility | `/facilities/:facilityId` | **Contextual** | Roadmap PR 2 |
+| 5 | Evidence detail | `/evidence/:evidenceId` | **Contextual** | Roadmap PR 2 |
+| 6 | Source Health & Coverage | `/admin/health` | Primary | Roadmap PR 2 |
+| 7 | Saved Pursuits & Watches | `/views` | Primary | Roadmap PR 2 |
 
-Every route is wired and reachable. Placeholders name the milestone they belong to
-and list what the surface will do, so "not built yet" is visibly different from
-"broken". `*` renders an explicit not-found state rather than redirecting, because
-a silent redirect hides the mistake.
+A surface may own more than one route. `/opportunities/:id` and `/accounts/:id` are routes
+of their parent surface, **not separate surfaces** — counting them as such is exactly the
+error that displaced Facility and Evidence detail from the seven.
+
+**Reserved, not surfaces.** Market Trends (`/trends`), Map (`/map`) and Briefings
+(`/briefings`) are not Phase 1 surfaces; all three depend on signals, opportunities or
+alerting. §11.4: "the navigation reserves their positions and renders them as explicitly
+unavailable rather than hiding them, so the eventual shape is visible from the first
+preview." They are modelled separately in `routes.ts` so they can never be counted among
+the seven again, and their placeholder wording ("Not part of Phase 1") is deliberately
+different from the PR 2 placeholders ("Arrives in roadmap PR 2").
+
+`*` renders an explicit not-found state rather than redirecting, because a silent redirect
+hides the mistake.
 
 ---
 
@@ -497,3 +520,75 @@ query-driven opening, reload safety, invalid identifiers, close behaviour, brows
 back, and focus handling. A `renderAppWithHistory` helper was added because
 `MemoryRouter` cannot exercise the address bar or the back button. Suite total: 185
 tests across 13 files.
+
+---
+
+## 14. Reconciliation of merged PR 1 (v1.3)
+
+A read-only reconciliation against the merged repository found that PR 1 shipped two
+errors of authority. This corrective pass fixes both. It implements no roadmap PR 2
+surface and changes no decision status.
+
+### 14.1 The route inventory named the wrong seven surfaces
+
+PR 1 reconciled the inventory to a **count** of seven without checking the **composition**
+in §11.2. What shipped, against what the plan requires:
+
+| Shipped in PR 1 | Authoritative §11.2 |
+|---|---|
+| `/trends` — primary, counted as a surface | Market Trends is **not a Phase 1 surface**; it is a reserved position |
+| `/operations` — "Operations" | The surface is **Source Health & Coverage** at **`/admin/health`** |
+| `/opportunities/:id` — counted as a contextual surface | A route of the **Opportunities** surface |
+| `/accounts/:id` — counted as a contextual surface | A route of the **Company** surface |
+| — missing — | **Facility** (`/facilities/:id`), contextual surface 4 |
+| — missing — | **Evidence detail** (`/evidence/:id`), contextual surface 5 |
+| — missing — | **Saved Pursuits & Watches** (`/views`), primary surface 7 |
+| — missing — | Reserved positions for **Map** and **Briefings** |
+| "Accounts" | The surface is named **Company** |
+
+`routes.ts` is now surface-oriented rather than route-oriented, because that is the
+distinction the plan draws and the one the previous model could not express. Reserved
+destinations are a separate type from surfaces, so a non-Phase-1 destination cannot be
+counted among the seven by accident. `src/test/routes.test.tsx` asserts the seven **by
+name**, not by count — a count-only test is what let this through.
+
+### 14.2 Deep links resolved to a drawer, not the full page
+
+`10_DESIGN_RESPONSE.md` §5.3: "card → drawer → 'Open full detail' for the complete record.
+**Deep links always resolve to the full page** so a brief or Teams alert lands somewhere
+shareable." PR 1 addressed an opportunity as `/opportunities?opportunity=<id>`, which
+reopened the drawer.
+
+Corrected: the full page at `/opportunities/:opportunityId` is the shareable address. The
+drawer remains for in-session triage and now holds **no URL state at all**, which is what
+guarantees a pasted link can never land on a list with a panel over it. `Open full detail`
+inside the drawer navigates to the page, Daily Pulse links point at the page, and the
+legacy `?opportunity=` address redirects to the page with `replace` so the dead address
+does not linger in history.
+
+Both the drawer and the page render one shared `<OpportunityDetail>`, so the disclosures
+cannot drift apart: assessment, ownership and operator attribution, provisional
+classification, timing caveat, the three confidence axes, the score breakdown, evidence
+and publisher counts, access mode, capability list, and the local preview actions.
+
+### 14.3 Decision-status claims were overstated
+
+See §3.3. **D16 / ADR 0009**, **D19 / ADR 0006** and **D17 / ADR 0010** were presented as
+approved. D16, D19 and D17 are **Open**; all three ADRs are **Proposed**. **ADR 0005** is
+**Accepted in part** — the D18 time-bounded-ownership corollary only. Only **ADR 0004
+(D15)** and **ADR 0012 (D24)** among the decisions this milestone touches are fully
+Accepted.
+
+The interface still displays the three confidence axes and the access mode, because
+following a proposed default on illustrative fixture data is legitimate. What is not
+legitimate is describing it as ratified, and the notes no longer do.
+
+`13_GATE_1_DECISION_PACKET.md` was not modified.
+
+### 14.4 What this pass deliberately did not do
+
+No roadmap PR 2 surface was implemented — `/accounts`, `/accounts/:id`,
+`/facilities/:id`, `/evidence/:id`, `/admin/health` and `/views` render placeholders built
+from the established `UnavailableState`. No real pilot-account name, no PACK EXPO data, no
+network call, no database, no migration, no authentication, no connector, no model call,
+no vendor selection, and no new visual dependency.

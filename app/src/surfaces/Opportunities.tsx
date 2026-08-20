@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { OpportunityCard } from '@/components/OpportunityCard'
 import { OpportunityDrawer } from '@/components/OpportunityDrawer'
@@ -16,7 +16,6 @@ import { useLocalDecisions } from '@/hooks/useLocalDecisions'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
 import {
   DEFAULT_QUERY,
-  OPPORTUNITY_PARAM,
   activeFilterCount,
   applyQuery,
   capabilityOptions,
@@ -99,53 +98,22 @@ export function Opportunities() {
   )
 }
 
-/**
- * Fallback focus target for a drawer that was opened by a URL rather than by a
- * click. Prefers the matching card's review button; falls back to the main
- * region so focus never drops to the document body.
- */
-function restoreFocusToCard(opportunityId: string) {
-  const card = document.querySelector<HTMLElement>(
-    `[data-review-for="${CSS.escape(opportunityId)}"]`,
-  )
-  if (card) {
-    card.focus()
-    return
-  }
-  document.getElementById('main')?.focus()
-}
-
 function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] }) {
   const [query, setQuery] = useState<OpportunityQuery>(DEFAULT_QUERY)
-  const [searchParams, setSearchParams] = useSearchParams()
+  const { search } = useLocation()
   const { decisions, decide } = useLocalDecisions()
 
   /**
-   * Drawer state lives in the URL, not in component state.
+   * The drawer is an IN-SESSION affordance and holds no URL state.
    *
-   * That makes the address shareable and reload-safe, and gives the back button
-   * something to return to — Daily Pulse, when the user arrived from a
-   * "Needs attention today" link.
+   * `10_DESIGN_RESPONSE.md` §5.3 makes the full page the shareable address:
+   * "Deep links always resolve to the full page." Keeping the drawer out of the
+   * URL is what guarantees a pasted link can never land on a list with a panel
+   * over it. "Open full detail" inside the drawer navigates to
+   * `/opportunities/:id`.
    */
-  const openId = searchParams.get(OPPORTUNITY_PARAM)
-
-  const openOpportunity = useCallback(
-    (opportunityId: string) => {
-      const next = new URLSearchParams(searchParams)
-      next.set(OPPORTUNITY_PARAM, opportunityId)
-      // Pushed, so Back closes the drawer rather than leaving the surface.
-      setSearchParams(next)
-    },
-    [searchParams, setSearchParams],
-  )
-
-  const closeDrawer = useCallback(() => {
-    const next = new URLSearchParams(searchParams)
-    next.delete(OPPORTUNITY_PARAM)
-    // Replaced, so closing a directly loaded link drops the parameter without
-    // navigating out of the application — there may be nothing to go back to.
-    setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams])
+  const [openId, setOpenId] = useState<string | null>(null)
+  const closeDrawer = useCallback(() => setOpenId(null), [])
 
   const patch = useCallback(
     (next: Partial<OpportunityQuery>) => setQuery((current) => ({ ...current, ...next })),
@@ -209,7 +177,7 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
               opportunity={opportunity}
               decision={decisions[opportunity.id]}
               onDecide={decide}
-              onReview={openOpportunity}
+              onReview={setOpenId}
             />
           ))}
         </div>
@@ -221,9 +189,7 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
           decision={decisions[open.id]}
           onDecide={decide}
           onClose={closeDrawer}
-          // Arriving from a shared link means nothing was focused before the
-          // drawer opened, so name where focus should land when it closes.
-          restoreFocus={restoreFocusToCard}
+          search={search}
         />
       )}
     </>

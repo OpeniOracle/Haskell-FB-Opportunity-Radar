@@ -1,129 +1,203 @@
 import type { IconName } from '@/components/Icon'
 
 /**
- * The route inventory.
+ * The authoritative Phase 1 surface inventory.
  *
- * Seven surfaces across five primary navigation entries plus two contextual
- * routes, matching §3 of `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md`.
- * Contextual routes are reached from a card or a row, not from the nav rail —
- * they are not orphaned, they simply have a parent.
+ * Source of truth: `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md` §11.2 and
+ * §11.4, cross-checked against `10_DESIGN_RESPONSE.md` §5.2.
  *
- * `implemented` marks what PR 1 actually ships. Everything else renders a
- * placeholder that names the milestone it belongs to, so no reviewer has to guess
- * whether a screen is missing or merely later.
+ *   Seven surfaces = five primary navigation entries + two contextual surfaces.
+ *
+ * The model here is SURFACE-oriented, not route-oriented, because that is the
+ * distinction the plan draws and the one the previous inventory got wrong. A
+ * surface may own more than one route: Opportunities owns `/opportunities` and
+ * `/opportunities/:id`, Company owns `/accounts` and `/accounts/:id`. Those
+ * detail routes are part of their parent surface — counting them as separate
+ * surfaces is what produced a seven that contained the wrong seven things.
+ *
+ * Market Trends, Map and Briefings are NOT Phase 1 surfaces. §11.4: all three
+ * depend on signals, opportunities or alerting, and "the navigation reserves
+ * their positions and renders them as explicitly unavailable rather than hiding
+ * them, so the eventual shape is visible from the first preview." They are
+ * modelled separately, as reserved destinations, so they can never be counted
+ * among the seven again.
  */
-export interface RouteDescriptor {
-  path: string
+
+export type SurfaceStatus =
+  /** Shipped and rendering fixtures. */
+  | 'implemented'
+  /** A Phase 1 surface whose fixture-backed build is roadmap PR 2. */
+  | 'pr2'
+
+export interface SurfaceDescriptor {
+  id: string
   label: string
   shortLabel: string
   icon: IconName
-  /** Primary = in the nav rail. Contextual = reached from within a surface. */
   placement: 'primary' | 'contextual'
-  implemented: boolean
+  /** Every route this surface owns. The first is the one navigation targets. */
+  routes: string[]
+  status: SurfaceStatus
   summary: string
-  /** What the surface will do once built. Shown on placeholders. */
+  /** What the surface will do once built. Shown on the PR 2 placeholders. */
   scheduled: string[]
-  milestone: string
 }
 
-export const ROUTES: RouteDescriptor[] = [
+export const SURFACES: SurfaceDescriptor[] = [
   {
-    path: '/',
+    id: 'pulse',
     label: 'Daily Pulse',
     shortLabel: 'Pulse',
     icon: 'pulse',
     placement: 'primary',
-    implemented: true,
+    routes: ['/'],
+    status: 'implemented',
     summary: 'What changed across the monitored accounts since your last visit.',
     scheduled: [],
-    milestone: 'PR 1',
   },
   {
-    path: '/opportunities',
+    id: 'opportunities',
     label: 'Opportunities',
     shortLabel: 'Opportunities',
     icon: 'target',
     placement: 'primary',
-    implemented: true,
-    summary: 'Every live opportunity, ranked, with the reasoning on the card.',
+    routes: ['/opportunities', '/opportunities/:opportunityId'],
+    status: 'implemented',
+    summary: 'Every live opportunity, ranked, with the reasoning behind each score.',
     scheduled: [],
-    milestone: 'PR 1',
   },
   {
-    path: '/accounts',
-    label: 'Accounts',
-    shortLabel: 'Accounts',
+    id: 'company',
+    label: 'Company',
+    shortLabel: 'Company',
     icon: 'building',
     placement: 'primary',
-    implemented: false,
-    summary: 'The 15 pilot accounts, their coverage, and their open opportunities.',
+    routes: ['/accounts', '/accounts/:accountId'],
+    status: 'pr2',
+    summary:
+      'Account summary, related entities, facility list, timeline, and coverage status.',
     scheduled: [
       'Account list with per-account coverage against expected sources',
-      'Ownership and operator relationships shown as at a chosen date',
-      'Tier and engagement state, seeded from the roadmap identities',
+      'Time-bounded ownership shown with half-open intervals and as-at-date attribution',
+      'Provisional scope classification rendered as provisional and excluded from relevance metrics',
+      'Facility roll-up reached from the account, and the no-facilities-resolved state',
     ],
-    milestone: 'a later Phase 1 milestone',
   },
   {
-    path: '/trends',
-    label: 'Trends',
-    shortLabel: 'Trends',
-    icon: 'trend',
-    placement: 'primary',
-    implemented: false,
-    summary: 'Corroborated patterns across accounts, separated from single projects.',
+    id: 'facility',
+    label: 'Facility',
+    shortLabel: 'Facility',
+    icon: 'pin',
+    placement: 'contextual',
+    routes: ['/facilities/:facilityId'],
+    status: 'pr2',
+    summary: 'One site: operating status, identifiers, evidence timeline, operator as at a date.',
     scheduled: [
-      'Trend records with their supporting signals listed, not summarised away',
-      'Explicit separation of a trend from the opportunities that evidence it',
+      'Facility detail with operating status and identifiers',
+      'Operator attribution as at a chosen date',
+      'Candidate facilities shown as visually distinct from confirmed ones',
     ],
-    milestone: 'a later Phase 1 milestone',
   },
   {
-    path: '/operations',
-    label: 'Operations',
-    shortLabel: 'Ops',
-    icon: 'settings',
-    placement: 'primary',
-    implemented: false,
-    summary: 'Connector health, run history, and coverage gaps — for the operator.',
-    scheduled: [
-      'Per-source run history with failures kept visible, not overwritten',
-      'Coverage gaps named by account, held separate from connector health',
-      'Controlled connector-maintenance tasks, never routine data entry',
-    ],
-    milestone: 'a later Phase 1 milestone',
-  },
-  {
-    path: '/opportunities/:opportunityId',
-    label: 'Opportunity detail',
-    shortLabel: 'Opportunity detail',
+    id: 'evidence',
+    label: 'Evidence detail',
+    shortLabel: 'Evidence',
     icon: 'document',
     placement: 'contextual',
-    implemented: false,
-    summary: 'One opportunity with its full evidence chain and correction history.',
+    routes: ['/evidence/:evidenceId'],
+    status: 'pr2',
+    summary:
+      'One piece of evidence: source, timing, excerpt, locator, access mode, and corrections.',
     scheduled: [
-      'Every piece of supporting evidence, with access mode and retrieval time',
-      'Correction history shown as supersession, never as an overwrite',
-      'The three confidence axes with the guardrail that produced them',
+      'Source, retrieval time, publication time, excerpt and locator',
+      'Temporal value rendered at its recorded precision and basis',
+      'Correction relationships shown as supersession, never as an overwrite',
+      'Access mode recorded and displayed',
     ],
-    milestone: 'a later Phase 1 milestone',
   },
   {
-    path: '/accounts/:accountId',
-    label: 'Account detail',
-    shortLabel: 'Account detail',
-    icon: 'building',
-    placement: 'contextual',
-    implemented: false,
-    summary: 'One account: timeline, facilities, coverage, and open opportunities.',
+    id: 'health',
+    label: 'Source Health & Coverage',
+    shortLabel: 'Health',
+    icon: 'settings',
+    placement: 'primary',
+    routes: ['/admin/health'],
+    status: 'pr2',
+    summary:
+      'Two panels that are never merged: connector health, and expected coverage per account.',
     scheduled: [
-      'Time-bounded ownership shown with half-open intervals',
-      'Facility roll-up with operator attribution as at a chosen date',
-      'Source expectations against actual coverage',
+      'Per-source run history with failures kept visible rather than overwritten',
+      'Expected coverage per account, named rather than only counted',
+      'An account with every connector healthy but no expected coverage reported as uncovered, not quiet',
     ],
-    milestone: 'a later Phase 1 milestone',
+  },
+  {
+    id: 'views',
+    label: 'Saved Pursuits & Watches',
+    shortLabel: 'Saved',
+    icon: 'inbox',
+    placement: 'primary',
+    routes: ['/views'],
+    status: 'pr2',
+    summary: 'Saved views, watch list, and action affordances.',
+    scheduled: [
+      'Saved views and watch list mechanics',
+      'Action affordances consistent with the local previews on Opportunities',
+      'Empty of opportunities, because none exist yet in Phase 1',
+    ],
   },
 ]
 
-export const PRIMARY_ROUTES = ROUTES.filter((r) => r.placement === 'primary')
-export const CONTEXTUAL_ROUTES = ROUTES.filter((r) => r.placement === 'contextual')
+/**
+ * Navigation positions reserved for later phases.
+ *
+ * These are not surfaces and must never be counted among the seven. They are
+ * rendered so the eventual shape of the product is visible from the first
+ * preview, and they say plainly that they are not part of Phase 1.
+ */
+export interface ReservedDestination {
+  id: string
+  label: string
+  shortLabel: string
+  icon: IconName
+  path: string
+  /** Why it cannot be built in Phase 1. */
+  dependsOn: string
+}
+
+export const RESERVED_DESTINATIONS: ReservedDestination[] = [
+  {
+    id: 'trends',
+    label: 'Market Trends',
+    shortLabel: 'Trends',
+    icon: 'trend',
+    path: '/trends',
+    dependsOn: 'signals and corroborated cross-account patterns',
+  },
+  {
+    id: 'map',
+    label: 'Map',
+    shortLabel: 'Map',
+    icon: 'pin',
+    path: '/map',
+    dependsOn: 'resolved facilities and opportunities to place on it',
+  },
+  {
+    id: 'briefings',
+    label: 'Briefings',
+    shortLabel: 'Briefings',
+    icon: 'document',
+    path: '/briefings',
+    dependsOn: 'opportunities and an alerting decision',
+  },
+]
+
+export const PRIMARY_SURFACES = SURFACES.filter((s) => s.placement === 'primary')
+export const CONTEXTUAL_SURFACES = SURFACES.filter((s) => s.placement === 'contextual')
+
+/** Every route the application registers, surface routes first. */
+export const ALL_SURFACE_ROUTES = SURFACES.flatMap((s) => s.routes)
+
+export function surfaceForRoute(path: string): SurfaceDescriptor | undefined {
+  return SURFACES.find((s) => s.routes.includes(path))
+}
