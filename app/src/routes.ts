@@ -174,6 +174,18 @@ export const RESERVED_DESTINATIONS: ReservedDestination[] = [
   },
 ]
 
+/**
+ * What assistive technology announces for a reserved destination.
+ *
+ * The visible chip reads as one word because the group heading above it supplies
+ * the rest. A screen-reader user moving link by link gets no such context, so
+ * the clause has to travel with the name. It lives here, beside
+ * `RESERVED_DESTINATIONS`, so both navigations spell it the same way.
+ */
+export function reservedAccessibleName(label: string): string {
+  return `${label}, reserved for a later phase`
+}
+
 export const PRIMARY_SURFACES = SURFACES.filter((s) => s.placement === 'primary')
 export const CONTEXTUAL_SURFACES = SURFACES.filter((s) => s.placement === 'contextual')
 
