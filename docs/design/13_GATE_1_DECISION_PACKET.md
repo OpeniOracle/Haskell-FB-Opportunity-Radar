@@ -6,8 +6,9 @@ Haskell Food & Beverage Opportunity Radar · Version 0.4 · **For stakeholder de
 D23, D24, **D1** (corrected), and the **D9 framework**. Two are approved in part: **D2a**
 (architecture) with **D2b** (vendor selections) now **resolved except V1**, and the **D14
 handling model** with the licence and import permission externally blocked. **D11 is
-approved provisionally**, pending F&B market-leader confirmation. **Thirteen remain open** —
-D3, D4, D5, D6, D7, D8, D10, D12, D13, D16, D17, D19, D20.
+approved provisionally**, pending F&B market-leader confirmation. **D3 is deferred — out of
+pilot**, and **D4 is approved in a corrected, phased form** with no Haskell-controlled
+channel. **Eleven remain open** — D5, D6, D7, D8, D10, D12, D13, D16, D17, D19, D20.
 
 > **Correction (this revision).** D1 and D2b previously recorded the Radar as an internal
 > Haskell application sharing identity and infrastructure with the Haskell Hub, with the
@@ -79,9 +80,9 @@ three weeks or a recurring commercial cost.
 | D7 | Licensed-content retention and display | Open | Legal / commercial | Before source enablement | S | G-3 |
 | D20 | Kellanova connector retirement | Open | Platform admin | Before Phase 4 | S | G-3 |
 | D8 | Ownership of tier changes and overrides | Open | Market leader | Before Phase 3 | S | G-2 |
-| D4 | Alert channels | Open | Haskell BD lead + **Haskell IT** (enterprise integration) | Before Phase 3 | S | G-5 |
+| D4 | Alert channels | **Approved (corrected)** — in-app now, Openi email later, Teams deferred | **Openi**, with Haskell sponsor on recipients | In-app in Phase 1 | S | G-5 |
 | D10 | Design system and brand assets | Open | Design lead | Before Phase 3 | S | G-5 |
-| D3 | CRM linkage | Open | Haskell BD lead + **Haskell IT** (enterprise integration) | Phase 4 | M | G-1 (informational) |
+| D3 | CRM linkage | **Deferred — out of pilot** | Haskell sponsor, only on a Haskell request | Out of pilot | M | G-1 (informational) |
 | **D21** | Build or buy local permit coverage | **Approved** | Market leader + engineering | Before week 3 of Phase 2 | M–L | G-3 |
 | **D22** | Incident severity model | **Approved** | Engineering + executive sponsor | Before Phase 2 | S | G-6 |
 | **D23** | Research-claim staging | **Approved** | Platform engineering lead | Before any external batch is imported | M | G-4 |
@@ -318,23 +319,33 @@ queue.
 
 ### D3 — CRM linkage
 
-**Recommended default.** Link-out only in the MVP: store a CRM identifier on the
-opportunity and deep-link. No write-back, no sync.
+> **Status: Deferred — out of pilot.** The pilot does **not** connect to any Haskell CRM.
+> The earlier entry recommended link-out with a CRM identifier stored on the opportunity;
+> that is an integration with a Haskell-controlled system and is out of scope under
+> **ADR 0013**. It is neither implemented nor approved for integration.
 
-**Alternatives.** *Two-way sync* — the largest single integration in the roadmap, and it
-makes the Radar a system of record it was explicitly not meant to be. *No linkage* —
-forces manual re-keying, which contradicts the automation-first principle at the one
-point where a human is already acting.
+**What the pilot does instead.** Pursuit activity stays inside the Radar. A user may copy
+a link or manually export a record they are authorized to see. **No automated CRM
+integration is implemented**, and the Radar neither reads from nor writes to any
+Haskell-controlled system.
 
-**Operational consequence.** Link-out gets the workflow benefit at a fraction of the
-cost and keeps `01`'s "not a CRM replacement" boundary intact.
+**Alternatives, unchanged and still deferred.** *Two-way sync* — the largest single
+integration in the roadmap, and it makes the Radar a system of record it was explicitly
+not meant to be. *Link-out with a stored CRM identifier* — smaller, but still an
+integration with a Haskell system.
 
-**Cost and complexity.** M for link-out; L for sync. **Owner.** Haskell BD lead with
-**Haskell IT**. This is one of the few decisions that legitimately involves Haskell IT,
-because it is an explicit enterprise integration — and connecting the Radar to a
-Haskell-controlled system requires a **new explicit decision** under ADR 0013, not merely
-this one.
-**Timing.** Phase 4. Listed at G-1 for awareness only.
+**Operational consequence.** Manual copy or export at the one point where a human is
+already acting. That is a deliberate, bounded cost for the pilot, and it keeps `01`'s
+"not a CRM replacement" boundary intact without opening an inbound path.
+
+**What a future integration would require.** A **new scoped decision** covering
+architecture, security, data handling, and authorization. It is not an extension of this
+entry.
+
+**Cost and complexity.** M for link-out; L for sync — **not incurred in the pilot**.
+**Owner.** Haskell business sponsor, if and when Haskell asks for it. **Haskell IT has no
+current D3 responsibility.**
+**Timing.** Out of pilot. Revisit only on a Haskell request.
 
 ---
 
@@ -686,19 +697,39 @@ way to quietly turn the platform back into a priority list.
 
 ### D4 — Alert channels
 
-**Recommended default.** Both: Microsoft Teams for immediate critical alerts, email for
-daily and weekly digests, in-app for everything.
+> **Status: Approved (corrected) — phased, with no Haskell-controlled channel.** The
+> earlier entry recommended Microsoft Teams for immediate alerts. Teams delivery requires a
+> Haskell tenant application, a webhook or Graph permission, and Haskell IT action, so it
+> is **deferred and outside the pilot** under **ADR 0013**.
 
-**Alternatives.** *Email only* — simplest, and immediate alerts lose their urgency.
-*Teams only* — misses executive viewers who live in email.
+**The phased channel model.**
 
-**Operational consequence.** Channel is part of the alert dedupe key, so supporting both
-is a design input rather than a late addition.
+| Phase | Channel |
+| --- | --- |
+| **Phase 1** | **In-application notices and watches.** Nothing leaves the application |
+| **A later authorized phase** | **Email**, delivered through an **Openi-controlled transactional email service** to approved Haskell users |
+| **Deferred, outside the pilot** | **Microsoft Teams integration** |
 
-**Cost and complexity.** S. **Owner.** Haskell BD lead with **Haskell IT** where a
-Haskell-controlled channel is involved. Delivering into a Haskell channel is an explicit
-enterprise integration and requires a **new explicit decision** under ADR 0013.
-**Timing.** Before Phase 3.
+**No Haskell dependency.** No Teams webhook, no Haskell tenant application, no Microsoft
+Graph API permission, no Haskell mailbox access, and **no Haskell IT action** is required
+for any phase recorded here.
+
+**The email provider is an Openi implementation selection.** It is **not selected here**,
+and selecting it does not require a stakeholder decision — it is Openi's, like the rest of
+the platform.
+
+**Alternatives.** *Teams for immediate alerts* — deferred, as above; it buys urgency at the
+cost of a Haskell-side integration the pilot is designed not to need. *In-app only,
+permanently* — misses viewers who do not open the application daily, which is why email is
+kept as a later phase rather than dropped.
+
+**Operational consequence.** Channel remains part of the alert dedupe key, so the model
+stays a design input rather than a late addition — that part of the original reasoning
+survives.
+
+**Cost and complexity.** S. **Owner.** **Openi** for delivery mechanism and provider;
+Haskell business sponsor for who receives what.
+**Timing.** In-app in Phase 1; email when a later phase authorizes it.
 
 ### D10 — Design system and brand assets
 

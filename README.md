@@ -65,8 +65,14 @@ Corrections are recorded in the documents rather than quietly rewritten.
 The Haskell Food & Beverage Opportunity Radar is an **externally hosted application
 operated by Openi Analytics**. It does not run in Haskell infrastructure, does not share
 infrastructure or identity with the Haskell Hub, and requires Haskell IT to host,
-administer, connect, or operate nothing. Haskell users reach it through the public web
-interface after authenticating; **Haskell systems are not connected to the application**.
+administer, connect, or operate nothing. **Haskell systems are not connected to the
+application.**
+
+The Radar is an **Internet-accessible, authenticated private application**. The login
+surface is reachable over the Internet; **application content is not public**. No
+unauthenticated user may reach Haskell opportunity, evidence, company, facility,
+saved-view, health, or administrative data. **Public self-registration is disabled** —
+Openi controls invitations and account removal.
 
 | Concern | Platform | Owner |
 | --- | --- | --- |

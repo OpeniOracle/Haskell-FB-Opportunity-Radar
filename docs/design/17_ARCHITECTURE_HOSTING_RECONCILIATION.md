@@ -19,9 +19,18 @@ operated by Openi Analytics**. It does not run in Haskell infrastructure, does n
 Haskell Hub infrastructure, and requires Haskell IT to host, administer, connect, or
 operate nothing.
 
-Haskell users reach it through the public web interface after authenticating. **Haskell
-systems are not connected to the application**, and no component may require access to a
-Haskell network, database, identity system, endpoint, or file store.
+**Haskell systems are not connected to the application**, and no component may require
+access to a Haskell network, database, identity system, endpoint, or file store.
+
+The Radar is an **Internet-accessible, authenticated private application**. The login
+surface is reachable over the Internet; **application content is not public**. No
+unauthenticated user may reach Haskell opportunity, evidence, company, facility,
+saved-view, health, or administrative data. **Public self-registration is disabled** —
+Openi controls invitations and account removal.
+
+"Public web interface" was the earlier wording here and it was misleading: it describes the
+*reachability* of the login page and reads as a statement about the *data*. The application
+is private; only its front door is on the Internet.
 
 ## 2. Where the error came from, and why it is not being hidden
 
@@ -216,9 +225,20 @@ was wrong.
 | AI provider selection and model governance (V1) | **Openi**, with Openi commercial for data-processing terms |
 | Product scope, user approval, opportunity relevance, business rules, workflow | **Haskell business sponsor / F&B market leader** |
 | Permission to use Haskell-provided licensed or proprietary data — including the D14-L event-data review | **Haskell Legal / Commercial Contracts** |
-| SSO, domain controls, or another explicit enterprise integration | **Haskell IT — only if Haskell later requests it** |
+| SSO, domain controls, CRM integration, Teams integration, or another explicit connection to a Haskell-controlled system | **Haskell IT — only if Haskell later requests it** |
 
-**No ordinary platform work is assigned to Haskell IT.**
+**No ordinary platform work is assigned to Haskell IT.** Haskell IT is **not a standing
+gate attendee, infrastructure reviewer, or implementation approver**. An externally hosted
+application is not blocked on a general Haskell security or IT approval unless an
+applicable contract specifically requires one; no such requirement is recorded in this
+package, and none is invented here.
+
+**Gate ownership.** Openi engineering owns architecture and implementation approval. Openi
+security, or the designated Openi platform owner, reviews hosting, authentication,
+database, storage, secrets, logging and operations. The Haskell business sponsor reviews
+product scope, workflows, user access requests and opportunity relevance. Haskell
+Legal/Commercial reviews contractual permission for Haskell-provided data, including
+D14-L. The corrected gate table is in `10_DESIGN_RESPONSE.md` §Approval sequence.
 
 Haskell's responsibilities in the pilot are exactly five: identify authorized users; review
 product behaviour and opportunity relevance; provide business rules and feedback; resolve
@@ -254,7 +274,8 @@ Explicitly OUTSIDE the boundary — the application never reaches any of these:
 
 **The application must function with no connectivity to any Haskell-controlled system.**
 The only thing that crosses the boundary is a Haskell user's browser making an ordinary
-authenticated request to a public web address.
+authenticated request to an Internet-reachable login surface. Reachable is not public: the
+content behind it is private and access-controlled.
 
 This does not weaken the egress posture in ADR 0002. Outbound collection still leaves
 through a single controlled gateway to public sources. What changes is that the gateway is
@@ -273,7 +294,9 @@ Openi's, sits in Openi's infrastructure, and never traverses a Haskell network.
 | **PR 7** | V3; **V2** for the auth half | V2 selected; the 7a/7b split is no longer forced by an undecided vendor, though it remains available as a sequencing convenience |
 | **PR 9** | V2, V3, V4 | All three selected; scheduled implementation only |
 | **V1 (AI provider)** | Open, IT-owned | **Open, Openi-owned.** Blocks AI-assisted classification **only** — no Phase 1 epic calls it |
-| **D14-L** | Blocks PACK EXPO import and derived engagement data | **Unchanged.** Still blocks exactly that, still owned by Haskell Legal/Commercial |
+| **D14-L** | Blocks PACK EXPO import and derived engagement data | **Unchanged.** Still blocks exactly that, still owned by Haskell Legal/Commercial. **It is the only Haskell-side contractual gate in the programme** |
+| **D3 CRM linkage** | Link-out recommended, Phase 4 | **Deferred — out of pilot.** No Haskell CRM connection. Pursuit stays in the Radar; manual copy or export only |
+| **D4 Alert channels** | Teams + email + in-app | **Corrected and phased.** Phase 1 in-app; a later authorized phase adds email via an **Openi-controlled** transactional service; **Teams deferred, outside the pilot**. No Haskell tenant app, webhook, Graph permission, mailbox access, or Haskell IT action |
 
 **No phase depends on Haskell IT infrastructure approval.**
 **No phase may connect to a Haskell system without a new explicit decision.**
@@ -281,6 +304,38 @@ Openi's, sits in Openi's infrastructure, and never traverses a Haskell network.
 The PR boundaries themselves are unchanged. Schema is still never mixed with connectors,
 connectors are still never mixed with production UI integration, and PR 9 is still the only
 PR that changes what real users see with real data.
+
+---
+
+## 10a. Vendor concentration — accepted for the pilot
+
+Supabase supplies **PostgreSQL, Auth and Storage**. One vendor across three concerns is a
+real concentration, and it is recorded here as **accepted**, not as an open question.
+
+**Why it is accepted.** It reduces pilot complexity and operational burden materially: one
+project to provision, one credential model, one console, one support relationship, and one
+set of RLS semantics spanning data and storage. At 15 accounts with no dedicated platform
+team, that is the difference between operable and not.
+
+**What the acceptance is conditioned on.** Concentration is tolerable only because exit
+stays cheap, so these are requirements, not aspirations:
+
+- Database migrations remain **standard PostgreSQL and version-controlled** in this
+  repository.
+- Database export remains possible through **standard PostgreSQL tools** — `pg_dump`,
+  `pg_restore`, logical replication.
+- Stored objects remain **exportable through documented storage mechanisms**.
+- **Unnecessary Supabase-specific database extensions are avoided.** Where a Supabase
+  convenience and a portable equivalent both exist, the portable one wins unless there is a
+  recorded reason.
+- **Authentication and authorization logic is documented sufficiently to support a future
+  migration** — role model, RLS policies, and the `AuthAdapter` contract, written down well
+  enough that a replacement provider is bounded work rather than archaeology.
+
+**Re-evaluate before** expanding the platform beyond the pilot, or adding additional
+customers. Either changes the blast radius enough to reopen the question.
+
+**This is not a new unresolved decision.** It is a recorded, conditioned acceptance.
 
 ---
 

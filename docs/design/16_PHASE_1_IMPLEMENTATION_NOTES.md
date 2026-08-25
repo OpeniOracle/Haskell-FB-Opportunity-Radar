@@ -563,7 +563,7 @@ name**, not by count — a count-only test is what let this through.
 ### 14.2 Deep links resolved to a drawer, not the full page
 
 `10_DESIGN_RESPONSE.md` §5.3: "card → drawer → 'Open full detail' for the complete record.
-**Deep links always resolve to the full page** so a brief or Teams alert lands somewhere
+**Deep links always resolve to the full page** so a brief or an alert lands somewhere
 shareable." PR 1 addressed an opportunity as `/opportunities?opportunity=<id>`, which
 reopened the drawer.
 

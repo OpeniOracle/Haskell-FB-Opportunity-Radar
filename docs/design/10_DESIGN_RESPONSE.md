@@ -380,7 +380,7 @@ describes opening a detail drawer from a card. Drawers are right for a 5-second 
 glance; they are wrong for the evidence, score explanation, timeline, and audit history
 `04` also requires. Default: card → drawer (summary, evidence count, score components,
 four actions) → "Open full detail" for the complete record. Deep links always resolve
-to the full page so a brief or Teams alert lands somewhere shareable.
+to the full page so a brief or a future notification lands somewhere shareable.
 
 **Coverage honesty is a first-class UI element, not an admin screen.** Under `04`'s
 requirement to state when coverage is incomplete, a source failure must be visible where
@@ -610,7 +610,7 @@ material_change_fingerprint = hash(change_type, from_state_digest, to_state_dige
 ```
 
 Recipient rather than subscription, so one user matching through three saved views is
-told once. Channel included, so the same person may legitimately get a Teams alert and
+told once. Channel included, so the same person may legitimately get an immediate alert and
 appear in tomorrow's email digest. Scoring version included, so a deliberate rescoring
 run can re-notify without a schema change, while an unchanged recomputation cannot.
 
@@ -1232,8 +1232,8 @@ implementation authorization**; merging the design pull request does not.
 | --- | --- | --- | --- |
 | D1 | Where does the Radar run, and who operates it? | **Corrected: a separate, externally hosted application operated by Openi Analytics.** No shared identity or infrastructure with the Haskell Hub, which remains a product and UX reference. F&B ontology and cadence differ enough that coupling the UI slows both. | Blocks E0; a late reversal is a rewrite of the delivery layer, not the kernel |
 | D2 | Which identity, hosting, DB, queue, storage and model services does **Openi** use? | **Corrected: Netlify frontend; a dedicated Supabase project for Auth, PostgreSQL and Storage; Postgres-backed queue; AI provider (V1) still open and Openi-owned.** Haskell IT owns none of them | Only V1 blocks anything, and only AI-assisted classification |
-| D3 | **CRM target for pursued opportunities** | Link-out first (store CRM ID on the opportunity); no write-back in MVP | Deferrable to Phase 4 |
-| D4 | Immediate alerts: Teams, email, or both? | **Both**, with Teams for immediate and email for digests | Blocks E13 UI polish only |
+| D3 | **CRM target for pursued opportunities** | **Corrected: deferred, out of pilot.** No connection to any Haskell CRM. Pursuit stays in the Radar; manual copy or export only. A future integration is a new scoped decision | None — it is out of scope, not deferred work |
+| D4 | Immediate alerts: which channel? | **Corrected and phased.** Phase 1 in-app notices and watches; a later authorized phase adds email via an **Openi-controlled** transactional service; **Teams deferred, outside the pilot** — it needs a Haskell tenant app, webhook or Graph permission, and Haskell IT action | Blocks E13 UI polish only |
 | D5 | Which geographies get permitting/incentive coverage first? | Follow the pilot: Southeast (GA/TN/NC/SC/AL/FL), TX, Midwest (OH/IN/IA/WI), plus AZ/NV for Niagara | Blocks E6 week-3 scope |
 | D6 | Which paid news/market-data subscriptions exist? | Assume none in pilot; GDELT reference-only mode (§7.4) | Determines whether trade-press reporting can ever reach `authoritative` evidence strength |
 | D7 | Retention and display rights for licensed content | Per-source `license_mode` + `retention_days`; default to reference-mode when unknown | **Compliance risk if deferred past E5** |
@@ -1265,15 +1265,34 @@ in full in `docs/design/13_GATE_1_DECISION_PACKET.md`.
 
 | Gate | Timing | Attendees | Decides | Unblocks |
 | --- | --- | --- | --- | --- |
-| **G-1 Mission, users, and pilot cohort** | Week 1 | F&B market leader, BD lead, executive sponsor | §1 product statement; personas; **D11** scope classes incl. Sherwin-Williams; **D12** Ecolab semantics; **D9** success definition | Everything — the only gate that cannot run in parallel |
-| **G-2 Opportunity definition and scoring** | Week 1 | Market leader, BD, SMEs | Lifecycle unchanged; **D16** confidence decomposition; **D19** evidence access modes and promotion rules; **D24** corrections model; the five dimensions and caps; negative-signal rules; **D8** ownership | E1, E10 |
-| **G-3 Source coverage, licensing, and confidentiality** | Week 2 | Platform admin, legal/commercial, marketing ops | §7 source plan and revised week-1 sequencing; the EPA/permits resolution (§7.3); **D5** geographies; **D6** subscriptions; **D7** retention; **D14** event-data licence review; **D17** coverage measurement; **D20** Kellanova retirement; **D21** build-or-buy permits | E4, E5, E6 |
-| **G-4 Architecture and data model** | Week 2 | **Openi** platform engineering, Openi security, data owner | **D1**, **D2**; §4 runtimes, transaction and queue boundaries; §6 model changes incl. **D15** temporal model, **D18** time-bounded ownership, **D23** research staging, C1 ingestion tables, C25 replay-cache key | E0, E2, E3 |
-| **G-5 Information architecture and visual direction** | Week 3 | Market leader, BD, design, accessibility reviewer | §5 page map; drawer-vs-page pattern; how inferred dates and coverage gaps are shown; **D10** brand; **D4** alert channels | E14 |
-| **G-6 MVP backlog and implementation authorization** | Week 3 | All of the above | §9 phasing; ratification of the **two-family Phase 2 exit definition** (§8.5) and the two-cycle measurement window; **D22** severity model; the failure-injection suite (§8.7); Phase 1 start | Implementation begins |
+| **G-1 Mission, users, and pilot cohort** | Week 1 | Haskell F&B market leader, BD lead, executive sponsor | §1 product statement; personas; **D11** scope classes incl. Sherwin-Williams; **D12** Ecolab semantics; **D9** success definition | Everything — the only gate that cannot run in parallel |
+| **G-2 Opportunity definition and scoring** | Week 1 | Haskell market leader, BD, SMEs | Lifecycle unchanged; **D16** confidence decomposition; **D19** evidence access modes and promotion rules; **D24** corrections model; the five dimensions and caps; negative-signal rules; **D8** ownership | E1, E10 |
+| **G-3 Source coverage, licensing, and confidentiality** | Week 2 | Openi platform operations; **Haskell Legal/Commercial** for D14 and Haskell-provided data | §7 source plan and revised week-1 sequencing; the EPA/permits resolution (§7.3); **D5** geographies; **D6** subscriptions; **D7** retention; **D14** event-data licence review; **D17** coverage measurement; **D20** Kellanova retirement; **D21** build-or-buy permits | E4, E5, E6 |
+| **G-4 Architecture and data model** | Week 2 | **Openi engineering (owns approval); Openi security or the designated Openi platform owner** reviews hosting, authentication, database, storage, secrets, logging and operations. **Haskell IT is not an attendee** | **D1**, **D2**; §4 runtimes, transaction and queue boundaries; §6 model changes incl. **D15** temporal model, **D18** time-bounded ownership, **D23** research staging, C1 ingestion tables, C25 replay-cache key | E0, E2, E3 |
+| **G-5 Information architecture and visual direction** | Week 3 | Haskell market leader, BD, Openi design, accessibility reviewer | §5 page map; drawer-vs-page pattern; how inferred dates and coverage gaps are shown; **D10** brand; **D4** alert channels | E14 |
+| **G-6 MVP backlog and implementation authorization** | Week 3 | Openi engineering with the Haskell business sponsor | §9 phasing; ratification of the **two-family Phase 2 exit definition** (§8.5) and the two-cycle measurement window; **D22** severity model; the failure-injection suite (§8.7); Phase 1 start | Implementation begins |
 
 Gates G-2 through G-5 can run in parallel after G-1. The conflict register in §2 should
 be walked at whichever gate owns each row; no item should reach implementation unowned.
+
+> **Gate ownership, corrected.** The Radar is externally hosted and operated by Openi
+> Analytics (**ADR 0013**), so these gates divide as follows:
+>
+> - **Openi engineering** owns architecture and implementation approval.
+> - **Openi security, or the designated Openi platform owner**, reviews hosting,
+>   authentication, database, storage, secrets, logging and operations.
+> - The **Haskell business sponsor / F&B market leader** reviews product scope, workflows,
+>   user access requests, and opportunity relevance.
+> - **Haskell Legal/Commercial** reviews contractual permission for Haskell-provided
+>   proprietary or licensed data, including **D14-L**.
+> - **Haskell IT is not a standing gate attendee, infrastructure reviewer, or
+>   implementation approver.** It becomes relevant only if Haskell later requests SSO,
+>   domain controls, CRM integration, Teams integration, or another explicit connection to
+>   a Haskell-controlled system.
+>
+> **An externally hosted application is not blocked on a general Haskell security or IT
+> approval** unless an applicable contract specifically requires one. No such requirement
+> is recorded in this package, and none is invented here.
 
 **Two items are timing-critical and should not wait for their natural gate.** D15 (the
 temporal model) and D18 (time-bounded ownership) must be settled before the first signal

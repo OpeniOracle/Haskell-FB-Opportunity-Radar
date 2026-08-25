@@ -494,7 +494,8 @@ visible focus, semantic regions, map results mirrored as a synchronized list.
 | Opportunities, scoring, promotion | V1, then **D19** and **D16** | Provider selection, then evidence-access promotion rules and confidence decomposition ratified |
 | PACK EXPO import, engagement layer, tier attributes, `account_strategy` scoring | **D14-L** | Legal/Commercial Contracts complete the event lead-retrieval agreement review |
 | Newsroom, incentive, permit connectors | **E-A6 results**, then **D5**, **D13** | Dry-run verdicts; then priority geographies and bottler/subsidiary modelling |
-| Alerts and briefings | **D4**, plus opportunities | Alert channel decision |
+| Alerts and briefings | Opportunities (Phase 2) | **D4 is resolved and phased.** Phase 1 delivers in-app notices and watches only; email via an Openi-controlled transactional service comes in a later authorized phase; **Teams is deferred, outside the pilot**. No Haskell channel, tenant app, or IT action is involved |
+| CRM linkage | — | **Out of pilot (D3).** The Radar connects to no Haskell CRM. Pursuit stays in the Radar; manual copy or export only |
 | Final pilot metrics | **D11 confirmation**, **D9-T** | F&B market leader confirms four classifications; week-4 checkpoint sets targets |
 | Commercial permit or project data | **D21 evaluation** | Vendor evaluation completes; contract terms confirmed |
 
@@ -566,8 +567,13 @@ response to an undecided vendor.
 If the Storage buckets lag, PR 6 can merge with the filesystem-backed archive
 implementation and switch behind the same interface, since `EvidenceArchive` is an adapter.
 
-**No phase depends on Haskell IT infrastructure approval, and no phase may connect to a
-Haskell-controlled system without a new explicit decision** (ADR 0013).
+**No phase depends on Haskell IT infrastructure approval, and no roadmap milestone
+requires access to a Haskell-controlled system** (ADR 0013). CRM linkage and Microsoft
+Teams delivery are both **outside the pilot**; either would need a new scoped decision
+covering architecture, security, data handling and authorization.
+
+**D14-L is the only Haskell-side contractual gate in the programme**, and it blocks only
+Haskell-provided PACK EXPO data and what derives from it.
 
 ---
 

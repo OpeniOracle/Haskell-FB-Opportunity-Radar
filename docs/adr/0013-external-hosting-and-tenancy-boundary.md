@@ -49,6 +49,37 @@ never contacted: Haskell internal networks, databases, Hub infrastructure, ident
 services, file systems, and administrative credentials. **The application must function
 with no connectivity to any Haskell-controlled system.**
 
+**Internet-accessible, authenticated, private.** The login surface is reachable over the
+Internet; the content behind it is not public. No unauthenticated user may reach Haskell
+opportunity, evidence, company, facility, saved-view, health, or administrative data.
+Public self-registration is disabled, and Openi controls invitations and removals.
+"Reachable" is not "public", and the distinction is worth stating because the first
+phrasing of this record blurred it.
+
+**No integration with a Haskell-controlled system is in the pilot.** Two follow from that
+directly:
+
+- **CRM linkage (D3) is deferred and out of pilot.** Pursuit activity stays inside the
+  Radar. A user may copy a link or manually export a record they are authorized to see; no
+  automated integration exists, and the Radar neither reads from nor writes to a Haskell
+  system. A future integration is a new scoped decision covering architecture, security,
+  data handling and authorization.
+- **Alerting (D4) is phased with no Haskell-controlled channel.** Phase 1 is in-application
+  notices and watches. A later authorized phase adds email through an **Openi-controlled**
+  transactional service. **Microsoft Teams is deferred and outside the pilot** — it would
+  require a Haskell tenant application, a webhook or Graph permission, and Haskell IT
+  action, all of which this decision exists to avoid.
+
+**Gate ownership.** Openi engineering owns architecture and implementation approval; Openi
+security or the designated Openi platform owner reviews hosting, authentication, database,
+storage, secrets, logging and operations. The Haskell business sponsor reviews product
+scope, workflows, user access and relevance; Haskell Legal/Commercial reviews contractual
+permission for Haskell-provided data, including **D14-L — the only Haskell-side contractual
+gate in the programme**. **Haskell IT is not a standing gate attendee, infrastructure
+reviewer, or implementation approver**, and an externally hosted application is not blocked
+on a general Haskell security or IT approval unless an applicable contract specifically
+requires one.
+
 **Credential discipline.** The browser gets the public client configuration and is
 constrained by RLS. Service-role and administrative credentials exist only in
 Openi-controlled server-side functions and workers, and never in code that ships to a
@@ -85,10 +116,18 @@ Openi does for itself.
 
 Bad. Openi carries operational responsibility that would otherwise be Haskell's: backups
 and restore drills, RLS correctness, secret rotation, monitoring, and incident response.
-Vendor concentration is real — Supabase supplies auth, database and storage, so an exit
-touches three concerns at once, which is why portability is a stated requirement rather
-than an aspiration. And Haskell has less direct visibility into an application it does not
-operate, so reporting has to substitute for access.
+And Haskell has less direct visibility into an application it does not operate, so
+reporting has to substitute for access.
+
+**Vendor concentration is accepted, not unresolved.** Supabase supplies PostgreSQL, Auth
+and Storage, so an exit touches three concerns at once. Openi accepts that for the pilot
+because it materially reduces complexity and operational burden — one project, one
+credential model, one set of RLS semantics — and because the acceptance is conditioned on
+exit staying cheap: standard version-controlled PostgreSQL migrations, export through
+standard PostgreSQL tools, objects exportable through documented storage mechanisms, no
+unnecessary Supabase-specific extensions, and authentication and authorization logic
+documented well enough to support a future migration. **Re-evaluate before expanding beyond
+the pilot or adding additional customers.**
 
 Neutral but worth stating. **Selecting a vendor is not provisioning one.** A dedicated
 Supabase project may still need creating and configuring. That is an implementation
