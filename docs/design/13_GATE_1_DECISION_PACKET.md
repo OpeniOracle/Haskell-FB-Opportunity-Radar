@@ -3,11 +3,19 @@
 Haskell Food & Beverage Opportunity Radar · Version 0.4 · **For stakeholder decision**
 
 **Decision state as recorded.** Eight decisions are approved in full — D15, D18, D21, D22,
-D23, D24, **D1**, and the **D9 framework**. Two are approved in part: **D2a** (architecture)
-with **D2b** (vendor selections) open, and the **D14 handling model** with the licence and
-import permission externally blocked. **D11 is approved provisionally**, pending F&B
-market-leader confirmation. **Thirteen remain open** — D3, D4, D5, D6, D7, D8, D10, D12,
-D13, D16, D17, D19, D20 — and **D2b** is a fourteenth open row as a sub-item of D2.
+D23, D24, **D1** (corrected), and the **D9 framework**. Two are approved in part: **D2a**
+(architecture) with **D2b** (vendor selections) now **resolved except V1**, and the **D14
+handling model** with the licence and import permission externally blocked. **D11 is
+approved provisionally**, pending F&B market-leader confirmation. **D3 is deferred — out of
+pilot**, and **D4 is approved in a corrected, phased form** with no Haskell-controlled
+channel. **Eleven remain open** — D5, D6, D7, D8, D10, D12, D13, D16, D17, D19, D20.
+
+> **Correction (this revision).** D1 and D2b previously recorded the Radar as an internal
+> Haskell application sharing identity and infrastructure with the Haskell Hub, with the
+> four vendor selections owned by Haskell IT. The Radar is **externally hosted and operated
+> by Openi Analytics**; the selections are **Openi's**, and V2, V3 and V4 are made. The
+> full correction register is in `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md`
+> and the decision is recorded as **ADR 0013**. No other decision status changed.
 
 Approved decisions keep their full entry below so the reasoning stays on the record; each
 carries its status at its heading.
@@ -54,9 +62,9 @@ three weeks or a recurring commercial cost.
 | --- | --- | --- | --- | --- | --- | --- |
 | **D15** | Temporal model | **Approved** | Platform engineering lead | **Before the first signal is written** | M | G-4 |
 | **D18** | Corporate-reorganization handling | **Approved** | Platform engineering lead | **Before the first facility link is written** | M | G-4 |
-| **D1** | Hub-embedded or separate application | **Approved** | Executive sponsor + engineering | Before Phase 1 start | L if reversed late | G-4 |
+| **D1** | Deployment and tenancy | **Approved (corrected)** — externally hosted by Openi | **Openi**, sponsor informed | Settled | L if reversed late | G-4 |
 | **D2a** | Platform architecture | **Approved** | Executive sponsor on engineering's recommendation | Before Phase 1 start | S | G-4 |
-| **D2b** | Vendor selections (AI provider, identity provider, PostgreSQL hosting, object storage) | **Open — IT selection required** | IT | Each blocks the capability that depends on it | S to select, L to change | G-4 |
+| **D2b** | Vendor selections (AI provider, identity provider, PostgreSQL hosting, object storage) | **Approved in part (corrected)** — V2/V3/V4 selected; **V1 open** | **Openi** platform engineering | V1 before the first AI-assisted classification | S to select, L to change | G-4 |
 | **D9** | Pilot acceptance framework | **Approved** | Executive sponsor + market leader | Before Phase 1 start | S | G-1 |
 | **D9-T** | Numeric acceptance targets | **Deferred to the week-4 checkpoint** | Executive sponsor + market leader | Week 4 of the measurement window | S | G-1 |
 | **D11** | Scope class for four non-core accounts | **Approved provisionally** | F&B market leader | Confirmation before pilot metrics are finalized | S | G-1 |
@@ -72,9 +80,9 @@ three weeks or a recurring commercial cost.
 | D7 | Licensed-content retention and display | Open | Legal / commercial | Before source enablement | S | G-3 |
 | D20 | Kellanova connector retirement | Open | Platform admin | Before Phase 4 | S | G-3 |
 | D8 | Ownership of tier changes and overrides | Open | Market leader | Before Phase 3 | S | G-2 |
-| D4 | Alert channels | Open | BD lead + IT | Before Phase 3 | S | G-5 |
+| D4 | Alert channels | **Approved (corrected)** — in-app now, Openi email later, Teams deferred | **Openi**, with Haskell sponsor on recipients | In-app in Phase 1 | S | G-5 |
 | D10 | Design system and brand assets | Open | Design lead | Before Phase 3 | S | G-5 |
-| D3 | CRM linkage | Open | BD lead + IT | Phase 4 | M | G-1 (informational) |
+| D3 | CRM linkage | **Deferred — out of pilot** | Haskell sponsor, only on a Haskell request | Out of pilot | M | G-1 (informational) |
 | **D21** | Build or buy local permit coverage | **Approved** | Market leader + engineering | Before week 3 of Phase 2 | M–L | G-3 |
 | **D22** | Incident severity model | **Approved** | Engineering + executive sponsor | Before Phase 2 | S | G-6 |
 | **D23** | Research-claim staging | **Approved** | Platform engineering lead | Before any external batch is imported | M | G-4 |
@@ -311,19 +319,33 @@ queue.
 
 ### D3 — CRM linkage
 
-**Recommended default.** Link-out only in the MVP: store a CRM identifier on the
-opportunity and deep-link. No write-back, no sync.
+> **Status: Deferred — out of pilot.** The pilot does **not** connect to any Haskell CRM.
+> The earlier entry recommended link-out with a CRM identifier stored on the opportunity;
+> that is an integration with a Haskell-controlled system and is out of scope under
+> **ADR 0013**. It is neither implemented nor approved for integration.
 
-**Alternatives.** *Two-way sync* — the largest single integration in the roadmap, and it
-makes the Radar a system of record it was explicitly not meant to be. *No linkage* —
-forces manual re-keying, which contradicts the automation-first principle at the one
-point where a human is already acting.
+**What the pilot does instead.** Pursuit activity stays inside the Radar. A user may copy
+a link or manually export a record they are authorized to see. **No automated CRM
+integration is implemented**, and the Radar neither reads from nor writes to any
+Haskell-controlled system.
 
-**Operational consequence.** Link-out gets the workflow benefit at a fraction of the
-cost and keeps `01`'s "not a CRM replacement" boundary intact.
+**Alternatives, unchanged and still deferred.** *Two-way sync* — the largest single
+integration in the roadmap, and it makes the Radar a system of record it was explicitly
+not meant to be. *Link-out with a stored CRM identifier* — smaller, but still an
+integration with a Haskell system.
 
-**Cost and complexity.** M for link-out; L for sync. **Owner.** BD lead with IT.
-**Timing.** Phase 4. Listed at G-1 for awareness only.
+**Operational consequence.** Manual copy or export at the one point where a human is
+already acting. That is a deliberate, bounded cost for the pilot, and it keeps `01`'s
+"not a CRM replacement" boundary intact without opening an inbound path.
+
+**What a future integration would require.** A **new scoped decision** covering
+architecture, security, data handling, and authorization. It is not an extension of this
+entry.
+
+**Cost and complexity.** M for link-out; L for sync — **not incurred in the pilot**.
+**Owner.** Haskell business sponsor, if and when Haskell asks for it. **Haskell IT has no
+current D3 responsibility.**
+**Timing.** Out of pilot. Revisit only on a Haskell request.
 
 ---
 
@@ -535,28 +557,40 @@ Phase 4.
 
 ## Architecture and platform decisions
 
-### D1 — Hub-embedded or separate application
+### D1 — Deployment and tenancy
 
-> **Status: Approved.** The Radar will be built as a separate internal application sharing
-> identity and infrastructure with the Haskell Hub. The entry below is retained as the
-> decision record.
+> **Status: Approved (corrected).** The Radar is a **separate, externally hosted
+> application operated by Openi Analytics**. It does not share runtime infrastructure with
+> the Haskell Hub. Haskell users receive authenticated browser access to the Radar.
+>
+> **This supersedes the earlier entry**, which read "a separate internal application
+> sharing identity and infrastructure with the Haskell Hub". Three words were wrong —
+> *internal*, *identity*, *infrastructure*. The superseded wording and the full trace of
+> how it entered the design are recorded in
+> `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md` and **ADR 0013**.
 
-**Recommended default.** A separate application sharing identity and infrastructure with
-the Haskell Hub, not embedded in it.
+**Decision.** Externally hosted by Openi: Netlify for the frontend, a dedicated Supabase
+project for database, authentication and object storage. The Haskell Hub is a **product and
+UX reference**, not shared infrastructure. Any future integration between the two
+applications is a separate decision.
 
 **Alternatives.** *Embed in the Hub* — one surface for users, at the cost of coupling
-release cadence and forcing the F&B ontology into a shared model. *Fully standalone
-including identity* — maximum autonomy, duplicate user administration and a second
-security review.
+release cadence and forcing the F&B ontology into a shared model. *Separate application
+sharing Haskell identity and infrastructure* — the previously recorded answer; rejected
+because it describes an arrangement that does not exist and makes the pilot's schedule
+hostage to a Haskell IT queue for work Haskell was never going to do.
 
-**Operational consequence.** The F&B ontology, daily cadence, and page model differ
-enough from the Hub's that coupling slows both. Shared identity keeps administration
-single-source.
+**Operational consequence.** The F&B ontology, daily cadence, and page model differ enough
+from the Hub's that coupling slows both — the original reasoning, which survives the
+correction. Because nothing runs in Haskell infrastructure, **no phase depends on Haskell
+IT infrastructure approval**, and the application must function with no connectivity to any
+Haskell-controlled system.
 
 **Cost and complexity.** L if reversed after Phase 3 — a rewrite of the delivery layer,
 though the ingestion and evidence kernel survives either way.
 
-**Owner.** Executive sponsor with engineering. **Timing.** Before Phase 1 start.
+**Owner.** Openi Analytics, with the Haskell executive sponsor informed.
+**Timing.** Settled.
 
 ### D2a — Platform architecture
 
@@ -580,8 +614,8 @@ gateway is what makes classifications reproducible, auditable, and cost-bounded 
 Deferring search, vector, and broker services follows the note already recorded in
 `schemas/database.sql`, which defers them until retrieval requirements are approved.
 
-The case rests on those properties. No claim is made about the components' familiarity to
-Haskell IT; nothing in this package documents that.
+The case rests on those properties. Haskell IT does not operate any of these components,
+so their familiarity to Haskell IT is not a consideration (ADR 0013).
 
 **Alternatives.** *A managed search or vector service* — deferred, as above. *An external
 message broker* — unnecessary at pilot volume and adds an operational surface.
@@ -591,26 +625,38 @@ message broker* — unnecessary at pilot volume and adds an operational surface.
 
 ### D2b — Vendor selections
 
-> **Status: Open.** Four selections are required before D2 is complete. **These are IT's to
-> make; they are not made here and must not be assumed.**
+> **Status: Approved in part (corrected).** Three of four selections are made. **These are
+> Openi's to make, not Haskell IT's** — the earlier entry assigned them to Haskell IT,
+> which was wrong. See `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md` §5 and
+> **ADR 0013**.
 
-**The package names no vendors.** The only provider references anywhere in it are the
-placeholders `approved_model_provider` and `approved_extraction_model` in
-`schemas/sample-opportunity.json`.
+| # | Selection | Status | Blocks |
+| --- | --- | --- | --- |
+| — | **Frontend hosting** | **Netlify — selected and approved for the pilot** | — |
+| **V1** | AI provider and model tier, plus data-processing terms confirming Haskell content is not used for provider model training | **Open** | AI-assisted classification **only**. No Phase 1 epic calls it |
+| **V2** | Identity | **Supabase Auth — selected and approved for the pilot**, invite-only | — |
+| **V3** | PostgreSQL hosting | **Supabase PostgreSQL — selected and approved for the pilot**, dedicated project | — |
+| **V4** | Object storage | **Supabase Storage — selected and approved for the pilot**, private buckets | — |
 
-| # | Selection required | Blocks |
-| --- | --- | --- |
-| **V1** | AI provider and model tier, plus data-processing terms confirming Haskell content is not used for provider model training | First AI-assisted classification |
-| **V2** | Identity provider and SSO standard | First user login |
-| **V3** | PostgreSQL hosting — managed service or self-hosted, and in which environment | Phase 1 infrastructure |
-| **V4** | Object storage service, with retention and access controls | First source document archived |
+**Selection is not provisioning.** The vendor decisions are resolved. A dedicated Supabase
+project may still need to be created or configured; that is an **implementation
+dependency**, not an architecture-approval gate, and Openi clears it without a stakeholder
+decision.
 
-**Operational consequence.** Each unmade selection blocks only the capability that depends
-on it. Phase 1 groundwork proceeds on D2a alone. V1 may involve procurement as well as IT,
-since data-processing terms are contractual.
+**No PostgreSQL major version is assumed.** Engineering inspects the provisioned Supabase
+project and verifies the version, `pgcrypto`, and any other required feature **before
+applying migrations**.
 
-**Cost and complexity.** S to select, L to change after Phase 2. **Owner.** IT, with
-engineering; procurement for V1 terms. **Timing.** Each before the capability it gates.
+**Portability is retained.** Standard PostgreSQL and `pgcrypto` where supported; migration
+files version-controlled; data exportable through standard PostgreSQL and object-storage
+mechanisms; unnecessary Supabase-specific extensions and irreversible lock-in avoided.
+
+**Haskell corporate SSO is deferred and optional**, to be evaluated only if Haskell
+requests it. The pilot must not be blocked on Haskell identity infrastructure.
+
+**Cost and complexity.** S to select, L to change after Phase 2. **Owner.** **Openi**
+platform engineering; Openi commercial for V1 data-processing terms.
+**Timing.** V1 before the first AI-assisted classification; the rest settled.
 
 ### D16 — Confidence decomposition
 
@@ -651,16 +697,39 @@ way to quietly turn the platform back into a priority list.
 
 ### D4 — Alert channels
 
-**Recommended default.** Both: Microsoft Teams for immediate critical alerts, email for
-daily and weekly digests, in-app for everything.
+> **Status: Approved (corrected) — phased, with no Haskell-controlled channel.** The
+> earlier entry recommended Microsoft Teams for immediate alerts. Teams delivery requires a
+> Haskell tenant application, a webhook or Graph permission, and Haskell IT action, so it
+> is **deferred and outside the pilot** under **ADR 0013**.
 
-**Alternatives.** *Email only* — simplest, and immediate alerts lose their urgency.
-*Teams only* — misses executive viewers who live in email.
+**The phased channel model.**
 
-**Operational consequence.** Channel is part of the alert dedupe key, so supporting both
-is a design input rather than a late addition.
+| Phase | Channel |
+| --- | --- |
+| **Phase 1** | **In-application notices and watches.** Nothing leaves the application |
+| **A later authorized phase** | **Email**, delivered through an **Openi-controlled transactional email service** to approved Haskell users |
+| **Deferred, outside the pilot** | **Microsoft Teams integration** |
 
-**Cost and complexity.** S. **Owner.** BD lead with IT. **Timing.** Before Phase 3.
+**No Haskell dependency.** No Teams webhook, no Haskell tenant application, no Microsoft
+Graph API permission, no Haskell mailbox access, and **no Haskell IT action** is required
+for any phase recorded here.
+
+**The email provider is an Openi implementation selection.** It is **not selected here**,
+and selecting it does not require a stakeholder decision — it is Openi's, like the rest of
+the platform.
+
+**Alternatives.** *Teams for immediate alerts* — deferred, as above; it buys urgency at the
+cost of a Haskell-side integration the pilot is designed not to need. *In-app only,
+permanently* — misses viewers who do not open the application daily, which is why email is
+kept as a later phase rather than dropped.
+
+**Operational consequence.** Channel remains part of the alert dedupe key, so the model
+stays a design input rather than a late addition — that part of the original reasoning
+survives.
+
+**Cost and complexity.** S. **Owner.** **Openi** for delivery mechanism and provider;
+Haskell business sponsor for who receives what.
+**Timing.** In-app in Phase 1; email when a later phase authorizes it.
 
 ### D10 — Design system and brand assets
 
@@ -801,7 +870,7 @@ Most of this section is now closed. What remains is listed last.
 
 | Item | Who | What is needed |
 | --- | --- | --- |
-| **D2b** — vendor selections V1–V4 | IT, procurement for V1 terms | AI provider and data-processing terms, identity provider, PostgreSQL hosting, object storage. **Not selected here** |
+| **D2b** — vendor selection **V1 only** | **Openi** platform engineering; Openi commercial for terms | AI provider and model tier, with data-processing terms. **V2, V3 and V4 are selected — see §D2b.** Haskell IT owns none of V1–V4 |
 | **D9-T** — numeric targets | Executive sponsor + market leader | Four weeks of measured baseline, then the week-4 checkpoint |
 | **D11 confirmation** | F&B market leader | Confirm or overturn all four provisional classifications |
 | **D12** — Ecolab semantics | BD lead | Pursuit target or partner lens; related to D11 but decided separately |

@@ -30,6 +30,7 @@ acceptance selects a vendor.
 | [0010](0010-health-and-coverage-are-separate-metrics.md) | Operational health and intelligence coverage are separate metrics | Proposed · **revised** | G-3 / G-6 |
 | [0011](0011-external-research-enters-staging-only.md) | External research enters staging, never canonical tables | **Accepted** (D23) | — |
 | [0012](0012-corrections-supersede-they-do-not-overwrite.md) | Corrections supersede; they do not overwrite | **Accepted** (D24) | — |
+| [0013](0013-external-hosting-and-tenancy-boundary.md) | The Radar is externally hosted, with no Haskell-side runtime dependency | **Accepted** (D1, D2b — corrected) | — |
 
 Records marked **revised** were changed by a later reconciliation pass.
 
@@ -40,15 +41,19 @@ Records marked **revised** were changed by a later reconciliation pass.
   outbound-alert circuit breaker; added `season` to 0004's precision enum; and recorded in
   0005 why a proposed 95%-automatic-conflict-resolution target was rejected.
 
-**Six records are now Accepted** — 0001 via D1 and D2a, 0003 via D2a, 0004 via D15,
-0011 via D23, 0012 via D24, and 0005 in part via D18 (its time-bounded-ownership corollary;
-the conservative-resolution ladder still awaits Gate G-4). The remaining records are
-Proposed.
+**Seven records are now Accepted** — 0001 via D1 and D2a, 0003 via D2a, 0004 via D15,
+0011 via D23, 0012 via D24, **0013 via the corrected D1 and D2b**, and 0005 in part via
+D18 (its time-bounded-ownership corollary; the conservative-resolution ladder still awaits
+Gate G-4). The remaining records are Proposed.
 
-Two acceptances are bounded. ADR 0001 and ADR 0003 are approved as **architecture**; the
-vendor selections they depend on — AI provider, identity provider, PostgreSQL hosting,
-object storage — are **D2b and remain open with IT**. Accepting the architecture does not
-select a vendor.
+**ADR 0013 corrects the hosting and ownership context of 0001 and 0003.** Those two
+records previously described the Radar as sharing identity and infrastructure with the
+Haskell Hub, and described the vendor selections as "open with IT". The Radar is externally
+hosted and operated by **Openi Analytics**; the selections are **Openi's**, and Netlify,
+Supabase Auth, Supabase PostgreSQL and Supabase Storage are selected for the pilot. Only
+the AI provider (V1) remains open. The architecture decided in 0001 and 0003 is unchanged —
+accepting an architecture still does not select a vendor, and selecting a vendor still does
+not license lock-in. See `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md`.
 
 Earlier revisions were self-corrections and reconciled external input, not stakeholder
 supersessions.

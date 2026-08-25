@@ -50,8 +50,10 @@ material_change_fingerprint = hash(change_type, from_state_digest, to_state_dige
 ```
 
 Each component earns its place. **Recipient** rather than subscription, so one user
-matching an event through three saved views is told once. **Channel**, because a Teams
-alert now and an appearance in tomorrow's email digest are not duplicates. **Scoring
+matching an event through three saved views is told once. **Channel**, because an
+immediate in-app notice now and an appearance in tomorrow's email digest are not
+duplicates. (D4 as corrected: in-app in Phase 1, Openi-delivered email in a later
+authorized phase, **Teams deferred and outside the pilot** — see ADR 0013.) **Scoring
 version**, so a deliberate rescoring run may legitimately re-notify while an unchanged
 recomputation may not.
 

@@ -114,7 +114,7 @@ P1a  (no vendor selection required — Netlify-renderable)
                    └─ E-A5 Accessibility & responsive pass
   E-A6 Connector dry-run spike  ── TRACK S, parallel, gated by nothing
 
-P1b  (requires V3 PostgreSQL hosting; V4 for raw archiving)
+P1b  (requires a provisioned PostgreSQL target; Supabase Storage buckets for raw archiving)
   E-B1 Schema & migration harness
     ├─ E-B2 Audit, access control, retention
     ├─ E-B3 Egress gateway
@@ -142,7 +142,7 @@ P1c  (integration)
 | **E-A4** Seven surfaces on fixtures | Daily Pulse, Opportunities, Company, Facility, Evidence detail, Source Health & Coverage, Saved Pursuits & Watches (§11.2) | E-A2, E-A3 | All seven render from fixtures on a Netlify preview; every surface shows its empty, loading, and degraded states; **Opportunities is visibly labelled as illustrative** |
 | **E-A5** Accessibility & responsive | Keyboard paths, focus states, semantic regions, colour-independent status, mobile review layouts | E-A4 | Automated a11y scan clean; keyboard-only walkthrough of all six surfaces; status meaning survives a greyscale screenshot |
 | **E-A6** Connector dry-run spike | Non-production script: resolve ~30 newsroom/IR endpoints, record feed/sitemap/HTML shape, re-confirm 15 CIKs against EDGAR | **Nothing — runs in parallel with PR 1 and PR 2, gated by neither** | A written report updating every *Unverified* cell in the coverage matrix; **writes to no Haskell system** |
-| **E-B1** Schema & migration harness | Canonical tables per the delta proposal; migration runner; forward migration from empty **and** from the v0.1 baseline | **V3** | Migration suite passes from empty and from the v0.1 fixture; rollback tested; temporal, confidence-axis, and interval constraints enforced by the database |
+| **E-B1** Schema & migration harness | Canonical tables per the delta proposal; migration runner; forward migration from empty **and** from the v0.1 baseline | **Provisioning** — Supabase dev target or authorized CI PostgreSQL container | Migration suite passes from empty and from the v0.1 fixture; rollback tested; temporal, confidence-axis, and interval constraints enforced by the database |
 | **E-B2** Audit, access control, retention | `audit_events` on every mutation; role model; `data_sensitivity_class`; retention job | E-B1 | Every mutating operation writes an audit row in an integration run; a restricted-class row is unreachable from the API surface |
 | **E-B3** Egress gateway | Sole outbound path: allowlist, DNS/IP validation, redirect policy, byte/MIME caps, per-host rate limits, robots posture, full telemetry | E-B1 | Non-allowlisted host, plain HTTP, private IP, and DNS-rebind fixtures all fail closed and are logged; **no other module can open a socket** (enforced in CI) |
 | **E-B4** Connector framework | Logical runs keyed `(source_id, collection_window_start)`; attempts as child rows; bounded retries; parked queue; per-source circuit breaker; seven-state status | E-B3 | Duplicate scheduler fire creates **one** logical run; a permanently failing message parks after bounded retries and does not redeliver; breaker trips and backs off the schedule |
@@ -188,22 +188,39 @@ implemented structurally but not exercised until Phase 2.
 
 ---
 
-## 4. Vendor-neutral architecture, and where each D2b selection becomes blocking
+## 4. Platform selections, and the adapter discipline that keeps them reversible
 
-Phase 1 is designed so that **no vendor choice is embedded in application code**. Each
-external dependency sits behind a narrow interface with a development implementation.
+> **Corrected.** This section previously recorded V2, V3 and V4 as pending selections owned
+> by Haskell IT. The Radar is **externally hosted and operated by Openi Analytics**; the
+> selections are **Openi's**, and three of the four are made. See
+> `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md` and **ADR 0013**.
 
-| Selection | Interface | Development stand-in | Becomes blocking at |
-| --- | --- | --- | --- |
-| **V1 AI provider** | `ModelGateway.infer(task, inputs, schema, promptVersion)` returning a schema-validated object plus provenance | **No stand-in that produces classifications.** A recording/replay harness only | **Phase 2.** No Phase 1 epic calls it. This is why Phase 1 stops before signals |
-| **V2 Identity provider** | `AuthAdapter` — session resolution, role claims, sign-out | Local development stub; Netlify previews run a fixed mock session **and carry no real data** | **E-C3**, the first time a surface renders real data to a real person |
-| **V3 PostgreSQL hosting** | Standard SQL through a migration harness; no proprietary extensions beyond `pgcrypto` | Local containerized Postgres for development and CI | **E-B1**. Everything in P1b is blocked until it lands |
-| **V4 Object storage** | `EvidenceArchive.put/get/head` returning a URI | Filesystem-backed implementation for development and CI | **E-B6**, the first time raw bytes are archived from a live source |
+Phase 1 is designed so that **no vendor choice is embedded in application code**. That
+discipline is retained now that the vendors are chosen, because it is what keeps a future
+migration bounded — not because the choice is undecided.
 
-**Two properties keep this honest.** No module outside the adapter may import a vendor SDK,
-and CI enforces it with a dependency rule. And the model gateway is *defined* in Phase 1 —
+| Selection | Status | Interface | Development stand-in | Becomes blocking at |
+| --- | --- | --- | --- | --- |
+| **Frontend hosting** | **Netlify — selected** | — | Local Vite dev server | Already in use |
+| **V1 AI provider** | **Open** — Openi-owned | `ModelGateway.infer(task, inputs, schema, promptVersion)` returning a schema-validated object plus provenance | **No stand-in that produces classifications.** A recording/replay harness only | **Phase 2.** No Phase 1 epic calls it. This is why Phase 1 stops before signals |
+| **V2 Identity** | **Supabase Auth — selected**, invite-only | `AuthAdapter` — session resolution, role claims, sign-out | Local development stub; Netlify previews run a fixed mock session **and carry no real data** | **E-C3**, the first time a surface renders real data to a real person |
+| **V3 PostgreSQL** | **Supabase PostgreSQL — selected**, dedicated project | Standard SQL through a migration harness; no proprietary extensions beyond `pgcrypto` | Local containerized Postgres for development and CI | **E-B1**, on provisioning availability — no longer a vendor decision |
+| **V4 Object storage** | **Supabase Storage — selected**, private buckets | `EvidenceArchive.put/get/head` returning a URI | Filesystem-backed implementation for development and CI | **E-B6**, the first time raw bytes are archived from a live source |
+
+**Selection is not provisioning.** A dedicated Supabase project may still need creating or
+configuring. That is an implementation dependency Openi clears for itself, not an
+approval gate, and it must not be recorded as one.
+
+**No PostgreSQL major version is assumed.** Engineering inspects the provisioned project and
+verifies the version, `pgcrypto`, and any other required feature **before applying
+migrations**.
+
+**Three properties keep this honest.** No module outside the adapter may import a vendor
+SDK, and CI enforces it with a dependency rule. The model gateway is *defined* in Phase 1 —
 its interface, provenance record, and replay-cache key (ADR 0003) — while remaining
-uncalled, so Phase 2 wires a provider in rather than retrofitting a boundary.
+uncalled, so Phase 2 wires a provider in rather than retrofitting a boundary. And data stays
+**exportable through standard PostgreSQL and object-storage mechanisms**, so selecting a
+vendor never became consent to lock-in.
 
 ---
 
@@ -342,7 +359,7 @@ of that period, not built during it.
 | Sole egress path | Egress gateway; CI dependency rule forbids network imports elsewhere | E-B3 acceptance |
 | SSRF protection | DNS resolution then private/link-local/metadata range rejection, re-checked at connect | Rebind fixture test |
 | Transport | HTTPS only; plain HTTP fails closed | Fixture test |
-| Secrets | Outside application data; never in the repository; **no secrets needed in Phase 1** — every source is unauthenticated | Secret scan in CI |
+| Secrets | Outside application data; never in the repository; **no source credentials needed in Phase 1** — every source is unauthenticated. Platform credentials (Supabase service role, database connection) are **Openi-held, server-side only, and never shipped to a browser** | Secret scan in CI |
 | Access control | Role-based; `data_sensitivity_class` on sources and evidence; restricted classes unreachable from the API | E-B2 acceptance |
 | Audit | `audit_events` on every mutation, actor-typed (user/system/connector/model), immutable | Integration-run assertion |
 | Evidence retention | `retention_days` per source; `retention_expires_at` per evidence row; retention job in the maintenance queue | Licensed-source fixture |
@@ -470,14 +487,15 @@ visible focus, semantic regions, map results mirrored as a synchronized list.
 
 | Blocked capability | Blocked by | Exactly what is needed |
 | --- | --- | --- |
-| Any persistent backend | **V3** | IT selects PostgreSQL hosting — managed or self-hosted, and the environment |
-| Raw evidence archiving from live sources | **V4** | IT selects object storage with retention and access controls |
-| Real user access to real data | **V2** | IT selects identity provider and SSO standard |
-| Signal classification, capability alignment, clustering | **V1** | IT and procurement select AI provider and model tier **with data-processing terms confirming Haskell content is not used for provider model training** |
+| Any persistent backend | **Provisioning only** | A dedicated Supabase development target, **or** an authorized CI PostgreSQL service container. V3 is selected; no vendor decision remains |
+| Raw evidence archiving from live sources | **Provisioning only** | The Supabase Storage buckets configured. V4 is selected |
+| Real user access to real data | **Provisioning only** | Supabase Auth configured with invite-only accounts and RLS policies. V2 is selected |
+| Signal classification, capability alignment, clustering | **V1** | **Openi** selects AI provider and model tier, with data-processing terms confirming Haskell content is not used for provider model training. **Blocks AI-assisted classification only** |
 | Opportunities, scoring, promotion | V1, then **D19** and **D16** | Provider selection, then evidence-access promotion rules and confidence decomposition ratified |
 | PACK EXPO import, engagement layer, tier attributes, `account_strategy` scoring | **D14-L** | Legal/Commercial Contracts complete the event lead-retrieval agreement review |
 | Newsroom, incentive, permit connectors | **E-A6 results**, then **D5**, **D13** | Dry-run verdicts; then priority geographies and bottler/subsidiary modelling |
-| Alerts and briefings | **D4**, plus opportunities | Alert channel decision |
+| Alerts and briefings | Opportunities (Phase 2) | **D4 is resolved and phased.** Phase 1 delivers in-app notices and watches only; email via an Openi-controlled transactional service comes in a later authorized phase; **Teams is deferred, outside the pilot**. No Haskell channel, tenant app, or IT action is involved |
+| CRM linkage | — | **Out of pilot (D3).** The Radar connects to no Haskell CRM. Pursuit stays in the Radar; manual copy or export only |
 | Final pilot metrics | **D11 confirmation**, **D9-T** | F&B market leader confirms four classifications; week-4 checkpoint sets targets |
 | Commercial permit or project data | **D21 evaluation** | Vendor evaluation completes; contract terms confirmed |
 
@@ -509,14 +527,14 @@ programme's largest remaining unknown, and its findings feed D5 and D13.
 | --- | --- | --- | --- | --- |
 | **1** | **Application shell and first Netlify preview.** Frontend scaffold, CI, Netlify configuration with branch previews, design tokens, responsive shell, navigation and route structure, typed fixture adapter behind the `DataSource` interface, **Daily Pulse** and **Opportunities** surfaces, visible illustrative-data labelling | E-A1, E-A2, E-A3, E-A4 (part) | **Nothing** | Large but coherent — one reviewable subject: "does the application shell work and look right" |
 | **2** | **Remaining fixture-backed surfaces.** Company, Facility, Evidence detail, Source Health & Coverage, Saved Pursuits & Watches; responsive and accessibility validation across all seven | E-A4 (rest), E-A5 | **Nothing** | Medium |
-| **3** | **Database schema and migrations.** Migration harness; the full data-model sequence from §7, steps 1–12, with constraints landing alongside their tables. **DDL only — no connectors, no application logic** | E-B1 | **V3** | Large, single-subject |
-| **4** | **Audit, access control, retention, and the egress gateway.** `audit_events` on every mutation, role model, sensitivity classes, retention job; egress gateway with allowlist, SSRF protection, redirect policy, caps, rate limits, robots posture, and the CI rule forbidding network imports elsewhere | E-B2, E-B3 | V3 | Medium — the security boundary reviewed as one unit |
-| **5** | **Connector framework and public-source connectors.** Logical runs, retry attempts, parked queue, circuit breakers, the seven-state status model; SEC EDGAR, openFDA, FSIS recalls, FSIS MPI establishments, EPA FRS. **All unauthenticated public APIs** | E-B4, E-B5 | V3 | Large |
-| **6** | **Evidence preservation, extraction, and research staging.** Raw archive, content hashing, native-PDF-then-OCR, locators, the full temporal model with precision and basis, access modes, evidence families and correction relationships; research-claim staging with the fail-closed activation gate and both pilot graph files staged | E-B6, E-B7 | V3, **V4** | Large |
-| **7** | **Identity graph and authenticated access.** Resolution ladder, durable approved mappings, the 15 pilot accounts seeded from the coverage matrix, time-bounded ownership with as-at-date attribution; `AuthAdapter` wired to the selected identity provider | E-B8, auth half of E-C3 | V3; **V2 for the auth half** | Medium |
-| **8** | **Health, coverage, change ledger, and D9 instrumentation.** Per-source cadence baselines, anomaly detection, `account_source_expectations` seeded, the two independent metric families; `change_events` and read projections; D9 session, adoption, presented-set, action, and outcome capture | E-C1, E-C2, E-C4 | V3 | Large |
-| **9** | **Live-data adapters and production surfaces.** Swap the fixture adapter for the API adapter on Company, Facility, Evidence, Source Health & Coverage, and Pulse. **Opportunities stays fixture-backed and labelled** | E-C3 | V2, V3, V4 | Medium |
-| **10** | **Failure-injection suite.** Tests 1, 2, 3, and 7 from `10` §8.7 running in CI against staging fixtures | E-C5 | V3 | Small |
+| **3** | **Database schema and migrations.** Migration harness; the full data-model sequence from §7, steps 1–12, with constraints landing alongside their tables. **DDL only — no connectors, no application logic** | E-B1 | **Provisioning** — a Supabase development target or an authorized CI PostgreSQL container | Large, single-subject |
+| **4** | **Audit, access control, retention, and the egress gateway.** `audit_events` on every mutation, role model, sensitivity classes, retention job; egress gateway with allowlist, SSRF protection, redirect policy, caps, rate limits, robots posture, and the CI rule forbidding network imports elsewhere | E-B2, E-B3 | Provisioning | Medium — the security boundary reviewed as one unit |
+| **5** | **Connector framework and public-source connectors.** Logical runs, retry attempts, parked queue, circuit breakers, the seven-state status model; SEC EDGAR, openFDA, FSIS recalls, FSIS MPI establishments, EPA FRS. **All unauthenticated public APIs** | E-B4, E-B5 | Provisioning | Large |
+| **6** | **Evidence preservation, extraction, and research staging.** Raw archive, content hashing, native-PDF-then-OCR, locators, the full temporal model with precision and basis, access modes, evidence families and correction relationships; research-claim staging with the fail-closed activation gate and both pilot graph files staged | E-B6, E-B7 | Provisioning (V4 buckets) | Large |
+| **7** | **Identity graph and authenticated access.** Resolution ladder, durable approved mappings, the 15 pilot accounts seeded from the coverage matrix, time-bounded ownership with as-at-date attribution; `AuthAdapter` wired to the selected identity provider | E-B8, auth half of E-C3 | Provisioning (Supabase Auth configured) | Medium |
+| **8** | **Health, coverage, change ledger, and D9 instrumentation.** Per-source cadence baselines, anomaly detection, `account_source_expectations` seeded, the two independent metric families; `change_events` and read projections; D9 session, adoption, presented-set, action, and outcome capture | E-C1, E-C2, E-C4 | Provisioning | Large |
+| **9** | **Live-data adapters and production surfaces.** Swap the fixture adapter for the API adapter on Company, Facility, Evidence, Source Health & Coverage, and Pulse. **Opportunities stays fixture-backed and labelled** | E-C3 | Provisioning | Medium |
+| **10** | **Failure-injection suite.** Tests 1, 2, 3, and 7 from `10` §8.7 running in CI against staging fixtures | E-C5 | Provisioning | Small |
 
 ### What each separation protects
 
@@ -525,19 +543,37 @@ programme's largest remaining unknown, and its findings feed D5 and D13.
   intervals — are exactly what a reviewer must not skim.
 - **PR 9 is the only PR that changes what real users see with real data**, so the switch
   from fixtures to live data is a single, revertible commit rather than a drift.
-- **PRs 1, 2, and S1 need no vendor selection at all** and can proceed while IT works
-  through V1–V4.
+- **PRs 1, 2, and S1 need no backend at all** and were delivered before any provisioning.
+  V2, V3 and V4 are now selected; only **V1** remains open, and it is Openi's and blocks
+  AI-assisted classification only.
 
-### If a vendor selection lags
+### If provisioning lags
 
-**PR 7 splits cleanly if V2 lags behind V3.** The identity graph — resolution, seeding,
-time-bounded ownership — depends only on V3 and can merge as **PR 7a**, leaving the
-`AuthAdapter` as **PR 7b** when the identity provider lands. This is the only PR in the
-sequence with two different blockers, and it is the only one designed to split.
+> **Corrected.** This section previously read "If a vendor selection lags" and recorded
+> "**PR 3 has no such fallback** — V3 is a hard gate for everything from PR 3 onward". That
+> gate was a Haskell IT vendor decision that was never Haskell's to make. It no longer
+> exists. What remains is provisioning, which Openi clears for itself.
 
-If V4 lags, PR 6 can merge with the filesystem-backed archive implementation and switch to
-object storage behind the same interface, since `EvidenceArchive` is an adapter. **PR 3 has
-no such fallback** — V3 is a hard gate for everything from PR 3 onward.
+**PR 3 needs a PostgreSQL target, not a decision.** A **CI PostgreSQL service container is
+authorized** as part of the migration harness — it is an ephemeral test target, touches no
+Haskell system, and lets the migration suite prove itself from empty and from the v0.1
+baseline before the Supabase project exists.
+
+**PR 7 still splits cleanly** if the auth configuration lags the schema. The identity graph
+— resolution, seeding, time-bounded ownership — can merge as **PR 7a**, leaving the
+`AuthAdapter` wiring as **PR 7b**. That split is now a sequencing convenience rather than a
+response to an undecided vendor.
+
+If the Storage buckets lag, PR 6 can merge with the filesystem-backed archive
+implementation and switch behind the same interface, since `EvidenceArchive` is an adapter.
+
+**No phase depends on Haskell IT infrastructure approval, and no roadmap milestone
+requires access to a Haskell-controlled system** (ADR 0013). CRM linkage and Microsoft
+Teams delivery are both **outside the pilot**; either would need a new scoped decision
+covering architecture, security, data handling and authorization.
+
+**D14-L is the only Haskell-side contractual gate in the programme**, and it blocks only
+Haskell-provided PACK EXPO data and what derives from it.
 
 ---
 
@@ -584,18 +620,19 @@ day 1 ──┬── PR 1  application shell + Pulse + Opportunities  ◀──
         └── TRACK S1  connector dry-run spike (parallel, gated by nothing)
                       closes V10 and V13; feeds D5 and D13
    │
-   ├─ V3 lands ──▶ PR 3  schema and migrations
+   ├─ PG target ─▶ PR 3  schema and migrations   (Supabase dev target OR CI container)
    │                 └─ PR 4  audit, access, retention, egress gateway
    │                      └─ PR 5  connector framework + public connectors
    │                           └─ PR 8  health, coverage, change ledger, D9
    │                                └─ PR 10 failure injection
-   ├─ V4 lands ──▶ PR 6  evidence, extraction, research staging
-   ├─ V2 lands ──▶ PR 7  identity graph + authenticated access  (7a/7b if V2 lags)
+   ├─ buckets ───▶ PR 6  evidence, extraction, research staging
+   ├─ auth cfg ──▶ PR 7  identity graph + authenticated access  (7a/7b optional split)
    │
-   └─ V2+V3+V4 ─▶ PR 9  live-data adapters and production surfaces
+   └─ all three ─▶ PR 9  live-data adapters and production surfaces
                         └── D9 twelve-week measurement window starts here
    │
    └─ V1 lands ──▶ Phase 2  classification, signals, opportunities
+                        (V1 is Openi's and blocks classification only)
 ```
 
 The D9 measurement window begins at **PR 9**, not at merge and not at PR 1. The weeks 1–4

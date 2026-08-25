@@ -45,7 +45,9 @@ package version 0.1. Work produced in response to the baseline lives under `docs
 | `docs/design/12_PILOT_SOURCE_COVERAGE_MATRIX.md` | Verified per-account source coverage for all 15 Highest Value accounts, with a confidence label on every cell |
 | `docs/design/13_GATE_1_DECISION_PACKET.md` | Every open stakeholder decision with recommended default, alternatives, operational consequence, cost, owner, and required timing |
 | `docs/design/14_EXTERNAL_RESEARCH_RECONCILIATION.md` | Disposition of every material external research finding, the research-claim staging contract, and the change register |
-| `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md` | Phase 1 plan: objective and completion boundary, epics with acceptance tests, vendor-neutral architecture, ingestion and failure recovery, data-model sequence, D9 instrumentation, test strategy, app shell, UX direction, and the proposed PR sequence |
+| `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md` | Phase 1 plan: objective and completion boundary, epics with acceptance tests, platform selections and adapter discipline, ingestion and failure recovery, data-model sequence, D9 instrumentation, test strategy, app shell, UX direction, and the proposed PR sequence |
+| `docs/design/16_PHASE_1_IMPLEMENTATION_NOTES.md` | Implementation notes for the merged application milestones |
+| `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md` | **Correction record.** Deployment model, tenancy boundary, vendor ownership, and governance ownership. Supersedes the baseline and several `docs/` statements — see below |
 | `docs/adr/` | Architecture decision record. Six entries are Accepted; the rest are Proposed until ratified at a stakeholder gate |
 
 The design response is at version 0.3.
@@ -57,6 +59,38 @@ The design response is at version 0.3.
   claim was treated as untrusted input; no external record entered a canonical table.
 
 Corrections are recorded in the documents rather than quietly rewritten.
+
+## How this platform is hosted and operated
+
+The Haskell Food & Beverage Opportunity Radar is an **externally hosted application
+operated by Openi Analytics**. It does not run in Haskell infrastructure, does not share
+infrastructure or identity with the Haskell Hub, and requires Haskell IT to host,
+administer, connect, or operate nothing. **Haskell systems are not connected to the
+application.**
+
+The Radar is an **Internet-accessible, authenticated private application**. The login
+surface is reachable over the Internet; **application content is not public**. No
+unauthenticated user may reach Haskell opportunity, evidence, company, facility,
+saved-view, health, or administrative data. **Public self-registration is disabled** —
+Openi controls invitations and account removal.
+
+| Concern | Platform | Owner |
+| --- | --- | --- |
+| Frontend hosting | Netlify | Openi |
+| Identity | Supabase Auth, invite-only | Openi |
+| Database | Supabase PostgreSQL, dedicated project | Openi |
+| Object storage | Supabase Storage, private buckets | Openi |
+| AI provider | **Open** — blocks AI-assisted classification only | Openi |
+
+Haskell's responsibilities are: identifying authorized users; reviewing product behaviour
+and opportunity relevance; providing business rules and feedback; resolving contractual
+permission for Haskell-provided proprietary data; and optionally requesting future SSO or
+enterprise controls.
+
+**The baseline package (`00`–`06`) assumes a Haskell-hosted deployment and is superseded on
+that point.** It is deliberately left unedited so the origin of the correction stays
+traceable. `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md` records every corrected
+statement and **ADR 0013** records the decision.
 
 ## How to use this package with Claude
 

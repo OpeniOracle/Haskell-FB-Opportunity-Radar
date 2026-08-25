@@ -1,6 +1,12 @@
 # 16 — Phase 1 Implementation Notes (PR 1 and PR 2)
 
 **Status:** All seven Phase 1 surfaces implemented against fixtures
+
+> **Hosting context corrected.** References below to "D2b vendor selection" record that
+> PR 1 and PR 2 selected no vendor, which remains true. Ownership of those selections is
+> **Openi's**, not Haskell IT's, and V2/V3/V4 are now selected — see
+> `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md` and **ADR 0013**. Netlify was
+> already in use as Openi-controlled frontend hosting.
 **Scope:** Phase 1 PR 1 (application shell) and roadmap PR 2 (the five remaining surfaces)
 **Milestone plan:** `docs/design/15_PHASE_1_IMPLEMENTATION_PLAN.md`
 **Version:** 2.0
@@ -557,7 +563,7 @@ name**, not by count — a count-only test is what let this through.
 ### 14.2 Deep links resolved to a drawer, not the full page
 
 `10_DESIGN_RESPONSE.md` §5.3: "card → drawer → 'Open full detail' for the complete record.
-**Deep links always resolve to the full page** so a brief or Teams alert lands somewhere
+**Deep links always resolve to the full page** so a brief or an alert lands somewhere
 shareable." PR 1 addressed an opportunity as `/opportunities?opportunity=<id>`, which
 reopened the drawer.
 
