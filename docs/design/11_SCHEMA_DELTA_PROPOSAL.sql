@@ -18,6 +18,24 @@
 --
 -- No SQL in this file changed in that correction. Only this comment did.
 --
+-- IMPLEMENTATION STATUS, roadmap PR 3. The executable migrations now live in
+-- db/migrations/, validated against a PostgreSQL 16 service container in CI.
+-- This file remains a PROPOSAL and is still not runnable: it is written as one
+-- continuous delta, it uses enum types the migrations render as text plus a
+-- CHECK, and several blocks were superseded during implementation. Where the two
+-- disagree, db/migrations/ is authoritative. Known deliberate divergences:
+--
+--   * contact_records stays commented out and is NOT created (D14-L, dormant).
+--   * The D14-L tables carry a NOT NULL licence_authorizations FK, so "created
+--     empty" is enforced by the database rather than by convention.
+--   * The research-claim activation gate uses coalesce(array_length(...), 0)
+--     because a bare array_length on an empty array yields NULL, which a CHECK
+--     treats as satisfied.
+--   * Ownership tables key on (pair, relationship, from_date) so the same pair
+--     can hold the same relationship over more than one interval.
+--   * The v0.1 per-dimension scoring caps and the enumerated confidence
+--     multiplier are removed in favour of a scoring_configs reference (ADR 0008).
+--
 -- Revision 0.2 reconciles this file with the design-reconciliation pass:
 --   * full temporal model, replacing the narrower date-precision proposal   (C2)
 --   * confidence decomposed into three axes                                 (C4)
