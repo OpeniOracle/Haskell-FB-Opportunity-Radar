@@ -174,3 +174,29 @@ describe('the shared link module leaves merged routes alone', () => {
     expect(window.location.search).not.toContain('asOf')
   })
 })
+
+/**
+ * The `.fact--emphasis` rule lost its `capitalize` transform in this pass,
+ * because it had started title-casing a whole sentence on Evidence detail. The
+ * merged opportunity detail relied on that transform to render a raw enum, so
+ * the label is now explicit and this pins it.
+ */
+describe('confidence level still reads as a label, not a raw enum', () => {
+  it('renders title case on the full opportunity page', async () => {
+    renderApp('/opportunities/opp-fixture-1')
+    await screen.findByRole('heading', { level: 1, name: opportunityFixtures[0]?.title })
+    const field = screen.getByText('Confidence level').parentElement!
+    expect(within(field).getByText('High')).toBeInTheDocument()
+    expect(within(field).queryByText('high')).toBeNull()
+  })
+
+  it('renders title case in the drawer', async () => {
+    const user = userEvent.setup()
+    renderApp('/opportunities')
+    const cards = await screen.findAllByRole('article')
+    await user.click(within(cards[0]!).getByRole('button', { name: /^Review opportunity/ }))
+    const dialog = await screen.findByRole('dialog')
+    const field = within(dialog).getByText('Confidence level').parentElement!
+    expect(within(field).getByText('High')).toBeInTheDocument()
+  })
+})

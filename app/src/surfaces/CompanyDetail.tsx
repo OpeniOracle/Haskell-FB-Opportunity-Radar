@@ -209,25 +209,40 @@ function CompanyBody({ company }: { company: Company }) {
         )}
       </section>
 
-      <section className="detail__section" aria-labelledby="licensed-title">
+      {/* One compact disclosure rather than three NOT AVAILABLE panels. Three
+          consecutive absences dominated the first screen with content that
+          carries no information; the absence still has to be visible, but it
+          does not have to outrank what the account actually says. */}
+      <section className="detail__section detail__section--tight" aria-labelledby="licensed-title">
         <h2 className="detail__h2" id="licensed-title">
           Account strategy attributes
         </h2>
-        <dl className="drawer__facts">
-          <UnavailableField label="Target tier" attribute={company.targetTier} />
-          <UnavailableField label="Engagement" attribute={company.engagement} />
-          <UnavailableField
-            label="Account-strategy score"
-            attribute={company.accountStrategyScore}
-          />
-        </dl>
-        <p className="drawer__prose drawer__prose--small">
-          These fields exist in the model and are deliberately unpopulated. Plan §13
-          lists the trade-show attendance import, the engagement layer, tier attributes
-          and account-strategy scoring as blocked by <strong>D14-L</strong>, an external
-          licence review that has not concluded. Their tables are created empty so that
-          clearing D14-L becomes a data operation rather than a schema change.
-        </p>
+        <details className="blocked-group">
+          <summary className="blocked-group__summary">
+            <Icon name="lock" className="blocked-group__icon" />
+            <span className="blocked-group__label">
+              Engagement and prioritization data unavailable
+            </span>
+            <span className="blocked-group__count">3 attributes</span>
+          </summary>
+          <div className="blocked-group__body">
+            <p className="drawer__prose drawer__prose--small">
+              Engagement, target tier and account-strategy information remain
+              unavailable pending a licensing review that has not concluded
+              (<strong>D14-L</strong>). The fields exist in the model and are
+              deliberately unpopulated, so clearing the review becomes a data
+              operation rather than a schema change.
+            </p>
+            <dl className="drawer__facts">
+              <UnavailableField label="Target tier" attribute={company.targetTier} />
+              <UnavailableField label="Engagement" attribute={company.engagement} />
+              <UnavailableField
+                label="Account-strategy score"
+                attribute={company.accountStrategyScore}
+              />
+            </dl>
+          </div>
+        </details>
       </section>
 
       <section className="detail__section" aria-labelledby="coverage-title">

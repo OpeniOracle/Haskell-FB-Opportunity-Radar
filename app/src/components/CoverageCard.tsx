@@ -1,5 +1,5 @@
 import { Icon } from '@/components/Icon'
-import { absoluteDateTime, relativeTime } from '@/lib/format'
+import { RecordedAt } from '@/components/RecordedAt'
 import type { CoverageDetail } from '@/types/domain'
 
 /**
@@ -24,9 +24,11 @@ export function CoverageCard({ coverage }: { coverage: CoverageDetail }) {
           </strong>{' '}
           expected sources observed this period
         </p>
-        <span className="state__checked" title={absoluteDateTime(coverage.lastCheckedAt)}>
-          Last checked {relativeTime(coverage.lastCheckedAt)}
-        </span>
+        <RecordedAt
+          className="state__checked"
+          iso={coverage.lastCheckedAt}
+          prefix="Last checked"
+        />
       </div>
 
       <dl className="coverage-card__lists">

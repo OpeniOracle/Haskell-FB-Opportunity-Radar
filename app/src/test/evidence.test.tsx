@@ -41,9 +41,9 @@ describe('provenance', () => {
     await screen.findByRole('heading', { level: 1, name: 'Ownership change filing' })
 
     const published = screen.getByText('Published').parentElement!
-    expect(within(published).getByText('2025')).toBeInTheDocument()
+    expect(within(published).getByText('2024')).toBeInTheDocument()
     expect(within(published).getByText('(year precision)')).toBeInTheDocument()
-    expect(within(published).queryByText(/1 January 2025/)).toBeNull()
+    expect(within(published).queryByText(/1 January 2024/)).toBeNull()
   })
 
   it('labels an inferred interval as inferred rather than stated', async () => {
@@ -60,7 +60,10 @@ describe('provenance', () => {
     renderApp('/evidence/ev-fixture-3')
     await screen.findByRole('heading', { level: 1, name: 'Innovation centre programme update' })
 
-    expect(screen.getAllByText('Archived full text').length).toBeGreaterThan(0)
+    // Business-readable in the reading path; the recorded value kept alongside.
+    expect(screen.getAllByText('Saved copy of the full article').length).toBeGreaterThan(0)
+    expect(screen.getByText('archived_full_text')).toBeInTheDocument()
+    expect(screen.getByText('How this source was obtained')).toBeInTheDocument()
     const pill = document.querySelector('.pill')!
     expect(pill.getAttribute('title')).toMatch(/no promotion rule is applied/)
   })
@@ -87,7 +90,7 @@ describe('withheld content', () => {
     expect(
       screen.getByRole('heading', { level: 3, name: 'Metadata only — no body retained' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('No locator retained')).toBeInTheDocument()
+    expect(screen.getByText('No source reference retained')).toBeInTheDocument()
     expect(screen.getByText(/nothing more is being withheld from you/)).toBeInTheDocument()
   })
 })

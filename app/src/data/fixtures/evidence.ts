@@ -265,10 +265,10 @@ export const evidenceFixtures: EvidenceRecord[] = [
     sourceName: 'Example regulatory filings index',
     publisher: 'Example filings authority',
     publishedAt: {
-      rawExpression: '2025',
-      start: '2025-01-01',
-      end: '2025-12-31',
-      // Year precision. Rendering this as 1 January 2025 is the exact failure
+      rawExpression: '2024',
+      start: '2024-01-01',
+      end: '2024-12-31',
+      // Year precision. Rendering this as 1 January 2024 is the exact failure
       // ADR 0004 exists to prevent.
       precision: 'year',
       basis: 'stated',
@@ -277,12 +277,12 @@ export const evidenceFixtures: EvidenceRecord[] = [
     retrievedAt: '2026-08-01T09:00:00Z',
     excerpt:
       'Records the transfer of Example Meals & Sauces Co. from Example Holdings Group to Example Pacific Holdings.',
-    locator: 'filings/2025/EX-OWN-4412',
+    locator: 'filings/2024/EX-OWN-4412',
     accessMode: 'structured_primary',
     subjectTiming: {
-      rawExpression: '17 February 2025',
-      start: '2025-02-17',
-      end: '2025-02-17',
+      rawExpression: '11 March 2024',
+      start: '2024-03-11',
+      end: '2024-03-11',
       precision: 'exact_day',
       basis: 'stated',
       inferenceNote: null,
@@ -290,7 +290,7 @@ export const evidenceFixtures: EvidenceRecord[] = [
     assertions: [
       {
         id: 'as-5-a',
-        statement: 'Control transferred on 17 February 2025.',
+        statement: 'Control transferred on 11 March 2024.',
         basis: 'source_fact',
         inferenceNote: null,
       },
@@ -312,22 +312,22 @@ export const evidenceFixtures: EvidenceRecord[] = [
     sourceName: 'Example Pacific Holdings investor relations',
     publisher: 'Example Pacific Holdings',
     publishedAt: {
-      rawExpression: '30 June 2027',
-      start: '2027-06-30',
-      end: '2027-06-30',
+      rawExpression: '19 February 2026',
+      start: '2026-02-19',
+      end: '2026-02-19',
       precision: 'exact_day',
       basis: 'stated',
       inferenceNote: null,
     },
-    retrievedAt: '2027-06-30T18:40:00Z',
+    retrievedAt: '2026-02-19T18:40:00Z',
     excerpt:
-      'The demerger completed on 30 June 2027. Example Pacific Holdings retains approximately 18.4% of the demerged business, to be sold down over time.',
-    locator: 'investors/2027/demerger-completion#paragraph-2',
+      'The demerger completed on 19 February 2026. Example Pacific Holdings retains approximately 18.4% of the demerged business, to be sold down over time.',
+    locator: 'investors/2026/demerger-completion#paragraph-2',
     accessMode: 'structured_primary',
     subjectTiming: {
-      rawExpression: '30 June 2027',
-      start: '2027-06-30',
-      end: '2027-06-30',
+      rawExpression: '19 February 2026',
+      start: '2026-02-19',
+      end: '2026-02-19',
       precision: 'exact_day',
       basis: 'stated',
       inferenceNote: null,
@@ -335,7 +335,7 @@ export const evidenceFixtures: EvidenceRecord[] = [
     assertions: [
       {
         id: 'as-6-a',
-        statement: 'The demerger completed on 30 June 2027.',
+        statement: 'The demerger completed on 19 February 2026.',
         basis: 'source_fact',
         inferenceNote: null,
       },

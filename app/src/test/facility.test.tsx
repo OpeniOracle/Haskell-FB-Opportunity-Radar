@@ -47,8 +47,11 @@ describe('facility detail', () => {
     })
 
     expect(screen.getByText('Candidate facility')).toBeInTheDocument()
-    expect(screen.getByText(/Candidate, not a confirmed site/)).toBeInTheDocument()
-    expect(screen.getByText(/a successful outcome, not\s+an error/)).toBeInTheDocument()
+    // The verdict leads, in one line, before any explanation.
+    const verdict = screen.getByText('Candidate location, not yet confirmed')
+    expect(verdict).toHaveClass('notice__verdict')
+    // The reasoning is immediately below it, not hidden.
+    expect(screen.getByText(/a successful outcome,\s+not an error/)).toBeInTheDocument()
     expect(document.querySelector('.detail--candidate')).not.toBeNull()
   })
 

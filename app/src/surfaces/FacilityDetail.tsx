@@ -162,15 +162,20 @@ function FacilityBody({ facility }: { facility: FacilityRecord }) {
       </div>
 
       {isCandidate && (
-        <p className="notice notice--stale">
+        <div className="notice notice--stale">
           <Icon name="alert" className="notice__icon" />
-          <span>
-            <strong>Candidate, not a confirmed site. </strong>
-            {facility.candidateReason} Leaving it unresolved is a successful outcome, not
-            an error — a bad merge corrupts an account timeline and every score computed
-            from it, while a missed match costs one opportunity.
-          </span>
-        </p>
+          <div>
+            {/* The verdict first, in one line. The reasoning matters, but a
+                reader deciding whether to trust this page should not have to
+                parse five lines of it to find out the answer. */}
+            <p className="notice__verdict">Candidate location, not yet confirmed</p>
+            <p className="notice__detail-text">
+              {facility.candidateReason} Leaving it unresolved is a successful outcome,
+              not an error — a bad merge corrupts an account timeline and every score
+              computed from it, while a missed match costs one opportunity.
+            </p>
+          </div>
+        </div>
       )}
 
       <AsOfControl value={asOf} onChange={setAsOf} today={TODAY} />

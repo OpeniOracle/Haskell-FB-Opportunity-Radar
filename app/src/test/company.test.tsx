@@ -116,30 +116,54 @@ describe('company detail', () => {
     renderApp('/accounts/org-fixture-2')
     await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
 
-    expect(screen.getByText('Controlling parent as at 2026-08-17')).toBeInTheDocument()
+    // Every completed event precedes the fixture's today, so the default view is
+    // the post-demerger state: no controlling parent, and a stake still held.
     const parent = screen.getByText('Controlling parent as at 2026-08-17').parentElement!
-    expect(within(parent).getByText('Example Pacific Holdings')).toBeInTheDocument()
-  })
+    expect(within(parent).getByText('None — independent')).toBeInTheDocument()
 
-  /** The as-at date is the organising idea of the surface, so it is URL-carried. */
-  it('re-resolves ownership when the as-at date moves past the demerger', async () => {
-    renderApp('/accounts/org-fixture-2?asOf=2027-07-01')
-    await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
-
-    const parentRow = screen.getByText('Controlling parent as at 2027-07-01').parentElement!
-    expect(within(parentRow).getByText('None — independent')).toBeInTheDocument()
-
-    const stakeRow = screen.getByText('Retained stakes as at 2027-07-01').parentElement!
-    expect(within(stakeRow).getByText(/Example Pacific Holdings — 18.4% \(approximate\)/))
+    const stakes = screen.getByText('Retained stakes as at 2026-08-17').parentElement!
+    expect(within(stakes).getByText(/Example Pacific Holdings — 18.4% \(approximate\)/))
       .toBeInTheDocument()
   })
 
-  it('answers the demerger date itself with the retained stake, not the parent', async () => {
-    renderApp('/accounts/org-fixture-2?asOf=2027-06-30')
+  it('resolves the controlling parent when the as-at date precedes the demerger', async () => {
+    renderApp('/accounts/org-fixture-2?asOf=2025-01-01')
     await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
 
-    const parentRow = screen.getByText('Controlling parent as at 2027-06-30').parentElement!
+    const parent = screen.getByText('Controlling parent as at 2025-01-01').parentElement!
+    expect(within(parent).getByText('Example Pacific Holdings')).toBeInTheDocument()
+
+    const stakes = screen.getByText('Retained stakes as at 2025-01-01').parentElement!
+    expect(within(stakes).getByText('None')).toBeInTheDocument()
+  })
+
+  it('resolves the original parent further back still', async () => {
+    renderApp('/accounts/org-fixture-2?asOf=2020-01-01')
+    await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
+
+    const parent = screen.getByText('Controlling parent as at 2020-01-01').parentElement!
+    expect(within(parent).getByText('Example Holdings Group')).toBeInTheDocument()
+  })
+
+  /** The as-at date is the organising idea of the surface, so it is URL-carried. */
+  it('re-resolves ownership when the as-at date crosses the demerger', async () => {
+    renderApp('/accounts/org-fixture-2?asOf=2026-02-18')
+    await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
+
+    // The day before: still controlled.
+    const parentRow = screen.getByText('Controlling parent as at 2026-02-18').parentElement!
+    expect(within(parentRow).getByText('Example Pacific Holdings')).toBeInTheDocument()
+  })
+
+  it('answers the demerger date itself with the retained stake, not the parent', async () => {
+    renderApp('/accounts/org-fixture-2?asOf=2026-02-19')
+    await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
+
+    const parentRow = screen.getByText('Controlling parent as at 2026-02-19').parentElement!
     expect(within(parentRow).getByText('None — independent')).toBeInTheDocument()
+
+    const stakeRow = screen.getByText('Retained stakes as at 2026-02-19').parentElement!
+    expect(within(stakeRow).getByText(/Example Pacific Holdings — 18.4%/)).toBeInTheDocument()
   })
 
   it('writes the chosen date into the address so a shared link reproduces it', async () => {
@@ -148,21 +172,21 @@ describe('company detail', () => {
 
     // A native date input takes a whole value, not keystrokes.
     fireEvent.change(screen.getByLabelText('Attribution as at'), {
-      target: { value: '2027-07-01' },
+      target: { value: '2025-01-01' },
     })
 
-    await waitFor(() => expect(window.location.search).toContain('asOf=2027-07-01'))
+    await waitFor(() => expect(window.location.search).toContain('asOf=2025-01-01'))
     expect(await screen.findByRole('button', { name: 'Reset to today' })).toBeInTheDocument()
-    expect(screen.getByText('Controlling parent as at 2027-07-01')).toBeInTheDocument()
+    expect(screen.getByText('Controlling parent as at 2025-01-01')).toBeInTheDocument()
   })
 
   it('lists every relationship with its half-open interval, ended ones included', async () => {
     renderApp('/accounts/org-fixture-2')
     await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
 
-    expect(screen.getByText('[2018-04-01, 2025-02-17)')).toBeInTheDocument()
-    expect(screen.getByText('[2025-02-17, 2027-06-30)')).toBeInTheDocument()
-    expect(screen.getByText('[2027-06-30, ∞)')).toBeInTheDocument()
+    expect(screen.getByText('[2018-04-01, 2024-03-11)')).toBeInTheDocument()
+    expect(screen.getByText('[2024-03-11, 2026-02-19)')).toBeInTheDocument()
+    expect(screen.getByText('[2026-02-19, ∞)')).toBeInTheDocument()
     expect(screen.getByText(/Retained minority interest/)).toBeInTheDocument()
     // The ended edges are listed, not hidden — a demerger with a retained stake
     // is not a clean termination and a current-edges-only list would say it was.
@@ -183,17 +207,34 @@ describe('company detail', () => {
    * imply the licence question is settled, which is exactly what the blocker
    * says it is not.
    */
-  it('shows tier, engagement and account-strategy score as unavailable, never populated', async () => {
+  it('collapses the three blocked attributes into one compact disclosure', async () => {
     renderApp('/accounts/org-fixture-1')
     await screen.findByRole('heading', { level: 1, name: 'Example Beverage Company' })
+
+    const summary = screen.getByText('Engagement and prioritization data unavailable')
+    const group = summary.closest('details') as HTMLDetailsElement
+    // Collapsed by default: an absence should not outrank what the account says.
+    expect(group.open).toBe(false)
+    expect(screen.getByText('3 attributes')).toBeInTheDocument()
+  })
+
+  it('shows tier, engagement and account-strategy score as unavailable, never populated', async () => {
+    const user = userEvent.setup()
+    renderApp('/accounts/org-fixture-1')
+    await screen.findByRole('heading', { level: 1, name: 'Example Beverage Company' })
+
+    await user.click(screen.getByText('Engagement and prioritization data unavailable'))
 
     for (const label of ['Target tier', 'Engagement', 'Account-strategy score']) {
       const field = screen.getByText(label).parentElement!
       expect(within(field).getByText('Not available')).toBeInTheDocument()
       expect(within(field).getByText(/D14-L/)).toBeInTheDocument()
     }
-    expect(screen.getByText(/an external\s+licence review that has not concluded/))
-      .toBeInTheDocument()
+    expect(
+      screen.getByText(/pending a licensing review that has not concluded/),
+    ).toBeInTheDocument()
+    // No blocked value is populated anywhere on the page.
+    expect(screen.queryByText(/Tier [123]/)).toBeNull()
   })
 
   it('names coverage gaps rather than only counting them', async () => {

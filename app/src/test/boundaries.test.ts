@@ -157,3 +157,56 @@ describe('fixture-only organizations', () => {
     }
   })
 })
+
+/**
+ * The ownership fixture is preserved on purpose.
+ *
+ * It exists to exercise multiple ownership events, half-open intervals, control
+ * termination, a retained minority interest, and an organization-scoped
+ * operational milestone. Reproducing that STRUCTURE is the point. What must not
+ * happen is reproducing a real event's particulars, so the distinguishing
+ * values are pinned here — a future edit that drifted them toward the documented
+ * worked example would fail.
+ */
+describe('ownership fixture stays fictional and materially distinct', () => {
+  const company = companyFixtures.find((c) => c.id === 'org-fixture-2')!
+
+  it('keeps the structure the fixture exists to test', () => {
+    expect(company.relationships).toHaveLength(3)
+    expect(company.relationships.filter((r) => r.relationship === 'parent_subsidiary'))
+      .toHaveLength(2)
+    expect(company.relationships.filter((r) => r.relationship === 'minority_interest'))
+      .toHaveLength(1)
+    // Control ends exactly where the retained stake begins — the half-open point.
+    const parent = company.relationships.find((r) => r.id === 'rel-2-b')!
+    const stake = company.relationships.find((r) => r.id === 'rel-2-c')!
+    expect(parent.toDate).toBe(stake.fromDate)
+    // And an organization-scoped operational event that is not an ownership edge.
+    expect(company.timeline.some((e) => e.kind === 'operational' && e.facilityId === null))
+      .toBe(true)
+  })
+
+  it('uses only fictional counterparties', () => {
+    for (const r of company.relationships) {
+      expect(r.counterpartyName).toMatch(/^Example /)
+    }
+    expect(company.canonicalName).toMatch(/^Example /)
+  })
+
+  it('differs materially from the documented worked example', () => {
+    const stake = company.relationships.find((r) => r.relationship === 'minority_interest')!
+    // Not the documented percentage.
+    expect(stake.ownershipPercent).toBe(18.4)
+    expect(stake.ownershipPercent).not.toBe(19.85)
+    // Not the documented dates.
+    for (const d of ['2025-07-01', '2025-12-06', '2025-12-08']) {
+      expect(company.relationships.map((r) => r.fromDate)).not.toContain(d)
+      expect(company.relationships.map((r) => r.toDate)).not.toContain(d)
+      expect(company.timeline.map((e) => e.occurredOn.start)).not.toContain(d)
+    }
+    // Carries an earlier parent edge the worked example does not have, and no
+    // listing/market event.
+    expect(company.relationships.some((r) => r.id === 'rel-2-a')).toBe(true)
+    expect(company.timeline.some((e) => /listing|trading/i.test(e.title))).toBe(false)
+  })
+})

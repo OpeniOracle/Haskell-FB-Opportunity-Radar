@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { Icon } from '@/components/Icon'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { RecordLink, RecordMention } from '@/components/RecordLink'
+import { FutureTimestampWarning } from '@/components/RecordedAt'
 import { StatusPill } from '@/components/StatusPill'
 import {
   DegradedNotice,
@@ -16,9 +17,11 @@ import { useSurfaceData } from '@/hooks/useSurfaceData'
 import {
   absoluteDateTime,
   accessModeLabel,
+  accessModeRecordedValue,
   formatTemporal,
   precisionLabel,
   relativeTime,
+  timingBasisLabel,
 } from '@/lib/format'
 import { companyPath, evidencePath, facilityPath } from '@/lib/links'
 import { opportunityDetailPath } from '@/lib/opportunityFilters'
@@ -186,19 +189,27 @@ function EvidenceBody({ evidence }: { evidence: EvidenceRecord }) {
                 {' '}
                 ({relativeTime(evidence.retrievedAt)})
               </span>
+              <FutureTimestampWarning iso={evidence.retrievedAt} />
             </dd>
           </div>
           <div className="fact">
-            <dt>Access mode</dt>
-            <dd>{accessModeLabel[evidence.accessMode] ?? evidence.accessMode}</dd>
+            <dt>How this source was obtained</dt>
+            <dd>
+              {accessModeLabel[evidence.accessMode] ?? evidence.accessMode}
+              <span className="fact__qualifier">
+                {' '}
+                (recorded as{' '}
+                <code>{accessModeRecordedValue[evidence.accessMode] ?? evidence.accessMode}</code>)
+              </span>
+            </dd>
           </div>
           <div className="fact fact--wide">
-            <dt>Locator</dt>
+            <dt>Source reference</dt>
             <dd>
               {evidence.locator ? (
                 <code className="locator">{evidence.locator}</code>
               ) : (
-                <span className="fact__qualifier">No locator retained</span>
+                <span className="fact__qualifier">No source reference retained</span>
               )}
             </dd>
           </div>
@@ -244,7 +255,7 @@ function EvidenceBody({ evidence }: { evidence: EvidenceRecord }) {
           </h2>
           <dl className="drawer__facts">
             <div className="fact">
-              <dt>Stated timing</dt>
+              <dt>What the source said about timing</dt>
               <dd>
                 {formatTemporal(evidence.subjectTiming)}
                 <span className="fact__qualifier">
@@ -254,15 +265,22 @@ function EvidenceBody({ evidence }: { evidence: EvidenceRecord }) {
               </dd>
             </div>
             <div className="fact">
-              <dt>Interval</dt>
+              <dt>Earliest and latest it could mean</dt>
               <dd>
                 {evidence.subjectTiming.start ?? '—'} to{' '}
                 {evidence.subjectTiming.end ?? '—'}
               </dd>
             </div>
             <div className="fact">
-              <dt>Basis</dt>
-              <dd className="fact--emphasis">{evidence.subjectTiming.basis}</dd>
+              <dt>How the timing was determined</dt>
+              <dd className="fact--emphasis">
+                {timingBasisLabel[evidence.subjectTiming.basis] ??
+                  evidence.subjectTiming.basis}
+                <span className="fact__qualifier">
+                  {' '}
+                  (recorded as <code>{evidence.subjectTiming.basis}</code>)
+                </span>
+              </dd>
             </div>
           </dl>
           {evidence.subjectTiming.inferenceNote && (

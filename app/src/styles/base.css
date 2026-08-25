@@ -1167,8 +1167,10 @@ a {
   color: var(--c-text);
 }
 
+/* `capitalize` existed to title-case a single raw enum value. The label is now a
+   sentence, and capitalising every word of one reads as a headline rather than
+   an answer, so the emphasis is weight only. */
 .fact--emphasis {
-  text-transform: capitalize;
   font-weight: var(--fw-semibold);
 }
 
@@ -1717,13 +1719,25 @@ a {
 /* Inline banner variant used inside a populated surface. */
 .notice {
   display: flex;
-  gap: var(--sp-3);
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
   align-items: flex-start;
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius-md);
   border: 1px solid;
   font-size: var(--fs-small);
   margin-bottom: var(--sp-4);
+}
+
+/* The message must keep a readable column. `.state__checked` is `nowrap` and
+   ~180px wide, so in a non-wrapping row it held its width and squeezed the
+   message to ~74px — sixteen lines of two words on a phone, in the one state
+   where the message matters most. The body claims a minimum and the timestamp
+   drops to its own line rather than starving it. */
+.notice > div,
+.notice > span {
+  flex: 1 1 22ch;
+  min-width: 0;
 }
 
 .notice__icon {
@@ -1735,6 +1749,7 @@ a {
 
 .notice .state__checked {
   margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .notice__detail {
@@ -2378,6 +2393,113 @@ a {
    wrapping mid-token inside a narrow grid column. */
 .fact--wide {
   grid-column: 1 / -1;
+}
+
+/* ------------------------------------------------- Blocked attribute group */
+
+/* Three consecutive "NOT AVAILABLE" panels used to dominate the first screen of
+   a company. The absence still has to be visible — that is the whole point of
+   modelling it — but it does not have to outrank what the account actually
+   says, so it collapses to one line. */
+.blocked-group {
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-sunken);
+}
+
+.blocked-group__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-small);
+  list-style: none;
+}
+
+.blocked-group__summary::-webkit-details-marker {
+  display: none;
+}
+
+.blocked-group__summary::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--c-text-muted);
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+.blocked-group[open] .blocked-group__summary::after {
+  transform: rotate(90deg);
+}
+
+.blocked-group__icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: var(--c-text-secondary);
+}
+
+.blocked-group__label {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-secondary);
+}
+
+.blocked-group__count {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+.blocked-group__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4) var(--sp-4);
+  border-top: var(--border-hairline);
+  padding-top: var(--sp-3);
+}
+
+.detail__section--tight {
+  margin-top: var(--sp-5);
+}
+
+/* ------------------------------------------------------- Notice verdict line */
+
+/* The answer first, the reasoning immediately below it. A reader deciding
+   whether to trust a page should not have to parse a paragraph to find it. */
+.notice__verdict {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-body);
+  margin-bottom: var(--sp-1);
+}
+
+.notice__detail-text {
+  max-width: var(--reading-max);
+}
+
+/* ------------------------------------------------------- Timestamp fault */
+
+/* A retrieval time, collection cycle or connector run records completed work,
+   so a future value is a data-quality fault rather than a date. It is stated
+   plainly and the absolute value is kept for inspection. */
+.timestamp-fault {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--c-attention);
+}
+
+.timestamp-fault__icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 /* ------------------------------------------------------------- Record links */

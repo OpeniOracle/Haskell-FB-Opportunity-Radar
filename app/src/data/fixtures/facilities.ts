@@ -112,12 +112,12 @@ export const facilityFixtures: FacilityRecord[] = [
       {
         id: 'ev-fixture-5',
         label: 'Ownership change filing',
-        detail: 'Example regulatory filings index · dated to 2025',
+        detail: 'Example regulatory filings index · dated to 2024',
       },
       {
         id: 'ev-fixture-6',
         label: 'Demerger completion notice',
-        detail: 'Investor relations · 30 June 2027',
+        detail: 'Investor relations · 19 February 2026',
       },
     ],
     opportunities: [],

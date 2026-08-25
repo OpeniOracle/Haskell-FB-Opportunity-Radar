@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { CoverageCard } from '@/components/CoverageCard'
+import { FutureTimestampWarning, RecordedAt } from '@/components/RecordedAt'
 import { Icon } from '@/components/Icon'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { StatusPill, type PillTone } from '@/components/StatusPill'
@@ -23,6 +24,27 @@ const STATE_TONE: Record<ConnectorState, PillTone> = {
   action_required: 'attention',
   disabled: 'neutral',
   unsupported: 'neutral',
+}
+
+/**
+ * Operational severity, worst first.
+ *
+ * The fixture order put the one connector needing action last, which on a phone
+ * is roughly seven screens below the fold — the single actionable item on the
+ * surface, hidden behind six healthy ones. Ordering is by what the operator has
+ * to do about it, then by name so the list is stable between renders.
+ */
+const STATE_SEVERITY: Record<ConnectorState, number> = {
+  action_required: 0,
+  degraded: 1,
+  unsupported: 2,
+  disabled: 3,
+  healthy: 4,
+}
+
+function bySeverityThenName(a: ConnectorRecord, b: ConnectorRecord): number {
+  const d = STATE_SEVERITY[a.state] - STATE_SEVERITY[b.state]
+  return d !== 0 ? d : a.name.localeCompare(b.name)
 }
 
 const STATE_LABEL: Record<ConnectorState, string> = {
@@ -111,7 +133,9 @@ export function SourceHealth() {
 
 function HealthBody({ snapshot }: { snapshot: SourceHealthSnapshot }) {
   const { search } = useLocation()
+  const connectors = [...snapshot.connectors].sort(bySeverityThenName)
   const healthy = snapshot.connectors.filter((c) => c.state === 'healthy').length
+  const needsAction = connectors.filter((c) => c.state !== 'healthy').length
   const underCovered = snapshot.coverage.filter(
     (row) => row.coverage.missingSources.length > 0,
   )
@@ -141,16 +165,21 @@ function HealthBody({ snapshot }: { snapshot: SourceHealthSnapshot }) {
             Panel 1 — Connector health
           </h2>
           <span className="section__count">{snapshot.connectors.length}</span>
-          <span className="section__note">
-            Cycle completed {relativeTime(snapshot.lastCycleCompletedAt)}
-          </span>
+          <RecordedAt
+            className="section__note"
+            iso={snapshot.lastCycleCompletedAt}
+            prefix="Cycle completed"
+          />
         </div>
         <p className="panel-scope">
           Are the sources working? This panel says nothing about whether the right
-          accounts are covered.
+          accounts are covered. Ordered by what needs doing:{' '}
+          {needsAction === 0
+            ? 'nothing is currently degraded.'
+            : `${needsAction} of ${connectors.length} need attention and are listed first.`}
         </p>
         <div className="connector-list">
-          {snapshot.connectors.map((connector) => (
+          {connectors.map((connector) => (
             <ConnectorCard key={connector.id} connector={connector} />
           ))}
         </div>
@@ -217,6 +246,7 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
           <dt>Last run</dt>
           <dd title={absoluteDateTime(connector.lastRunAt)}>
             {relativeTime(connector.lastRunAt)} · {connector.lastOutcome.replace('_', ' ')}
+            <FutureTimestampWarning iso={connector.lastRunAt} />
           </dd>
         </div>
         <div className="fact">
@@ -231,6 +261,9 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
             {connector.lastSuccessfulCollectionAt
               ? relativeTime(connector.lastSuccessfulCollectionAt)
               : 'Never'}
+            {connector.lastSuccessfulCollectionAt && (
+              <FutureTimestampWarning iso={connector.lastSuccessfulCollectionAt} />
+            )}
           </dd>
         </div>
         <div className="fact">
@@ -259,7 +292,10 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
           {connector.runHistory.map((run) => (
             <li className={`run run--${run.outcome}`} key={run.id}>
               <span className="run__outcome">{run.outcome.replace('_', ' ')}</span>
-              <span className="run__when">{absoluteDateTime(run.startedAt)}</span>
+              <span className="run__when">
+                {absoluteDateTime(run.startedAt)}
+                <FutureTimestampWarning iso={run.startedAt} />
+              </span>
               <span className="run__note">{run.note}</span>
             </li>
           ))}

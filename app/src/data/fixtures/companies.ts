@@ -121,11 +121,15 @@ export const companyFixtures: Company[] = [
    *
    * Four events, three relationship rows, one retained stake:
    *
-   *   [2018-04-01, 2025-02-17)  Example Holdings Group — parent_subsidiary
-   *   [2025-02-17, 2027-06-30)  Example Pacific Holdings — parent_subsidiary
-   *   [2027-06-30,        ∞ )   Example Pacific Holdings — minority_interest 18.400%
+   *   [2018-04-01, 2024-03-11)  Example Holdings Group — parent_subsidiary
+   *   [2024-03-11, 2026-02-19)  Example Pacific Holdings — parent_subsidiary
+   *   [2026-02-19,        ∞ )   Example Pacific Holdings — minority_interest 18.400%
    *
-   * The 2027-06-30 demerger is NOT a clean termination: the former parent
+   * Every event here is COMPLETED, so every date precedes `FIXTURE_NOW`
+   * (2026-08-17). A completed event stamped in the future is a data-quality
+   * fault, not a narrative choice.
+   *
+   * The 2026-02-19 demerger is NOT a clean termination: the former parent
    * retained a stake. Recording only the ended parent edge would assert a
    * complete separation that did not happen and would lose a holding large
    * enough to matter commercially. That is why `minority_interest` exists.
@@ -146,7 +150,7 @@ export const companyFixtures: Company[] = [
     aliases: ['Example Meals', 'EM&S'],
     facilityCount: 1,
     openOpportunityCount: 0,
-    latestActivityAt: '2027-06-30T00:00:00Z',
+    latestActivityAt: '2026-02-19T11:30:00Z',
     coverage: {
       expectedSources: ['SEC EDGAR', 'Company newsroom', 'FSIS MPI'],
       observedSources: ['SEC EDGAR', 'Company newsroom'],
@@ -167,7 +171,7 @@ export const companyFixtures: Company[] = [
         ownershipPercent: null,
         ownershipPercentBasis: null,
         fromDate: '2018-04-01',
-        toDate: '2025-02-17',
+        toDate: '2024-03-11',
         evidenceId: 'ev-fixture-5',
         note: 'Original parent. Ended when the business was sold.',
       },
@@ -178,8 +182,8 @@ export const companyFixtures: Company[] = [
         relationship: 'parent_subsidiary',
         ownershipPercent: null,
         ownershipPercentBasis: null,
-        fromDate: '2025-02-17',
-        toDate: '2027-06-30',
+        fromDate: '2024-03-11',
+        toDate: '2026-02-19',
         evidenceId: 'ev-fixture-5',
         note: 'Acquired the business; control ended at the demerger.',
       },
@@ -190,7 +194,7 @@ export const companyFixtures: Company[] = [
         relationship: 'minority_interest',
         ownershipPercent: 18.4,
         ownershipPercentBasis: 'approximate',
-        fromDate: '2027-06-30',
+        fromDate: '2026-02-19',
         toDate: null,
         evidenceId: 'ev-fixture-6',
         note:
@@ -213,9 +217,9 @@ export const companyFixtures: Company[] = [
         title: 'Acquired by Example Pacific Holdings',
         detail: 'Control transferred from Example Holdings Group.',
         occurredOn: {
-          rawExpression: '17 February 2025',
-          start: '2025-02-17',
-          end: '2025-02-17',
+          rawExpression: '11 March 2024',
+          start: '2024-03-11',
+          end: '2024-03-11',
           precision: 'exact_day',
           basis: 'stated',
           inferenceNote: null,
@@ -231,9 +235,9 @@ export const companyFixtures: Company[] = [
         detail:
           'Company-level milestone. No fixture evidence states that any individual site changed hands on this date, so it is not recorded against a facility.',
         occurredOn: {
-          rawExpression: '1 January 2027',
-          start: '2027-01-01',
-          end: '2027-01-01',
+          rawExpression: '15 September 2025',
+          start: '2025-09-15',
+          end: '2025-09-15',
           precision: 'exact_day',
           basis: 'stated',
           inferenceNote: null,
@@ -249,9 +253,9 @@ export const companyFixtures: Company[] = [
         detail:
           'Control ended and a minority interest began on the same date. The half-open interval is what keeps that from reading as either an overlap or a gap.',
         occurredOn: {
-          rawExpression: '30 June 2027',
-          start: '2027-06-30',
-          end: '2027-06-30',
+          rawExpression: '19 February 2026',
+          start: '2026-02-19',
+          end: '2026-02-19',
           precision: 'exact_day',
           basis: 'stated',
           inferenceNote: null,

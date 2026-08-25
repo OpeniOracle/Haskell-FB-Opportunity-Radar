@@ -21,22 +21,22 @@ import {
  * both sides rather than only in the middle of an interval.
  */
 describe('half-open intervals — [from, to)', () => {
-  const interval = { fromDate: '2025-02-17', toDate: '2027-06-30' }
+  const interval = { fromDate: '2024-03-11', toDate: '2026-02-19' }
 
   it('includes the from date', () => {
-    expect(isActiveOn(interval, '2025-02-17')).toBe(true)
+    expect(isActiveOn(interval, '2024-03-11')).toBe(true)
   })
 
   it('excludes the to date', () => {
-    expect(isActiveOn(interval, '2027-06-30')).toBe(false)
+    expect(isActiveOn(interval, '2026-02-19')).toBe(false)
   })
 
   it('covers the day before the to date', () => {
-    expect(isActiveOn(interval, '2027-06-29')).toBe(true)
+    expect(isActiveOn(interval, '2026-02-18')).toBe(true)
   })
 
   it('excludes the day before the from date', () => {
-    expect(isActiveOn(interval, '2025-02-16')).toBe(false)
+    expect(isActiveOn(interval, '2024-03-10')).toBe(false)
   })
 
   it('treats a null bound as open in that direction', () => {
@@ -46,10 +46,10 @@ describe('half-open intervals — [from, to)', () => {
   })
 
   it('renders the exclusivity rather than implying it', () => {
-    expect(intervalLabel(interval)).toBe('2025-02-17 until 2027-06-30')
-    expect(intervalNotation(interval)).toBe('[2025-02-17, 2027-06-30)')
-    expect(intervalNotation({ fromDate: '2027-06-30', toDate: null })).toBe(
-      '[2027-06-30, ∞)',
+    expect(intervalLabel(interval)).toBe('2024-03-11 until 2026-02-19')
+    expect(intervalNotation(interval)).toBe('[2024-03-11, 2026-02-19)')
+    expect(intervalNotation({ fromDate: '2026-02-19', toDate: null })).toBe(
+      '[2026-02-19, ∞)',
     )
   })
 })
@@ -66,13 +66,13 @@ describe('the multi-event ownership fixture', () => {
 
   it('returns exactly one answer on the handover date', () => {
     // The exclusive upper bound is what makes this one and not two.
-    const onHandover = relationshipsAsOf(company.relationships, '2025-02-17')
+    const onHandover = relationshipsAsOf(company.relationships, '2024-03-11')
     expect(onHandover).toHaveLength(1)
     expect(onHandover[0]?.counterpartyName).toBe('Example Pacific Holdings')
   })
 
   it('returns exactly one answer on the demerger date', () => {
-    const onDemerger = relationshipsAsOf(company.relationships, '2027-06-30')
+    const onDemerger = relationshipsAsOf(company.relationships, '2026-02-19')
     expect(onDemerger).toHaveLength(1)
     expect(onDemerger[0]?.relationship).toBe('minority_interest')
   })
@@ -80,14 +80,15 @@ describe('the multi-event ownership fixture', () => {
   it('resolves the controlling parent differently at three different dates', () => {
     expect(controllingParentAsOf(company.relationships, '2020-01-01')?.counterpartyName)
       .toBe('Example Holdings Group')
-    expect(controllingParentAsOf(company.relationships, '2026-08-17')?.counterpartyName)
+    expect(controllingParentAsOf(company.relationships, '2025-01-01')?.counterpartyName)
       .toBe('Example Pacific Holdings')
-    // After the demerger there is no controlling parent at all.
-    expect(controllingParentAsOf(company.relationships, '2027-07-01')).toBeNull()
+    // After the demerger there is no controlling parent at all — including on
+    // the fixture's "today", because every completed event now precedes it.
+    expect(controllingParentAsOf(company.relationships, '2026-08-17')).toBeNull()
   })
 
   it('keeps a retained minority interest visible after control ends', () => {
-    const stakes = retainedStakesAsOf(company.relationships, '2027-07-01')
+    const stakes = retainedStakesAsOf(company.relationships, '2026-08-17')
     expect(stakes).toHaveLength(1)
     expect(stakes[0]?.counterpartyName).toBe('Example Pacific Holdings')
     expect(stakes[0]?.ownershipPercent).toBe(18.4)
@@ -97,9 +98,9 @@ describe('the multi-event ownership fixture', () => {
   it('does not treat a retained stake as control', () => {
     // The demerger is not a clean termination, and it is also not a parent
     // relationship. Both halves of that have to hold at once.
-    const after = relationshipsAsOf(company.relationships, '2027-07-01')
+    const after = relationshipsAsOf(company.relationships, '2026-08-17')
     expect(after).toHaveLength(1)
-    expect(controllingParentAsOf(company.relationships, '2027-07-01')).toBeNull()
+    expect(controllingParentAsOf(company.relationships, '2026-08-17')).toBeNull()
   })
 
   it('records the separation as a company-level event, never a facility one', () => {

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '@/components/Icon'
+import { RecordedAt } from '@/components/RecordedAt'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { StatusPill } from '@/components/StatusPill'
 import {
@@ -12,7 +13,6 @@ import {
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { relativeTime } from '@/lib/format'
 import { companyPath } from '@/lib/links'
 import { countsTowardRelevanceMetrics } from '@/lib/ownership'
 import type { CompanySummary } from '@/types/domain'
@@ -300,7 +300,7 @@ function CompanyRow({
           </span>
           <span className="opp__meta-item">
             <Icon name="clock" className="opp__meta-icon" />
-            Last activity {relativeTime(company.latestActivityAt)}
+            <RecordedAt iso={company.latestActivityAt} prefix="Last activity" />
           </span>
         </div>
       </div>
