@@ -4,7 +4,19 @@
 -- THIS IS A DESIGN PROPOSAL, NOT A MIGRATION. Do not run it.
 -- Nothing here has been applied to any database.
 -- It exists to make the recommendations in docs/design/10_DESIGN_RESPONSE.md §6
--- concrete enough to argue with. Migration authoring happens after gate G-4.
+-- concrete enough to argue with.
+--
+-- GATE, CORRECTED. This header previously read "Migration authoring happens after
+-- gate G-4." G-4 was framed as a Haskell IT-security architecture gate over a
+-- vendor selection that was never Haskell's to make. The Radar is externally
+-- hosted and operated by Openi Analytics; PostgreSQL hosting is Supabase and is
+-- selected. Migration authoring proceeds once a dedicated Supabase development
+-- target OR an authorized CI PostgreSQL service container is available.
+-- Engineering must verify the provisioned PostgreSQL version and the presence of
+-- pgcrypto BEFORE applying migrations -- no version is assumed here.
+-- See docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md and docs/adr/0013.
+--
+-- No SQL in this file changed in that correction. Only this comment did.
 --
 -- Revision 0.2 reconciles this file with the design-reconciliation pass:
 --   * full temporal model, replacing the narrower date-precision proposal   (C2)

@@ -1210,13 +1210,17 @@ complexity impact, decision owner, and required timing. The table below is the i
 **Decision state.** Approved in full: **D15** temporal model · **D18** time-bounded
 ownership · **D21** permit build-versus-buy, with vendor evaluation before contracting ·
 **D22** consequence-based severity · **D23** external-research staging, as a Phase 1
-requirement · **D24** correction and supersession relationships · **D1** separate
-application sharing identity and infrastructure · **D9 framework** pilot acceptance
-definitions, denominators, and measurement window.
+requirement · **D24** correction and supersession relationships · **D1** (corrected) a separate,
+**externally hosted** application operated by Openi Analytics · **D9 framework** pilot
+acceptance definitions, denominators, and measurement window.
 
-Approved in part: **D2a** platform architecture, with **D2b** vendor selections open and
-IT's to make; **D14 handling model**, with the licence review and import permission
-externally blocked. **D11** is approved **provisionally** — all four scope classifications
+Approved in part: **D2a** platform architecture, with **D2b** vendor selections **now
+resolved except V1** and **Openi's, not Haskell IT's**; **D14 handling model**, with the
+licence review and import permission externally blocked.
+
+> **Correction.** D1 and D2 below were answered inside a framing that offered only
+> Haskell-hosted options. The Radar is externally hosted and operated by Openi Analytics.
+> See `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md` and **ADR 0013**. **D11** is approved **provisionally** — all four scope classifications
 await F&B market-leader confirmation. **D9 numeric targets** are deferred by decision to a
 week-4 checkpoint.
 
@@ -1226,8 +1230,8 @@ implementation authorization**; merging the design pull request does not.
 
 | ID | Decision | Recommended default | Consequence of deferring |
 | --- | --- | --- | --- |
-| D1 | Inside Haskell Hub, or separate app sharing backend services? | **Separate application, shared identity and infrastructure.** F&B ontology and cadence differ enough that coupling the UI slows both. | Blocks E0; a late reversal is a rewrite of the delivery layer, not the kernel |
-| D2 | Which identity, hosting, DB, queue, search, storage, model services are approved? | Postgres + object storage + Postgres-backed queue + approved LLM provider via gateway | Blocks E0 and E8 |
+| D1 | Where does the Radar run, and who operates it? | **Corrected: a separate, externally hosted application operated by Openi Analytics.** No shared identity or infrastructure with the Haskell Hub, which remains a product and UX reference. F&B ontology and cadence differ enough that coupling the UI slows both. | Blocks E0; a late reversal is a rewrite of the delivery layer, not the kernel |
+| D2 | Which identity, hosting, DB, queue, storage and model services does **Openi** use? | **Corrected: Netlify frontend; a dedicated Supabase project for Auth, PostgreSQL and Storage; Postgres-backed queue; AI provider (V1) still open and Openi-owned.** Haskell IT owns none of them | Only V1 blocks anything, and only AI-assisted classification |
 | D3 | **CRM target for pursued opportunities** | Link-out first (store CRM ID on the opportunity); no write-back in MVP | Deferrable to Phase 4 |
 | D4 | Immediate alerts: Teams, email, or both? | **Both**, with Teams for immediate and email for digests | Blocks E13 UI polish only |
 | D5 | Which geographies get permitting/incentive coverage first? | Follow the pilot: Southeast (GA/TN/NC/SC/AL/FL), TX, Midwest (OH/IN/IA/WI), plus AZ/NV for Niagara | Blocks E6 week-3 scope |
@@ -1264,7 +1268,7 @@ in full in `docs/design/13_GATE_1_DECISION_PACKET.md`.
 | **G-1 Mission, users, and pilot cohort** | Week 1 | F&B market leader, BD lead, executive sponsor | §1 product statement; personas; **D11** scope classes incl. Sherwin-Williams; **D12** Ecolab semantics; **D9** success definition | Everything — the only gate that cannot run in parallel |
 | **G-2 Opportunity definition and scoring** | Week 1 | Market leader, BD, SMEs | Lifecycle unchanged; **D16** confidence decomposition; **D19** evidence access modes and promotion rules; **D24** corrections model; the five dimensions and caps; negative-signal rules; **D8** ownership | E1, E10 |
 | **G-3 Source coverage, licensing, and confidentiality** | Week 2 | Platform admin, legal/commercial, marketing ops | §7 source plan and revised week-1 sequencing; the EPA/permits resolution (§7.3); **D5** geographies; **D6** subscriptions; **D7** retention; **D14** event-data licence review; **D17** coverage measurement; **D20** Kellanova retirement; **D21** build-or-buy permits | E4, E5, E6 |
-| **G-4 Architecture and data model** | Week 2 | Engineering, IT security, data owner | **D1**, **D2**; §4 runtimes, transaction and queue boundaries; §6 model changes incl. **D15** temporal model, **D18** time-bounded ownership, **D23** research staging, C1 ingestion tables, C25 replay-cache key | E0, E2, E3 |
+| **G-4 Architecture and data model** | Week 2 | **Openi** platform engineering, Openi security, data owner | **D1**, **D2**; §4 runtimes, transaction and queue boundaries; §6 model changes incl. **D15** temporal model, **D18** time-bounded ownership, **D23** research staging, C1 ingestion tables, C25 replay-cache key | E0, E2, E3 |
 | **G-5 Information architecture and visual direction** | Week 3 | Market leader, BD, design, accessibility reviewer | §5 page map; drawer-vs-page pattern; how inferred dates and coverage gaps are shown; **D10** brand; **D4** alert channels | E14 |
 | **G-6 MVP backlog and implementation authorization** | Week 3 | All of the above | §9 phasing; ratification of the **two-family Phase 2 exit definition** (§8.5) and the two-cycle measurement window; **D22** severity model; the failure-injection suite (§8.7); Phase 1 start | Implementation begins |
 

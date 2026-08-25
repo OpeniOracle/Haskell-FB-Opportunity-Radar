@@ -2,7 +2,8 @@
 
 **Status: Accepted** · **Approved via:** D2a — all AI model access routes through a single
 controlled gateway. **The provider and model tier are not selected**; that is D2b/V1, open
-with IT and procurement. · **Relates to:** D2a, D2b
+by Openi platform engineering, with Openi commercial for data-processing terms
+(see **ADR 0013**). · **Relates to:** D2a, D2b, ADR 0013
 
 ## Context
 

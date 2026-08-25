@@ -1,9 +1,14 @@
 # ADR 0001 — Modular monolith over microservices for the pilot
 
-**Status: Accepted** · **Approved via:** D1 (separate application sharing identity and
-infrastructure) and D2a (platform architecture). The vendor selections behind it — **D2b**,
-covering AI provider, identity provider, PostgreSQL hosting, and object storage — **remain
-open and are IT's to make**. · **Relates to:** D1, D2a, D2b
+**Status: Accepted** · **Approved via:** D1 (corrected — see **ADR 0013**) and D2a
+(platform architecture). · **Relates to:** D1, D2a, D2b, **ADR 0013**
+
+> **Correction.** This record previously cited D1 as "separate application sharing identity
+> and infrastructure" and described D2b as "open and IT's to make". Both were wrong: the
+> Radar is externally hosted and operated by Openi Analytics, shares no infrastructure or
+> identity with the Haskell Hub, and the vendor selections are Openi's — three of the four
+> are now made. The deployment shape decided below is unaffected; only its hosting context
+> and ownership were misrecorded. See `docs/design/17_ARCHITECTURE_HOSTING_RECONCILIATION.md`.
 
 ## Context
 
@@ -29,7 +34,8 @@ Build a **modular monolith with three isolated runtimes**:
 The ten modules from `03` are preserved as **enforced boundaries inside Runtime B**:
 separate database schemas, no cross-module table reads, interaction only through typed
 interfaces and outbox events. PostgreSQL is both system of record and job queue;
-object storage holds raw evidence.
+object storage holds raw evidence. All three runtimes are hosted and operated by Openi;
+none of them runs in, or connects to, Haskell infrastructure (ADR 0013).
 
 The A/B split is for blast radius and deploy independence. The C split is a security
 boundary and is not negotiable on volume grounds.
