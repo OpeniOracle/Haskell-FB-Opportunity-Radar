@@ -2107,6 +2107,18 @@ a {
   color: var(--c-text-secondary);
 }
 
+/* The one-sentence answer, before the evidence for it. */
+.ownership-summary {
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  max-width: var(--reading-max);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--c-surface-sunken);
+  border-left: 3px solid var(--c-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
 /* ------------------------------------------------------- Ownership intervals */
 
 .ownership {

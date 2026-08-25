@@ -17,16 +17,17 @@ import {
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { FIXTURE_NOW, formatTemporal, precisionLabel } from '@/lib/format'
+import { FIXTURE_NOW, absoluteDate, formatTemporal, precisionLabel } from '@/lib/format'
 import { AS_OF_PARAM, evidencePath, facilityPath, parseAsOf } from '@/lib/links'
 import {
   controllingParentAsOf,
+  isActiveOn,
   operatorAsOf,
   relationshipsAsOf,
   retainedStakesAsOf,
 } from '@/lib/ownership'
 import { opportunityDetailPath } from '@/lib/opportunityFilters'
-import type { Company } from '@/types/domain'
+import type { Company, OrganizationRelationship } from '@/types/domain'
 
 const TODAY = FIXTURE_NOW.toISOString().slice(0, 10)
 
@@ -165,6 +166,21 @@ function CompanyBody({ company }: { company: Company }) {
         <h2 className="detail__h2" id="ownership-title">
           Ownership and related organizations
         </h2>
+
+        {/* The same three answers the facts below give, said once in a sentence.
+            "None — independent" against a labelled term is precise but asks the
+            reader to assemble the meaning; a business-development user should
+            not have to read interval notation to learn who owns an account. */}
+        {company.relationships.length > 0 && (
+          <p className="ownership-summary">
+            <OwnershipSummary
+              company={company}
+              asOf={asOf}
+              parent={parent}
+              stakes={stakes}
+            />
+          </p>
+        )}
 
         <dl className="drawer__facts">
           <div className="fact">
@@ -344,5 +360,69 @@ function CompanyBody({ company }: { company: Company }) {
         )}
       </section>
     </article>
+  )
+}
+
+/**
+ * End a sentence without doubling a full stop.
+ *
+ * Several fixture names end in an abbreviation — "Example Meals & Sauces Co." —
+ * and appending a period to those produced "Co..".
+ */
+function sentenceEnd(text: string): string {
+  return text.endsWith('.') ? text : `${text}.`
+}
+
+/**
+ * Current ownership in one sentence.
+ *
+ * Derived from `controllingParentAsOf` and `retainedStakesAsOf` — the same
+ * resolvers the fact list uses — so the summary and the detail can never
+ * disagree. It states what is true on the selected date and, when there is
+ * earlier history to see, says how to reach it.
+ */
+function OwnershipSummary({
+  company,
+  asOf,
+  parent,
+  stakes,
+}: {
+  company: Company
+  asOf: string
+  parent: OrganizationRelationship | null
+  stakes: OrganizationRelationship[]
+}) {
+  const hasEarlier = company.relationships.some((r) => !isActiveOn(r, asOf))
+
+  const stakeText = stakes
+    .map((s) => {
+      if (s.ownershipPercent === null) {
+        return `${s.counterpartyName} retains a minority interest`
+      }
+      const pct =
+        s.ownershipPercentBasis === 'approximate'
+          ? `approximately ${s.ownershipPercent}%`
+          : `${s.ownershipPercent}%`
+      return `${s.counterpartyName} retains a minority interest of ${pct}`
+    })
+    .join('; ')
+
+  return (
+    <>
+      <strong>As at {absoluteDate(asOf)}: </strong>
+      {parent ? (
+        <>{parent.counterpartyName} controls {sentenceEnd(company.canonicalName)}</>
+      ) : (
+        <>No company holds a controlling interest in {sentenceEnd(company.canonicalName)}</>
+      )}{' '}
+      {stakes.length > 0 ? (
+        <>{stakeText}.</>
+      ) : (
+        <>No minority interest is recorded.</>
+      )}{' '}
+      {hasEarlier && (
+        <>Earlier ownership can be seen by changing the attribution date above.</>
+      )}
+    </>
   )
 }

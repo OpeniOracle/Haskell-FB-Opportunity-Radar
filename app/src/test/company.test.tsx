@@ -112,6 +112,74 @@ describe('company detail', () => {
     ).toBeInTheDocument()
   })
 
+  /**
+   * The plain-language check. All three facts must be readable without
+   * interpreting `[from, to)` or the phrase "None — independent".
+   */
+  it('states current ownership in a sentence, not only as labelled fields', async () => {
+    renderApp('/accounts/org-fixture-2')
+    await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
+
+    const summary = document.querySelector('.ownership-summary')!
+    const text = summary.textContent!.replace(/\s+/g, ' ')
+
+    expect(text).toContain('As at 17 August 2026')
+    expect(text).toContain(
+      'No company holds a controlling interest in Example Meals & Sauces Co.',
+    )
+    expect(text).toContain(
+      'Example Pacific Holdings retains a minority interest of approximately 18.4%',
+    )
+    expect(text).toContain('Earlier ownership can be seen by changing the attribution date')
+
+    // Said in words, not in notation.
+    expect(text).not.toMatch(/\[|\)$|∞/)
+    // And it does not double a full stop after an abbreviated name.
+    expect(text).not.toContain('Co..')
+  })
+
+  it('re-states the summary against the selected date', async () => {
+    renderApp('/accounts/org-fixture-2?asOf=2025-01-01')
+    await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
+
+    const text = document.querySelector('.ownership-summary')!.textContent!.replace(/\s+/g, ' ')
+    expect(text).toContain('As at 1 January 2025')
+    expect(text).toContain('Example Pacific Holdings controls Example Meals & Sauces Co.')
+    expect(text).toContain('No minority interest is recorded')
+  })
+
+  it('names the controlling parent plainly where there is one', async () => {
+    renderApp('/accounts/org-fixture-5')
+    await screen.findByRole('heading', { level: 1, name: 'Example Pet Nutrition Company' })
+
+    const text = document.querySelector('.ownership-summary')!.textContent!.replace(/\s+/g, ' ')
+    expect(text).toContain('Example Holdings Group controls Example Pet Nutrition Company.')
+    // No ended edges, so no invitation to look backwards.
+    expect(text).not.toContain('Earlier ownership')
+  })
+
+  it('omits the summary entirely when no relationship is recorded', async () => {
+    renderApp('/accounts/org-fixture-3')
+    await screen.findByRole('heading', { level: 1, name: 'Example Consumer Brands PLC' })
+
+    expect(document.querySelector('.ownership-summary')).toBeNull()
+    expect(
+      screen.getByText('No related organizations are recorded for this company.'),
+    ).toBeInTheDocument()
+  })
+
+  it('agrees with the fact list it summarises', async () => {
+    renderApp('/accounts/org-fixture-2')
+    await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
+
+    // One resolver, two renderings — they cannot be allowed to drift apart.
+    const summary = document.querySelector('.ownership-summary')!.textContent!
+    const parentRow = screen.getByText('Controlling parent as at 2026-08-17').parentElement!
+    const noParentInFacts = within(parentRow).getByText('None — independent')
+    expect(noParentInFacts).toBeInTheDocument()
+    expect(summary).toContain('No company holds a controlling interest')
+  })
+
   it('resolves ownership as at today by default', async () => {
     renderApp('/accounts/org-fixture-2')
     await screen.findByRole('heading', { level: 1, name: 'Example Meals & Sauces Co.' })
