@@ -148,13 +148,6 @@ const SHOTS = [
     path: '/opportunities/opp-fixture-1',
   },
   {
-    name: 'placeholder-company',
-    viewport: DESKTOP,
-    theme: 'light',
-    path: '/accounts',
-    fullPage: false,
-  },
-  {
     name: 'reserved-market-trends',
     viewport: DESKTOP,
     theme: 'light',
@@ -214,6 +207,168 @@ const SHOTS = [
     viewport: DESKTOP,
     theme: 'light',
     path: '/opportunities?state=unavailable',
+    fullPage: false,
+  },
+
+  /* ---- The five surfaces added in roadmap PR 2, desktop then mobile ---- */
+  { name: 'company-list-desktop', viewport: DESKTOP, theme: 'light', path: '/accounts' },
+  {
+    name: 'company-list-filtered',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts',
+    async act(page) {
+      await page.selectOption('select >> nth=0', 'below')
+      await page.waitForTimeout(150)
+    },
+  },
+  {
+    name: 'company-detail-desktop',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts/org-fixture-2',
+  },
+  {
+    // The as-at date moved past the demerger: no controlling parent, and a
+    // retained minority interest that a clean-termination model would have lost.
+    name: 'company-detail-after-demerger',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts/org-fixture-2?asOf=2027-07-01',
+  },
+  {
+    // Healthy connectors, no resolved facilities, coverage gaps named.
+    name: 'company-detail-no-facilities',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts/org-fixture-4',
+  },
+  {
+    name: 'facility-detail-desktop',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/facilities/fac-fixture-1',
+  },
+  {
+    name: 'facility-detail-candidate',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/facilities/fac-fixture-2',
+  },
+  {
+    name: 'evidence-detail-desktop',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/evidence/ev-fixture-2',
+  },
+  {
+    name: 'evidence-detail-superseded',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/evidence/ev-fixture-1',
+  },
+  {
+    name: 'evidence-detail-metadata-only',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/evidence/ev-fixture-7',
+  },
+  { name: 'source-health-desktop', viewport: DESKTOP, theme: 'light', path: '/admin/health' },
+  {
+    name: 'source-health-run-history',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/admin/health',
+    fullPage: false,
+    async act(page) {
+      await page.getByText(/Run history/).nth(3).click()
+      await page.waitForTimeout(150)
+    },
+  },
+  { name: 'saved-views-desktop', viewport: DESKTOP, theme: 'light', path: '/views' },
+  {
+    name: 'saved-views-renaming',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/views',
+    fullPage: false,
+    async act(page) {
+      await page.getByRole('button', { name: 'Rename' }).first().click()
+      await page.waitForTimeout(150)
+    },
+  },
+
+  { name: 'company-list-mobile', viewport: MOBILE, theme: 'light', path: '/accounts' },
+  {
+    name: 'company-detail-mobile',
+    viewport: MOBILE,
+    theme: 'light',
+    path: '/accounts/org-fixture-2',
+  },
+  {
+    name: 'facility-detail-mobile',
+    viewport: MOBILE,
+    theme: 'light',
+    path: '/facilities/fac-fixture-2',
+  },
+  {
+    name: 'evidence-detail-mobile',
+    viewport: MOBILE,
+    theme: 'light',
+    path: '/evidence/ev-fixture-1',
+  },
+  { name: 'source-health-mobile', viewport: MOBILE, theme: 'light', path: '/admin/health' },
+  { name: 'saved-views-mobile', viewport: MOBILE, theme: 'light', path: '/views' },
+
+  /* ---- Representative non-happy states on the new surfaces ---- */
+  {
+    name: 'state-company-empty',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts?state=empty',
+    fullPage: false,
+  },
+  {
+    name: 'state-company-degraded',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts?state=degraded',
+    fullPage: false,
+  },
+  {
+    name: 'state-health-unavailable',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/admin/health?state=unavailable',
+    fullPage: false,
+  },
+  {
+    name: 'state-evidence-stale',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/evidence/ev-fixture-1?state=stale',
+    fullPage: false,
+  },
+  {
+    name: 'state-saved-views-unavailable',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/views?state=unavailable',
+    fullPage: false,
+  },
+  {
+    // An address that names a record that does not exist.
+    name: 'state-unknown-record',
+    viewport: DESKTOP,
+    theme: 'light',
+    path: '/accounts/no-such-company',
+    fullPage: false,
+  },
+  {
+    name: 'state-company-empty-mobile',
+    viewport: MOBILE,
+    theme: 'light',
+    path: '/accounts?state=empty',
     fullPage: false,
   },
 ]

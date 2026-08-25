@@ -5,6 +5,7 @@ import {
   absoluteDateTime,
   accessModeLabel,
   assessmentTypeLabel,
+  confidenceLevelLabel,
   evidenceStrengthLabel,
   formatTemporal,
   precisionLabel,
@@ -154,7 +155,9 @@ export function OpportunityDetail({
           </div>
           <div className="fact">
             <dt>Confidence level</dt>
-            <dd className="fact--emphasis">{confidence.confidenceLevel}</dd>
+            <dd className="fact--emphasis">
+              {confidenceLevelLabel[confidence.confidenceLevel] ?? confidence.confidenceLevel}
+            </dd>
           </div>
         </dl>
         <p className="drawer__prose drawer__prose--small">

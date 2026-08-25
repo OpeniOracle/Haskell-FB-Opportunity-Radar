@@ -45,9 +45,9 @@ export function NavRail() {
           >
             <Icon name={surface.icon} className="nav__icon" />
             <span className="nav__link-text">{surface.label}</span>
-            {surface.status === 'pr2' && (
+            {surface.status === 'scheduled' && (
               <span className="nav__tag" aria-hidden="true">
-                PR 2
+                Scheduled
               </span>
             )}
           </NavLink>
@@ -130,7 +130,7 @@ export function BottomNav() {
         >
           <Icon name={surface.icon} className="bottom-nav__icon" />
           <span className="bottom-nav__label">{surface.shortLabel}</span>
-          {surface.status === 'pr2' && (
+          {surface.status === 'scheduled' && (
             <span className="bottom-nav__dot" aria-hidden="true" />
           )}
         </NavLink>

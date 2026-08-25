@@ -130,12 +130,44 @@ export const assessmentTypeLabel: Record<AssessmentType, string> = {
   hypothesis: 'Hypothesis',
 }
 
+/**
+ * Access mode in the words a business-development reader uses.
+ *
+ * `structured_primary` and the rest are the recorded values and stay exactly as
+ * they are in the model. What changes is only what the primary reading path
+ * says: an F&B account manager should not have to learn the vocabulary of an
+ * evidence pipeline to find out where a claim came from. The precise recorded
+ * value is kept alongside, in secondary text.
+ */
 export const accessModeLabel: Record<string, string> = {
-  structured_primary: 'Structured primary source',
-  archived_full_text: 'Archived full text',
-  licensed_full_text: 'Licensed full text',
-  reference_only: 'Reference only',
-  metadata_only: 'Metadata only',
+  structured_primary: 'Official structured record',
+  archived_full_text: 'Saved copy of the full article',
+  licensed_full_text: 'Licensed copy of the full article',
+  reference_only: 'Reference only — no copy kept',
+  metadata_only: 'Listing only — no copy kept',
+}
+
+/** How the value is recorded, for the reader who wants the exact term. */
+export const accessModeRecordedValue: Record<string, string> = {
+  structured_primary: 'structured_primary',
+  archived_full_text: 'archived_full_text',
+  licensed_full_text: 'licensed_full_text',
+  reference_only: 'reference_only',
+  metadata_only: 'metadata_only',
+}
+
+/** Confidence level, title-cased at the source rather than by a CSS transform. */
+export const confidenceLevelLabel: Record<string, string> = {
+  high: 'High',
+  moderate: 'Moderate',
+  low: 'Low',
+}
+
+/** How a stated timing was arrived at, in plain words. */
+export const timingBasisLabel: Record<string, string> = {
+  stated: 'Stated by the source',
+  inferred: 'Worked out by the platform',
+  unknown: 'Not recorded',
 }
 
 /**
@@ -162,36 +194,82 @@ export function confidenceSentence(c: ConfidenceAxes): string {
  */
 export const FIXTURE_NOW = new Date('2026-08-17T08:00:00Z')
 
-export function relativeTime(iso: string, now: Date = FIXTURE_NOW): string {
-  const then = new Date(iso)
-  const diffMs = now.getTime() - then.getTime()
-  if (Number.isNaN(diffMs)) return iso
+/**
+ * A value that could not be read as an instant.
+ *
+ * Returning the raw string here used to be the fallback, which put a fragment of
+ * a malformed payload in front of a user as though it were a date. Saying the
+ * date is unavailable is the honest option; the caller keeps the raw value and
+ * can show it as technical detail.
+ */
+export const INVALID_INSTANT = 'Date unavailable'
 
-  const minutes = Math.round(diffMs / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} min ago`
+/** Is this instant later than the reference now? */
+export function isFutureInstant(iso: string, now: Date = FIXTURE_NOW): boolean {
+  const then = new Date(iso)
+  if (Number.isNaN(then.getTime())) return false
+  return then.getTime() > now.getTime()
+}
+
+/** Magnitude of a gap, with no direction attached. */
+function magnitude(absMs: number): string | null {
+  const minutes = Math.round(absMs / 60000)
+  if (minutes < 60) return `${minutes} min`
 
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} hr ago`
+  if (hours < 24) return `${hours} hr`
 
   const days = Math.round(hours / 24)
-  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'}`
 
   const weeks = Math.round(days / 7)
-  if (weeks < 5) return `${weeks} week${weeks === 1 ? '' : 's'} ago`
+  if (weeks < 5) return `${weeks} week${weeks === 1 ? '' : 's'}`
 
-  return absoluteDate(iso)
+  // Past the point where "n weeks" is useful, an absolute date says more than a
+  // relative one — in either direction.
+  return null
+}
+
+/**
+ * A human-readable gap between an instant and now.
+ *
+ * **Direction is never dropped.** The earlier version computed `now - then` and
+ * sent anything under a minute to "just now", so a timestamp ten months in the
+ * FUTURE — a clock-skewed collector, a source with a bad published date, a
+ * fixture typo — rendered as though it had just happened. In a product whose
+ * whole claim is that it does not overstate what it knows about time, that was
+ * the worst possible failure: silent, confident, and wrong.
+ *
+ * Past reads "X ago", future reads "in X", and a future instant less than a
+ * minute away reads "in under a minute" so it can never be mistaken for now.
+ */
+export function relativeTime(iso: string, now: Date = FIXTURE_NOW): string {
+  const then = new Date(iso)
+  if (Number.isNaN(then.getTime())) return INVALID_INSTANT
+
+  const diffMs = now.getTime() - then.getTime()
+  const future = diffMs < 0
+  const abs = Math.abs(diffMs)
+
+  if (Math.round(abs / 60000) < 1) {
+    // Distinguishable from "just now" even a second out.
+    return future ? 'in under a minute' : 'just now'
+  }
+
+  const mag = magnitude(abs)
+  if (mag === null) return absoluteDate(iso)
+  return future ? `in ${mag}` : `${mag} ago`
 }
 
 export function absoluteDate(iso: string): string {
   const then = new Date(iso)
-  if (Number.isNaN(then.getTime())) return iso
+  if (Number.isNaN(then.getTime())) return INVALID_INSTANT
   return `${then.getUTCDate()} ${MONTHS[then.getUTCMonth()]} ${then.getUTCFullYear()}`
 }
 
 export function absoluteDateTime(iso: string): string {
   const then = new Date(iso)
-  if (Number.isNaN(then.getTime())) return iso
+  if (Number.isNaN(then.getTime())) return INVALID_INSTANT
   const hh = String(then.getUTCHours()).padStart(2, '0')
   const mm = String(then.getUTCMinutes()).padStart(2, '0')
   return `${absoluteDate(iso)}, ${hh}:${mm} UTC`
