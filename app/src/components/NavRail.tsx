@@ -1,11 +1,30 @@
 import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Icon } from '@/components/Icon'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { PRIMARY_SURFACES, RESERVED_DESTINATIONS } from '@/routes'
+import { PRIMARY_SURFACES, RESERVED_DESTINATIONS, reservedAccessibleName } from '@/routes'
 import { useDataSource } from '@/data/DataSourceContext'
 
 const SCENARIOS = ['ready', 'loading', 'empty', 'degraded', 'stale', 'unavailable'] as const
+
+/*
+ * The reserved clause is spelled once, in `routes.ts`, beside the destinations
+ * it describes — see `reservedAccessibleName`.
+ *
+ * Composing the name from visually hidden text was the first attempt and it
+ * produced "Market Trends , RESERVED FOR A LATER PHASE": the name algorithm
+ * inserts a space between sibling elements, so the comma detached, and Chromium
+ * folds `text-transform: uppercase` into the computed name, so the chip's
+ * styling shouted. An explicit name avoids both. It still contains the visible
+ * words "Market Trends" and "Reserved", so WCAG 2.5.3 Label in Name holds, and
+ * nothing is hidden from assistive technology — the chip simply is not the
+ * source of the name.
+ */
+
+/** The visible chip. Not `aria-hidden`; it is just not the name source. */
+function ReservedTag() {
+  return <span className="nav__tag">Reserved</span>
+}
 
 /**
  * Side navigation, shown from 901px up.
@@ -34,8 +53,13 @@ export function NavRail() {
         <span className="nav__product">F&amp;B Opportunity Radar</span>
       </div>
 
-      <div className="nav__group">
-        <span className="nav__group-label">Surfaces</span>
+      {/* `role="group"` + `aria-labelledby` associates the heading with the links
+          it introduces. The label was a plain span, so the grouping existed
+          visually and nowhere else. */}
+      <div className="nav__group" role="group" aria-labelledby="nav-group-surfaces">
+        <span className="nav__group-label" id="nav-group-surfaces">
+          Surfaces
+        </span>
         {PRIMARY_SURFACES.map((surface) => (
           <NavLink
             key={surface.id}
@@ -54,19 +78,20 @@ export function NavRail() {
         ))}
       </div>
 
-      <div className="nav__group">
-        <span className="nav__group-label">Later phases</span>
+      <div className="nav__group" role="group" aria-labelledby="nav-group-later">
+        <span className="nav__group-label" id="nav-group-later">
+          Later phases
+        </span>
         {RESERVED_DESTINATIONS.map((destination) => (
           <NavLink
             key={destination.id}
             to={{ pathname: destination.path, search }}
             className="nav__link nav__link--reserved"
+            aria-label={reservedAccessibleName(destination.label)}
           >
             <Icon name={destination.icon} className="nav__icon" />
             <span className="nav__link-text">{destination.label}</span>
-            <span className="nav__tag" aria-hidden="true">
-              Reserved
-            </span>
+            <ReservedTag />
           </NavLink>
         ))}
       </div>
@@ -83,14 +108,19 @@ export function NavRail() {
                 const target =
                   scenario === 'ready' ? pathname : `${pathname}?state=${scenario}`
                 return (
-                  <NavLink
+                  // A plain Link, not a NavLink. Every state preview points at
+                  // the SAME pathname and differs only by `?state=`, which
+                  // NavLink does not consider when deciding it is active — so
+                  // all six announced `aria-current="page"` at once. Which state
+                  // is showing is ours to decide, not the router's.
+                  <Link
                     key={scenario}
                     to={target}
                     className="nav__state-link"
                     aria-current={current === scenario ? 'true' : undefined}
                   >
                     {scenario}
-                  </NavLink>
+                  </Link>
                 )
               })}
             </div>
@@ -174,11 +204,12 @@ export function MobileHeader() {
                 <NavLink
                   to={{ pathname: destination.path, search }}
                   className="mobile-more__link"
+                  aria-label={reservedAccessibleName(destination.label)}
                   onClick={() => setOpen(false)}
                 >
                   <Icon name={destination.icon} className="nav__icon" />
                   {destination.label}
-                  <span className="nav__tag">Reserved</span>
+                  <ReservedTag />
                 </NavLink>
               </li>
             ))}
