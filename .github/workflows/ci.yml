@@ -57,11 +57,16 @@ jobs:
       # Roadmap PR 3 authorizes migrations, but only in one place. The frontend
       # still has no database access, so a migration inside `app/` would be a
       # migration the application could reach.
+      #
+      # SQL is allowed in exactly three places: db/ (the executable migrations),
+      # schemas/ (the v0.1.0 design baseline) and docs/ (the schema delta
+      # PROPOSAL, which is documentation and is explicitly not runnable).
+      # Anywhere else is a stray migration.
       - name: Migrations live only in db/migrations
         run: |
-          stray=$(git ls-files '*.sql' | grep -v '^db/' | grep -v '^schemas/' || true)
+          stray=$(git ls-files '*.sql' | grep -vE '^(db|schemas|docs)/' || true)
           if [ -n "$stray" ]; then
-            echo "SQL outside db/ and schemas/:"
+            echo "SQL outside db/, schemas/ and docs/:"
             echo "$stray"
             exit 1
           fi
