@@ -58,15 +58,27 @@ jobs:
       # still has no database access, so a migration inside `app/` would be a
       # migration the application could reach.
       #
-      # SQL is allowed in exactly three places: db/ (the executable migrations),
-      # schemas/ (the v0.1.0 design baseline) and docs/ (the schema delta
-      # PROPOSAL, which is documentation and is explicitly not runnable).
-      # Anywhere else is a stray migration.
+      # SQL is allowed under db/ (the executable migrations) and schemas/ (the
+      # v0.1.0 design baseline), plus ONE allowlisted design document by exact
+      # path. A blanket docs/ exemption is not used: docs/ is a directory a
+      # migration could quietly be added to, and the point of this check is that
+      # migrations cannot appear anywhere except db/.
       - name: Migrations live only in db/migrations
         run: |
-          stray=$(git ls-files '*.sql' | grep -vE '^(db|schemas|docs)/' || true)
+          allowed='docs/design/11_SCHEMA_DELTA_PROPOSAL.sql'
+
+          # An allowlist entry that no longer names a real file is a permanent
+          # hole nobody notices, so the entry has to keep earning its place.
+          if [ ! -f "$allowed" ]; then
+            echo "Allowlisted file $allowed no longer exists. Remove it from the allowlist."
+            exit 1
+          fi
+
+          stray=$(git ls-files '*.sql' \
+                  | grep -vE '^(db|schemas)/' \
+                  | grep -vxF "$allowed" || true)
           if [ -n "$stray" ]; then
-            echo "SQL outside db/, schemas/ and docs/:"
+            echo "SQL outside db/ and schemas/, and not the allowlisted design proposal:"
             echo "$stray"
             exit 1
           fi
