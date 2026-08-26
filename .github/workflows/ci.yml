@@ -134,15 +134,27 @@ jobs:
           test -f app/public/_redirects
 
   database:
-    name: Migration checks (PostgreSQL 16)
+    name: Migration checks (PostgreSQL ${{ matrix.pg }})
     runs-on: ubuntu-latest
 
-    # The authorized migration-validation target for roadmap PR 3. No Supabase
-    # project is contacted and no production credential is required: the service
-    # container is created, migrated, tested and destroyed inside the job.
+    # 16 AND 17. Supabase provisions 17 for new projects, so 17 is the version
+    # the migrations will actually meet; 16 stays in the matrix because the
+    # schema was authored and reviewed against it and a silent divergence
+    # between the two is exactly what this leg is here to catch.
+    #
+    # fail-fast is off: when one version breaks, the other version's result is
+    # the most useful diagnostic available, and cancelling it throws that away.
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ['16', '17']
+
+    # No Supabase project is contacted and no production credential is required:
+    # the service container is created, migrated, tested and destroyed inside
+    # the job.
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.pg }}
         env:
           POSTGRES_USER: radar
           POSTGRES_PASSWORD: radar
@@ -170,7 +182,7 @@ jobs:
 
       # The migration harness shells out to psql, so the client has to match the
       # server major version. The runner image ships an older client by default.
-      - name: Install the PostgreSQL 16 client
+      - name: Install the PostgreSQL ${{ matrix.pg }} client
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
@@ -179,15 +191,29 @@ jobs:
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-16
-          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y postgresql-client-${{ matrix.pg }}
+          echo "/usr/lib/postgresql/${{ matrix.pg }}/bin" >> "$GITHUB_PATH"
 
       # Verified, not assumed. The design package explicitly refuses to assume a
       # PostgreSQL major version, and pgcrypto is a hard dependency of the
       # baseline schema's `gen_random_uuid()` defaults.
+      #
+      # The server major is asserted against the matrix leg. Without this, a
+      # mis-tagged image would let one version's result be reported under the
+      # other version's name — the matrix would look green and prove nothing.
       - name: Verify the server version and pgcrypto availability
         run: |
           psql -d postgres -tAc 'select version();'
+          server_major=$(psql -d postgres -tAc 'show server_version;' | cut -d. -f1)
+          if [ "$server_major" != "${{ matrix.pg }}" ]; then
+            echo "Expected PostgreSQL ${{ matrix.pg }}, the server reports $server_major."
+            exit 1
+          fi
+          client_major=$(psql --version | grep -oE '[0-9]+' | head -1)
+          if [ "$client_major" != "${{ matrix.pg }}" ]; then
+            echo "psql client is $client_major, expected ${{ matrix.pg }}."
+            exit 1
+          fi
           psql -d postgres -tAc "select 1 from pg_available_extensions where name = 'pgcrypto';" \
             | grep -q 1 || { echo 'pgcrypto is not available on this server.'; exit 1; }
 
