@@ -71,7 +71,7 @@ describe('Opportunities still behaves as approved', () => {
     await screen.findAllByRole('article')
 
     await user.type(
-      screen.getByRole('searchbox', { name: 'Search opportunities' }),
+      await screen.findByRole('searchbox', { name: 'Search opportunities' }),
       'zzzz-no-match',
     )
     expect(

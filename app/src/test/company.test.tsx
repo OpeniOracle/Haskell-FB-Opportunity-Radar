@@ -25,7 +25,10 @@ describe('company list', () => {
     renderApp('/accounts')
     await screen.findByRole('heading', { level: 1, name: 'Company' })
 
-    await user.type(screen.getByRole('searchbox', { name: 'Search companies' }), 'confection')
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Search companies' }),
+      'confection',
+    )
     await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(1))
     expect(screen.getByText('Example Confectionery Group')).toBeInTheDocument()
   })
@@ -64,7 +67,7 @@ describe('company list', () => {
     await screen.findByRole('heading', { level: 1, name: 'Company' })
 
     await user.type(
-      screen.getByRole('searchbox', { name: 'Search companies' }),
+      await screen.findByRole('searchbox', { name: 'Search companies' }),
       'no-such-company',
     )
     expect(

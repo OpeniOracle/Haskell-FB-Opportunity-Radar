@@ -498,7 +498,10 @@ jobs:
           if ($out -match 'email address to invite') {
             Write-Host 'FAIL: it prompted before refusing'; exit 1
           }
-
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
       - name: Refusal - the wrong branch
         shell: powershell
         run: |
@@ -508,7 +511,10 @@ jobs:
           if ($out -notmatch "expected 'not-the-pr-branch'") {
             Write-Host 'FAIL: wrong-branch refusal did not fire'; exit 1
           }
-
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
       - name: Refusal - a dirty working tree
         shell: powershell
         run: |
@@ -523,7 +529,10 @@ jobs:
           if ($out -notmatch 'working tree is not clean') {
             Write-Host 'FAIL: dirty-tree refusal did not fire'; exit 1
           }
-
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
       - name: Refusal - verbose output, before anything else
         shell: powershell
         run: |
@@ -538,7 +547,10 @@ jobs:
           if ($out -match 'PASS  origin is') {
             Write-Host 'FAIL: it reached the repository guard before refusing'; exit 1
           }
-
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
       - name: Refusal - debug output
         shell: powershell
         run: |
@@ -548,7 +560,10 @@ jobs:
           if ($out -notmatch 'Refusing to run with debug output enabled') {
             Write-Host 'FAIL: debug refusal did not fire'; exit 1
           }
-
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
       - name: Refusal - script tracing
         shell: powershell
         run: |
@@ -562,7 +577,10 @@ jobs:
           if ($out -notmatch 'must not run against another repository') {
             Write-Host 'FAIL: the script did not survive tracing to reach its refusal'; exit 1
           }
-
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
       - name: Refusal - the reserved SEC mailbox
         shell: powershell
         run: |
@@ -589,7 +607,10 @@ jobs:
           if ($out -notmatch 'No invitation was sent') {
             Write-Host 'FAIL: it did not report that nothing was sent'; exit 1
           }
-
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
       - name: The hosted validator refuses on the same guards
         shell: powershell
         run: |
@@ -599,6 +620,10 @@ jobs:
           if ($out -notmatch 'must not run against another repository') {
             Write-Host 'FAIL: the validator did not refuse'; exit 1
           }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
 
   database:
     name: Migration checks (PostgreSQL ${{ matrix.pg }})
