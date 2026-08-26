@@ -53,16 +53,24 @@ describe('build output carries no secret', () => {
 
     const contents = files.map((f) => ({ path: f.slice(dist.length), text: readFileSync(f, 'utf8') }))
 
-    // Proof the scan is actually reading shipped code, not an empty set: a
-    // string that is unambiguously in the application must be found.
+    // Proof the scan is actually reading shipped code, AND that it can see a
+    // value Vite inlined from the environment.
     //
-    // Note what this does NOT claim. The planted publishable value is absent
-    // from the bundle too — but only because `supabaseClient.ts` is not yet
-    // imported by any surface, so Vite tree-shakes it. That will change when the
-    // Live Data PR wires the API-backed DataSource, and the secret assertions
-    // below are the ones that must hold either way.
+    // The second half is the one that matters. Until authentication existed,
+    // `supabaseClient.ts` was imported by nothing and Vite tree-shook it, so the
+    // planted publishable value was absent from the bundle — which meant the
+    // secret assertions below could have passed because the scan was blind
+    // rather than because the bundle was clean. The auth gate imports the client
+    // on every page load, so the publishable key now genuinely ships, and its
+    // presence is the positive control this test needed.
     const sawKnownAppString = contents.some((c) => c.text.includes('Illustrative data'))
     expect(sawKnownAppString, 'the scan must be reading real build output').toBe(true)
+
+    const sawInlinedPublishable = contents.some((c) => c.text.includes(PLANTED_PUBLISHABLE))
+    expect(
+      sawInlinedPublishable,
+      'the publishable key must be inlined and visible to this scan, or the secret assertions below prove nothing',
+    ).toBe(true)
 
     for (const [label, needle] of [
       ['planted secret key', PLANTED_SECRET],

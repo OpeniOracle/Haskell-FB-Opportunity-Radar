@@ -13,9 +13,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    // Phase 1 PR 1 is fixture-backed; the bundle should stay small enough that a
-    // reviewer notices if a heavyweight dependency creeps in.
-    chunkSizeWarningLimit: 400,
+    // A tripwire, not a budget: it exists so a heavyweight dependency creeping
+    // in is noticed in review rather than discovered later. It has been raised
+    // once, deliberately — the authentication gate imports `@supabase/supabase-js`
+    // on every page load, which is unavoidable for an application whose first
+    // action is to establish a session, and which the tree-shaker previously
+    // removed only because nothing imported it. Raise it again only for a
+    // dependency someone has argued for.
+    chunkSizeWarningLimit: 600,
   },
   test: {
     globals: true,

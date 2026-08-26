@@ -40,7 +40,7 @@ const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
 const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
 
 /**
- * Five files necessarily contain the very strings this suite forbids, each for
+ * Seven files necessarily contain the very strings this suite forbids, each for
  * a stated reason:
  *
  *   boundaries.test.ts    this file — it lists what it forbids
@@ -57,6 +57,13 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  *                         reads the operator scripts to prove they never place a
  *                         secret in argv, a file, or shell history, so it must
  *                         name the patterns it is looking for
+ *   authGate.test.tsx     supplies absolute attacker URLs — `https://evil.example`
+ *                         and friends — as open-redirect candidates. A return-path
+ *                         test that could not name an external origin would be
+ *                         testing nothing
+ *   authAccessibility.test.tsx
+ *                         asserts that no key, token or `service_role` string
+ *                         reaches the rendered sign-in page, so it must name them
  *
  * Excluded by exact name so the exemption stays auditable. Excluding all of
  * `test/` would hide a real leak in any future test file.
@@ -67,6 +74,8 @@ const SELF_REFERENTIAL = [
   'cspPolicy.test.ts',
   'sessionRevocation.test.ts',
   'hostedValidationScripts.test.ts',
+  'authGate.test.tsx',
+  'authAccessibility.test.tsx',
 ]
 
 const files = walk(srcDir)

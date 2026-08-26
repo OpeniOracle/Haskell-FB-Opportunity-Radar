@@ -269,6 +269,56 @@ jobs:
           grep -q 'AsSecureString' scripts/Invoke-HostedValidation.ps1
           grep -qE 'read[[:space:]]+-rs[[:space:]]+TOKEN' scripts/hosted-validation.sh
 
+      # The application is private. Every surface sits behind the gate, and the
+      # only routes a signed-out visitor may reach are the five authentication
+      # ones. An invited reviewer arriving at a public dashboard is the failure
+      # this milestone exists to fix.
+      - name: Every surface is behind the authentication gate
+        run: |
+          grep -q 'RequireAuth' app/src/App.tsx
+          grep -q 'PUBLIC_AUTH_ROUTES' app/src/App.tsx
+          # Exactly five public routes, counted inside the exported list itself
+          # rather than anywhere a quoted path happens to appear. A sixth has to
+          # be argued for here.
+          count=$(awk '/^export const PUBLIC_AUTH_ROUTES = \[/{f=1;next} /^\] as const/{f=0} f' \
+                    app/src/App.tsx | grep -c "^  '/")
+          test "$count" -eq 5 || { echo "Expected 5 public auth routes, found $count."; exit 1; }
+          for route in "/login" "/auth/callback" "/auth/set-password" \
+                       "/forgot-password" "/auth/reset-password"; do
+            grep -q "path=\"$route\"" app/src/App.tsx \
+              || { echo "Public route $route is not registered."; exit 1; }
+          done
+          test -f app/src/auth/RequireAuth.tsx
+          test -f app/src/auth/AuthProvider.tsx
+
+      # Invite-only, in the interface as well as in the database. Migration 0016
+      # refuses an uninvited account and the project has signups disabled; a
+      # registration form would still be a door with a sign on it.
+      - name: The application offers no way to create an account
+        run: |
+          # Actual CALLS only. Both files excluded below necessarily name the
+          # thing they forbid: one is the rule, the other is the comment that
+          # explains why there is no such call.
+          if grep -rnE '\.(signUp|signInWithOAuth|signInWithOtp|signInAnonymously)[[:space:]]*\(' \
+               app/src app/netlify \
+               --exclude=boundaries.test.ts --exclude=supabaseClient.ts; then
+            echo "A self-registration or alternative sign-in path exists."
+            exit 1
+          fi
+
+      # A credential in the URL is a credential in browser history, in the
+      # referrer of the next request, and in anything the user copies out of the
+      # address bar. The callback reads it once and removes it.
+      - name: The invitation callback removes the credential from history
+        run: |
+          grep -q 'scrubCredentialFromHistory' app/src/auth/CallbackPage.tsx
+          grep -q 'replaceState' app/src/auth/urlCredentials.ts
+          # Nothing in the auth tree may log, and nothing may render a token.
+          if grep -rn 'console\.\(log\|info\|warn\|error\|debug\)' app/src/auth; then
+            echo "The authentication code logs. A token in a log line is still a disclosure."
+            exit 1
+          fi
+
       - name: Netlify configuration is present and points at the app
         run: |
           grep -q 'base = "app"' netlify.toml

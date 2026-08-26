@@ -3229,3 +3229,334 @@ a {
     margin-left: 0;
   }
 }
+
+/* =================================================================== Auth */
+
+/*
+ * The authentication surfaces.
+ *
+ * Same tokens as the application, so a person arriving from an invitation email
+ * lands somewhere that already looks like the product rather than on a generic
+ * form. Both themes come free: every colour below is a token, and the tokens
+ * file defines the dark palette twice — once under `prefers-color-scheme` and
+ * once under `[data-theme='dark']` — so the toggle in the auth header works
+ * before anyone has signed in.
+ */
+
+.auth-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--c-ground);
+  color: var(--c-text);
+  padding: var(--sp-4);
+  gap: var(--sp-5);
+}
+
+.auth-shell__head {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-5);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.auth-brand__mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--c-accent);
+  color: var(--c-text-inverse);
+  flex: none;
+}
+
+.auth-brand__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.auth-brand__product {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-body);
+  line-height: 1.2;
+}
+
+.auth-brand__org {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  color: var(--c-text-muted);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.auth-card:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+
+.auth-card__title {
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-semibold);
+  margin: 0;
+}
+
+.auth-card__lede {
+  margin: 0;
+  color: var(--c-text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+.auth-card__note {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+
+.auth-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auth-form__label {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  color: var(--c-text-muted);
+  font-weight: var(--fw-semibold);
+}
+
+.auth-form__input {
+  /* 16px, so iOS Safari does not zoom the page when the field is focused. */
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--c-text);
+  padding: 10px var(--sp-3);
+  border: 1px solid var(--c-border-interactive);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-sunken);
+  width: 100%;
+}
+
+.auth-form__input:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+  border-color: var(--c-accent-border);
+}
+
+.auth-form__input[aria-invalid='true'] {
+  border-color: var(--c-attention-border);
+}
+
+.auth-form__requirements {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-sunken);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-form__requirement {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+}
+
+.auth-form__requirement svg {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+.auth-form__error,
+.auth-form__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+}
+
+.auth-form__error {
+  color: var(--c-attention);
+  background: var(--c-attention-bg);
+  border-color: var(--c-attention-border);
+}
+
+.auth-form__notice {
+  color: var(--c-confirmed);
+  background: var(--c-confirmed-bg);
+  border-color: var(--c-confirmed-border);
+}
+
+.auth-form__error svg,
+.auth-form__notice svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.auth-form__error-list {
+  margin: 0;
+  padding-left: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.auth-form__submit {
+  justify-content: center;
+  /* A comfortable target on a phone, and the same height as the inputs. */
+  min-height: 44px;
+  margin-top: var(--sp-1);
+}
+
+.auth-shell__foot {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-5);
+  text-align: center;
+}
+
+.auth-shell__link {
+  font-size: var(--fs-small);
+  color: var(--c-accent);
+  font-weight: var(--fw-medium);
+}
+
+.auth-shell__invite-note {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--c-text-muted);
+}
+
+/*
+ * The contentless waiting state.
+ *
+ * Deliberately NOT a skeleton of the application. A skeleton with the right
+ * number of rows still tells a stranger how many accounts are monitored, and a
+ * spinner over the real layout still shows them the surface names.
+ */
+.auth-pending {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  background: var(--c-ground);
+  color: var(--c-text-muted);
+}
+
+.auth-pending__mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--c-border-strong);
+  border-top-color: var(--c-accent);
+  animation: auth-spin 720ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-pending__mark {
+    animation: none;
+  }
+}
+
+@keyframes auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.auth-pending__label {
+  font-size: var(--fs-small);
+}
+
+/* ------------------------------------------------------------- Sign out */
+
+.sign-out {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sign-out__who {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sign-out__who-label {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  color: var(--c-text-muted);
+}
+
+.sign-out__who-email {
+  font-size: var(--fs-small);
+  color: var(--c-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sign-out__button {
+  justify-content: flex-start;
+}
+
+.sign-out--compact .sign-out__button {
+  min-width: 34px;
+  min-height: 34px;
+  justify-content: center;
+  padding: 0 8px;
+}

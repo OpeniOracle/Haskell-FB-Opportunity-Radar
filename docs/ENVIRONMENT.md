@@ -207,6 +207,37 @@ The endpoint reads **as the calling user**, not as the service role. That is
 deliberate — a status check querying with the service role would report success
 even with every RLS policy missing, which is the failure it exists to catch.
 
+### The application is private
+
+Every surface sits behind `RequireAuth`. Five routes are public and no more:
+
+| Route | What it is |
+| --- | --- |
+| `/login` | email and password. No registration path exists anywhere. |
+| `/auth/callback` | the ONE place a credential in a URL is read, and immediately removed from history |
+| `/auth/set-password` | choosing a password after an invitation |
+| `/forgot-password` | requesting a recovery link |
+| `/auth/reset-password` | choosing a new password from a recovery link |
+
+`/api/session` exists for the gate: `auth_invite_allowlist` is deliberately
+unreadable by a signed-in session (migration 0016 revokes it), so the browser
+cannot check its own membership. That endpoint answers the one bit — which is
+what makes removing somebody take effect on their next page load rather than at
+token expiry.
+
+**Supabase Auth redirect URLs.** Site URL is
+`https://haskell-fb-opportunity-radar.netlify.app`; the Redirect URL allowlist
+holds four exact entries, `/auth/callback` and `/auth/reset-password` on the
+production origin and on the PR #9 preview. Exact paths, not `/**` — the
+allowlist decides where Supabase will send someone carrying a live credential,
+and `/auth/callback` is the only route written to read one and scrub it.
+
+Invitations must be sent through the Admin API with an explicit `redirectTo`.
+The dashboard's *Invite user* button uses the Site URL, which sends a preview
+invitation to production. See `docs/HOSTED_VALIDATION_RUNBOOK.md` § B.
+
+---
+
 ### JWT verification, and what `dashboardTokenLifetime` is telling you
 
 `jwtVerification` names how the evidence proxy verified the caller's token:

@@ -32,11 +32,47 @@ Supabase → **Authentication → URL Configuration**:
 
 | Setting | Value |
 | --- | --- |
-| Site URL | the production Netlify origin |
-| Redirect URLs | the production origin, plus `https://deploy-preview-*--haskell-fb-opportunity-radar.netlify.app/**` |
+| Site URL | `https://haskell-fb-opportunity-radar.netlify.app` |
 
-Nothing else. A wildcard like `https://*` turns the redirect allowlist into an
-open redirector for auth tokens.
+**Redirect URLs — these four exact entries**, and nothing broader:
+
+```
+https://haskell-fb-opportunity-radar.netlify.app/auth/callback
+https://haskell-fb-opportunity-radar.netlify.app/auth/reset-password
+https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/callback
+https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/reset-password
+```
+
+Exact paths, not `/**`. The allowlist decides where Supabase is willing to send
+somebody **carrying a live credential in the URL**, so every entry is a place a
+token may legitimately land. `https://*` would make it an open redirector for
+auth tokens; even `…netlify.app/**` would let any path on the origin receive
+one, and only `/auth/callback` is written to read a credential and remove it.
+
+### The email templates — check these, they are the likely culprit
+
+Supabase → **Authentication → Emails**, the **Invite user** and **Reset
+password** templates.
+
+Both must build their link from `{{ .ConfirmationURL }}`. That variable already
+carries the `redirect_to` you passed to the Admin API — it expands to
+`https://<ref>.supabase.co/auth/v1/verify?token=…&type=invite&redirect_to=<your redirectTo>`.
+
+A template that was customised to the documented alternative shape —
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next={{ .RedirectTo }}">
+```
+
+— hardcodes **`{{ .SiteURL }}` as the host that receives the credential**, so
+every invitation lands on the production origin no matter what `redirectTo`
+says, and a preview test can never work. If either template looks like that,
+either restore `{{ .ConfirmationURL }}` or change `{{ .SiteURL }}` to
+`{{ .RedirectTo }}`.
+
+I cannot read these from here: email templates are platform configuration with
+no table and no Management API access from this environment. **Paste what you
+see into PR #9** rather than reporting that they looked right.
 
 **Record what you observed**, not what you intended — paste the resulting values
 into PR #9. A setting believed to be off is not a setting that is off.
@@ -49,9 +85,9 @@ into PR #9. A setting believed to be off is not a setting that is off.
 `oracles@openi-analytics.com` — that one is reserved for SEC operational notices
 and migration 0017 refuses to allowlist it, so the attempt fails rather than
 succeeding quietly. A shared mailbox is the wrong thing to hold an account: its
-readers change without anyone revoking anything, every action would be attributed
-to a mailbox rather than a person, and a password reset sent to it is visible to
-everyone who reads it.
+readers change without anyone revoking anything, every action would be
+attributed to a mailbox rather than a person, and a password reset sent to it is
+visible to everyone who reads it.
 
 **Order matters, and it is enforced.** The allowlist entry must exist BEFORE
 Supabase creates the user. The trigger from migration 0016 fires
@@ -60,18 +96,10 @@ yet allowlisted fails at the moment Supabase tries to create the row — the
 invitation email is never sent, and Supabase reports the database error. That is
 the intended behaviour, not a bug to work around.
 
-The full sequence, in order:
+### Step 1 — allowlist the address FIRST
 
-| # | Step | Where | What enforces it |
-| --- | --- | --- | --- |
-| 1 | Insert the address into `auth_invite_allowlist` | SQL Editor | 0017 refuses a reserved service address |
-| 2 | Invite the same address | Dashboard → Authentication → Users | 0016 refuses any address not from step 1 |
-| 3 | Accept the invitation, set a password, sign in | Email → browser | Supabase Auth |
-| 4 | Prove an unlisted address is refused | SQL Editor | 0016 |
-| 5 | Prove exactly one account exists | SQL Editor | — |
-
-**Step 1 — allowlist the address FIRST.** Supabase → SQL Editor. Replace
-`firstname.lastname@openi-analytics.com` with the real individual address:
+Supabase → SQL Editor. Replace `firstname.lastname@openi-analytics.com` with the
+real individual address:
 
 ```sql
 insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by, note)
@@ -82,26 +110,68 @@ values (
   'Bootstrap Openi administrator, PR #9'
 );
 
--- Confirm the row landed before going near the dashboard.
+-- Confirm the row landed before going near the invitation.
 select email_normalized, invited_at from auth_invite_allowlist;
 ```
 
 If you mistakenly use the SEC mailbox, this step fails with
-`oracles@openi-analytics.com is a reserved service address (SEC EDGAR
-automated-source identification and operational notices) and must not hold an
+`oracles@openi-analytics.com is a reserved service address … and must not hold an
 application account.` That is correct. Use an individual address.
 
-**Step 2 — invite.** Authentication → **Users → Invite user**, the same address.
+### Step 2 — invite through the Admin API, NOT the dashboard button
 
-Sanity check that the order was enforced: try inviting a *different*, unlisted
-address first. It must fail with `Self-registration is disabled. … was not
-invited; add it to auth_invite_allowlist first.` If it succeeds, migration 0016
-did not apply and you should stop.
+**This is the step that failed last time.** The dashboard's *Invite user* button
+sends the invitation to the project's **Site URL**, which is the production
+origin — so an invitation meant to test the preview lands on production, and
+until this milestone landed on an application with no callback route at all.
 
-**Step 3 — accept the invitation and sign in.** Follow the emailed link, set a
-password, and reach the deployed preview signed in.
+Send it server-side, naming the preview explicitly:
 
-**Step 4 — prove the guard refuses what it should.** SQL Editor:
+```bash
+curl -sS -X POST \
+  'https://dutmdlbangsthclgtkhy.supabase.co/auth/v1/invite' \
+  -H "apikey: $SB" -H "Authorization: Bearer $SB" \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "email": "firstname.lastname@openi-analytics.com",
+        "options": {
+          "redirectTo": "https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/callback"
+        }
+      }'
+```
+
+`$SB` is the `sb_secret_…` key. Do NOT type it on the command line — see § D for
+why, and use the same hidden-prompt pattern:
+
+```bash
+read -rs -p 'Supabase secret key: ' SB; echo
+```
+
+`redirectTo` must be **byte-identical** to one of the four Redirect URLs in § A.
+Supabase silently falls back to the Site URL when the value is not on the
+allowlist, which looks exactly like the bug this step is avoiding.
+
+### Step 3 — accept it
+
+Follow the emailed link. What must happen now, in order:
+
+| # | Where you land | What you should see |
+| --- | --- | --- |
+| 1 | `…/auth/callback#access_token=…` | briefly — "Checking your session…" |
+| 2 | `/auth/set-password` | **"Choose a password"**, addressed to your email, with the requirements listed before you type |
+| 3 | `/` | the Daily Pulse, with your address and a **Sign out** control in the navigation |
+
+The address bar must contain **no token** by the time you reach step 2 — the
+callback rewrites the history entry before anything renders. Press Back: you
+must not be able to return to a URL carrying the credential.
+
+If step 2 shows *"That link cannot be used"*, the link expired or was already
+opened. Send another. If it shows *"This account cannot be used"*, the address
+is not on the allowlist — go back to step 1.
+
+### Step 4 — prove the guard still refuses what it should
+
+SQL Editor:
 
 ```sql
 -- MUST fail: Self-registration is disabled. …
@@ -116,10 +186,7 @@ insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_b
 values ('oracles@openi-analytics.com', 'oracles@openi-analytics.com', 'test');
 ```
 
-All three are already proven on this project; running them again confirms
-nothing drifted between then and your session.
-
-**Step 5 — confirm exactly one account exists.**
+### Step 5 — confirm exactly one account exists
 
 ```sql
 select
@@ -128,6 +195,22 @@ select
   (select count(*) from auth_invite_allowlist)               as allowlisted,    -- 1
   (select count(*) from reserved_service_addresses)          as reserved;       -- 1
 ```
+
+### Step 6 — walk the rest of the journey before hosted validation
+
+The point of this milestone is that the application is private. Check it:
+
+1. **Sign out.** The interface must disappear immediately and land on `/login`.
+2. **Open a private window** and go to the preview root. You must get the
+   sign-in page and see no navigation, no account names, no counts — not even
+   for an instant.
+3. **Ask for a deep link while signed out**, e.g. `/accounts`. You are sent to
+   `/login?next=%2Faccounts`; after signing in you land on `/accounts`.
+4. **Sign in with the wrong password.** One generic message; no hint about
+   whether the address exists.
+5. **Forgot password.** The reset link lands on `/auth/callback` and forwards to
+   `/auth/reset-password`; after setting a new password you are returned to
+   `/login` and must sign in with it.
 
 Do **not** invite any Haskell user yet.
 

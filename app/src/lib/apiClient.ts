@@ -140,6 +140,25 @@ export function getStatus(accessToken: string | null): Promise<ApiResult<StatusR
 }
 
 /**
+ * "Is this session still allowed to be here?"
+ *
+ * The one question the browser cannot answer for itself: `auth_invite_allowlist`
+ * is unreadable by a signed-in session on purpose, so membership has to be asked
+ * of the server. Called whenever a session is established, which is what makes
+ * removal from the allowlist take effect on the next page load rather than at
+ * token expiry.
+ */
+export interface SessionResponse {
+  readonly userId: string
+  readonly invited: boolean
+  readonly isAnonymous: boolean
+}
+
+export function getSession(accessToken: string | null): Promise<ApiResult<SessionResponse>> {
+  return apiRequest<SessionResponse>({ path: '/session', accessToken })
+}
+
+/**
  * Fetch a preserved evidence object through the authenticated proxy.
  *
  * The caller only ever knows an evidence id. There is no storage path in the

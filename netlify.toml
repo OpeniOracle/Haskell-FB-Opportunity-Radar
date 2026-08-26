@@ -105,6 +105,15 @@
   to = "/.netlify/functions/admin-run"
   status = 200
 
+# "Is this session still allowed to be here?" — the one bit the browser cannot
+# answer for itself, because `auth_invite_allowlist` is unreadable by a signed-in
+# session on purpose. Called whenever a session is established, so removing
+# someone takes effect on their next page load rather than at token expiry.
+[[redirects]]
+  from = "/api/session"
+  to = "/.netlify/functions/session"
+  status = 200
+
 # The authenticated evidence proxy. Confidential evidence is never served by a
 # signed Storage URL: a signed URL is a bearer credential that survives removal
 # from the allowlist until it expires, and an already-cached response survives
