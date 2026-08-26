@@ -266,7 +266,10 @@ jobs:
             exit 1
           fi
           test -f scripts/Invoke-HostedValidation.ps1
-          grep -q 'AsSecureString' scripts/Invoke-HostedValidation.ps1
+          test -f scripts/Send-BootstrapInvitation.ps1
+          # PowerShell's hidden prompt lives in the shared guard module, which is
+          # the only place either script marshals a SecureString.
+          grep -q 'AsSecureString' scripts/OperatorGuards.psm1
           grep -qE 'read[[:space:]]+-rs[[:space:]]+TOKEN' scripts/hosted-validation.sh
 
       # The application is private. Every surface sits behind the gate, and the
@@ -318,6 +321,33 @@ jobs:
             echo "The authentication code logs. A token in a log line is still a disclosure."
             exit 1
           fi
+
+      # The bootstrap invitation must reach the PREVIEW. PR #9 is unmerged, so
+      # production carries none of the authentication routes, and the
+      # dashboard's Invite user button can only send to the Site URL.
+      - name: The bootstrap invitation names the preview callback
+        run: |
+          test -f scripts/Send-BootstrapInvitation.ps1
+          test -f scripts/OperatorGuards.psm1
+          preview='https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/callback'
+          grep -qF "$preview" scripts/Send-BootstrapInvitation.ps1
+          # A constant, not a parameter: a redirect that can be overridden on a
+          # command line is one that will eventually be overridden back to
+          # production.
+          if awk '/^param\(/{f=1} f{print} /^\)/{f=0}' scripts/Send-BootstrapInvitation.ps1 \
+               | grep -qiE 'redirect|callback'; then
+            echo "The redirect is settable from the command line."
+            exit 1
+          fi
+          # Both PowerShell scripts must run the SAME guards, not copies.
+          for script in scripts/Invoke-HostedValidation.ps1 scripts/Send-BootstrapInvitation.ps1; do
+            grep -q "OperatorGuards.psm1" "$script" \
+              || { echo "$script does not import the shared guards"; exit 1; }
+            if grep -qE '^function (Assert-NoObservation|Assert-CorrectCheckout|Use-Plain|Read-SecretValue)' "$script"; then
+              echo "$script redefines a shared guard; it would drift from the other."
+              exit 1
+            fi
+          done
 
       - name: Netlify configuration is present and points at the app
         run: |

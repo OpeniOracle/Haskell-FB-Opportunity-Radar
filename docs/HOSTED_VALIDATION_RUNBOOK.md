@@ -51,8 +51,10 @@ one, and only `/auth/callback` is written to read a credential and remove it.
 
 ### The email templates — check these, they are the likely culprit
 
-Supabase → **Authentication → Emails**, the **Invite user** and **Reset
-password** templates.
+Supabase → **Authentication → Emails**. Two templates matter: the one named
+**Invite user** and the one named **Reset password**. (These are the email
+TEMPLATES, not the dashboard's *Invite user* button — that button is never used;
+see step 2.)
 
 Both must build their link from `{{ .ConfirmationURL }}`. That variable already
 carries the `redirect_to` you passed to the Admin API — it expands to
@@ -118,38 +120,57 @@ If you mistakenly use the SEC mailbox, this step fails with
 `oracles@openi-analytics.com is a reserved service address … and must not hold an
 application account.` That is correct. Use an individual address.
 
-### Step 2 — invite through the Admin API, NOT the dashboard button
+### Step 2 — send the invitation with `Send-BootstrapInvitation.ps1`
 
-**This is the step that failed last time.** The dashboard's *Invite user* button
-sends the invitation to the project's **Site URL**, which is the production
-origin — so an invitation meant to test the preview lands on production, and
-until this milestone landed on an application with no callback route at all.
+**Do not use the dashboard's *Invite user* action.** It offers no way to name a
+redirect and always sends to the project's **Site URL** — the production origin.
+PR #9 is unmerged, so production does not contain `/auth/callback` or any other
+authentication route. An invitation sent that way lands on an application that
+cannot read it, which is the failure this milestone was opened to fix.
 
-Send it server-side, naming the preview explicitly:
-
-```bash
-curl -sS -X POST \
-  'https://dutmdlbangsthclgtkhy.supabase.co/auth/v1/invite' \
-  -H "apikey: $SB" -H "Authorization: Bearer $SB" \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "email": "firstname.lastname@openi-analytics.com",
-        "options": {
-          "redirectTo": "https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/callback"
-        }
-      }'
+```powershell
+cd C:\path\to\Haskell-FB-Opportunity-Radar
+git switch claude/production-foundation
+git pull
+pwsh -File .\scripts\Send-BootstrapInvitation.ps1
 ```
 
-`$SB` is the `sb_secret_…` key. Do NOT type it on the command line — see § D for
-why, and use the same hidden-prompt pattern:
+Windows PowerShell 5.1 works too:
 
-```bash
-read -rs -p 'Supabase secret key: ' SB; echo
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Send-BootstrapInvitation.ps1
 ```
 
-`redirectTo` must be **byte-identical** to one of the four Redirect URLs in § A.
-Supabase silently falls back to the Site URL when the value is not on the
-allowlist, which looks exactly like the bug this step is avoiding.
+It asks for two things and checks a great deal before it sends anything:
+
+| Prompt | Visible? | Why |
+| --- | --- | --- |
+| Openi email address | **yes** | Not a credential, and you must be able to see you typed it correctly before an email is sent |
+| Supabase secret key | **no** | Hidden, held as a `SecureString`, never an argument, an environment variable, or a file |
+
+It refuses, in this order, before the key is ever requested: a repository that is
+not this one · a dirty working tree · a branch other than
+`claude/production-foundation` · a `HEAD` that is not the freshly fetched remote
+head · a running transcript, verbose or debug output, script tracing or a
+debugger · `oracles@openi-analytics.com`, the reserved SEC mailbox. Then, once
+the key is entered: an address with no `auth_invite_allowlist` row, and an
+address a **confirmed** account already occupies. An *unconfirmed* invitation is
+resent, because that is exactly the case worth resending.
+
+The redirect is a constant in the script, not a parameter:
+
+```
+https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/callback
+```
+
+A redirect that can be overridden on a command line is one that will eventually
+be overridden back to the production Site URL. It must be byte-identical to an
+entry in the Redirect URL allowlist from § A — Supabase silently falls back to
+the Site URL for a value that is not on it, which looks exactly like the bug
+being avoided.
+
+**Nothing is printed**: not the key, not the invitation link, not any token, not
+Supabase's response body. You get a sanitised success or a sanitised failure.
 
 ### Step 3 — accept it
 

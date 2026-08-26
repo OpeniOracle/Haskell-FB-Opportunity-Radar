@@ -44,6 +44,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# The repository, clean-tree, branch and remote-head checks, and the refusals
+# that keep a secret off a recorded console, live in one module so this script
+# and Send-BootstrapInvitation.ps1 run the SAME guards rather than two copies
+# that drift apart.
+Import-Module (Join-Path $PSScriptRoot 'OperatorGuards.psm1') -Force
+
 # --------------------------------------------------------------------------
 # Not secret. Committed in netlify.toml; it grants nothing on its own, and RLS
 # is what protects the data.
@@ -71,120 +77,8 @@ function Check([string] $What, [bool] $Ok, [string] $Why = '') {
 }
 
 # --------------------------------------------------------------------------
-# 0. Refuse to run anywhere the secrets could be captured.
-
-function Assert-NoObservation {
-    if ($VerbosePreference -ne 'SilentlyContinue') {
-        throw 'Refusing to run with verbose output enabled: it would echo request detail.'
-    }
-    if ($DebugPreference -ne 'SilentlyContinue') {
-        throw 'Refusing to run with debug output enabled: it would echo request detail.'
-    }
-    if (Get-PSBreakpoint) {
-        throw 'Refusing to run with debugger breakpoints set: a breakpoint can read process memory.'
-    }
-    # There is no public way to read the current trace level, so switch it off
-    # rather than test for it. Anything already traced happened before the
-    # prompt, so no secret has been shown.
-    Set-PSDebug -Off
-
-    # A running transcript writes every line of console output to a file. Stop-
-    # Transcript throws when none is active, which is how we detect one.
-    $transcribing = $false
-    try { Stop-Transcript | Out-Null; $transcribing = $true } catch { $transcribing = $false }
-    if ($transcribing) {
-        throw 'A PowerShell transcript was running and has been stopped. Start a clean session and run again.'
-    }
-}
-
-# --------------------------------------------------------------------------
-# 1. Refuse to run against the wrong tree.
-
-function Invoke-Git {
-    param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Arguments)
-    $output = & git @Arguments 2>&1
-    return [pscustomobject]@{ Code = $LASTEXITCODE; Text = ($output -join "`n").Trim() }
-}
-
-function Assert-CorrectCheckout {
-    Write-Section '0. Repository guard'
-
-    $top = Invoke-Git rev-parse --show-toplevel
-    if ($top.Code -ne 0) { throw 'Not inside a git repository. cd into the clone and run again.' }
-    Note "repository root: $($top.Text)"
-
-    $remote = (Invoke-Git remote get-url origin).Text
-    # Accept https and ssh spellings of the same repository, and a trailing .git.
-    $normalised = ($remote -replace '^git@github\.com:', '' `
-                           -replace '^https://github\.com/', '' `
-                           -replace '\.git$', '').Trim()
-    if ($normalised -ne $Repository) {
-        throw "origin is '$normalised', expected '$Repository'. This script must not run against another repository."
-    }
-    Pass "origin is $Repository"
-
-    $dirty = (Invoke-Git status --porcelain).Text
-    if ($dirty) {
-        throw "The working tree is not clean. Validating a tree that differs from the pull request proves nothing about the pull request.`n$dirty"
-    }
-    Pass 'working tree is clean'
-
-    $current = (Invoke-Git rev-parse --abbrev-ref HEAD).Text
-    if ($current -ne $Branch) {
-        throw "On branch '$current', expected '$Branch' (the head branch of PR #9)."
-    }
-    Pass "on $Branch"
-
-    $fetch = Invoke-Git fetch origin $Branch
-    if ($fetch.Code -ne 0) { throw "Could not fetch origin/$Branch : $($fetch.Text)" }
-
-    $head   = (Invoke-Git rev-parse HEAD).Text
-    $remoteHead = (Invoke-Git rev-parse FETCH_HEAD).Text
-    if ($head -ne $remoteHead) {
-        throw "HEAD is $head but origin/$Branch is $remoteHead. Pull, then run again — the pull request is the remote branch."
-    }
-    Pass "HEAD matches origin/$Branch"
-
-    if ($ExpectedHead) {
-        if ($head -ne $ExpectedHead) {
-            throw "HEAD is $head but -ExpectedHead was $ExpectedHead."
-        }
-        Pass "HEAD matches the supplied expected head"
-    }
-    Write-Host "  head: $head"
-    return $head
-}
-
 # --------------------------------------------------------------------------
 # Secret handling.
-
-function Read-SecretValue([string] $Prompt) {
-    # -AsSecureString hides the typed characters and never places them in the
-    # command line, so they reach neither the console buffer nor PSReadLine
-    # history. This is the ONLY place either value is entered.
-    $value = Read-Host -Prompt $Prompt -AsSecureString
-    if (-not $value -or $value.Length -eq 0) { throw "$Prompt is required." }
-    return $value
-}
-
-function Use-Plain {
-    <#
-        Materialise a SecureString for exactly as long as the caller needs it.
-
-        The BSTR is zeroed on the way out. The .NET String handed to the
-        scriptblock cannot be zeroed — strings are immutable and the runtime
-        owns the copy — which is a limitation of the platform, not a choice
-        made here. Keeping its lifetime to a single request is the mitigation.
-    #>
-    param([securestring] $Secure, [scriptblock] $Body)
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
-    try {
-        $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-        try { & $Body $plain } finally { $plain = $null }
-    } finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-    }
-}
 
 function Protect-Text([string] $Text) {
     # Last line of defence. Nothing printed by this script is expected to
@@ -198,7 +92,7 @@ function Protect-Text([string] $Text) {
     )) {
         if ($pair.Secure) {
             $mask = $pair.Mask
-            $result = Use-Plain $pair.Secure { param($p) $result.Replace($p, $mask) }
+            $result = Use-Plain -Secure $pair.Secure -Body { param($p) $result.Replace($p, $mask) }
         }
     }
     return $result
@@ -297,13 +191,13 @@ function Invoke-Http {
     $keyLiteral = if ($ApiKey -eq 'publishable') { $Publishable } else { $null }
 
     if ($authSecure) {
-        return Use-Plain $authSecure {
+        return Use-Plain -Secure $authSecure -Body {
             param($a)
-            if ($keySecure) { Use-Plain $keySecure { param($k) & $run $a $k } }
+            if ($keySecure) { Use-Plain -Secure $keySecure -Body { param($k) & $run $a $k } }
             else { & $run $a $keyLiteral }
         }
     }
-    if ($keySecure) { return Use-Plain $keySecure { param($k) & $run $null $k } }
+    if ($keySecure) { return Use-Plain -Secure $keySecure -Body { param($k) & $run $null $k } }
     return & $run $null $keyLiteral
 }
 
@@ -336,7 +230,7 @@ function Get-Json($Response) {
 # The caller's own token, decoded WITHOUT verifying it — used only to read the
 # `exp` claim so the revocation check can prove the token had not merely expired.
 function Get-TokenExpiry {
-    Use-Plain $script:TokenSecure {
+    Use-Plain -Secure $script:TokenSecure -Body {
         param($plain)
         $parts = $plain.Split('.')
         if ($parts.Count -ne 3) { return $null }
@@ -356,7 +250,9 @@ $head = $null
 
 try {
     Assert-NoObservation
-    $head = Assert-CorrectCheckout
+
+    Write-Section '0. Repository guard'
+    $head = Assert-CorrectCheckout -Repository $Repository -Branch $Branch -ExpectedHead $ExpectedHead
 
     Write-Host ''
     Write-Host 'Two values are needed. Neither is echoed, stored, or written to disk.'
@@ -367,8 +263,8 @@ try {
     Write-Host '  2. The Supabase secret key (sb_secret_...), from Project Settings > API keys.'
     Write-Host ''
 
-    $script:TokenSecure  = Read-SecretValue 'Administrator access token'
-    $script:SecretSecure = Read-SecretValue 'Supabase secret key'
+    $script:TokenSecure  = Read-SecretValue -Prompt 'Administrator access token'
+    $script:SecretSecure = Read-SecretValue -Prompt 'Supabase secret key'
 
     # A run-unique canary. Nothing here collides with another run, and nothing
     # here is left behind — see the finally block.
