@@ -105,17 +105,48 @@ jobs:
             exit 1
           fi
 
-      # The same real-name boundary the application test enforces, applied to the
-      # database tree. Structural fixtures are all "Example ...".
+      # The D14-L trade show must never be named in anything that RUNS —
+      # application source, server functions, migrations or seeds. The design
+      # documentation names it constantly and correctly: D14-L is a decision the
+      # package exists to explain, and scrubbing the explanation would hide the
+      # constraint rather than enforce it. So this checks executable trees only.
       #
-      # Case-SENSITIVE, matching the application test. Case-insensitively,
-      # "Nestl" matches inside the ordinary English word "honestly".
-      - name: The database tree names no real pilot account or event
+      # Case-SENSITIVE throughout these checks. Case-insensitively, "Nestl"
+      # matches inside the ordinary English word "honestly", which is how an
+      # earlier version of the account check failed on its own prose.
+      - name: The blocked trade show is never named in executable code
+        run: |
+          if grep -rn 'PACK EXPO' app/src app/netlify db \
+               --exclude=boundaries.test.ts; then
+            echo "The D14-L trade show is named in code that runs."
+            exit 1
+          fi
+
+      # Real pilot accounts are legitimate in db/seed — that is the whole point
+      # of seeding the cohort through the database layer rather than as
+      # application fixtures. They are NOT legitimate in a migration (schema is
+      # not data) or in a structural test fixture (which uses "Example ..."),
+      # and `app/src/test/boundaries.test.ts` keeps them out of the bundle.
+      - name: Migrations and test fixtures name no real pilot account
         run: |
           names='Nestl|PepsiCo|Coca-Cola|Anheuser|Tyson|Kraft|Conagra|General Mills'
-          names="$names|Unilever|Danone|Niagara|Sherwin|Mondelez|Keurig|Hormel|Smithfield|PACK EXPO"
-          if grep -rnE "$names" db/; then
-            echo "A real pilot account or event name appears in the database tree."
+          names="$names|Unilever|Danone|Niagara|Sherwin|Mondelez|Keurig|Hormel|Smithfield"
+          if grep -rnE "$names" db/migrations/ db/tests/; then
+            echo "A real pilot account appears in a migration or a test fixture."
+            echo "Seed data belongs in db/seed/."
+            exit 1
+          fi
+
+      # The cohort is seeded through the database layer, never compiled into the
+      # browser bundle as a fixture.
+      - name: The pilot cohort is seeded, not hard-coded in the application
+        run: |
+          if [ ! -f db/seed/0003_pilot_cohort.sql ]; then
+            echo "The pilot cohort seed is missing."
+            exit 1
+          fi
+          if grep -rn 'highest_value' app/src/data/fixtures/ 2>/dev/null; then
+            echo "Cohort data appears in application fixtures."
             exit 1
           fi
 

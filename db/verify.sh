@@ -85,6 +85,14 @@ node "$ROOT/db/migrate.mjs" up > /dev/null
 node "$ROOT/db/test.mjs"
 
 # --------------------------------------------------------------------------
+step "3b. Seeds apply, are idempotent, and respect the D14-L gate"
+# Applied twice on purpose. A seed that fails the second time is not a seed, it
+# is a one-shot script, and the difference only shows up on the day someone
+# needs to re-apply a correction.
+node "$ROOT/db/seed.mjs" > /dev/null
+node "$ROOT/db/seed.mjs"
+
+# --------------------------------------------------------------------------
 step "4. Checksum drift must FAIL the build"
 node "$ROOT/db/migrate.mjs" verify
 
