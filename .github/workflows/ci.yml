@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Lets a run be re-triggered without an empty commit — useful when a delivery
+  # is delayed, or when re-running against an unchanged tree is the point.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
