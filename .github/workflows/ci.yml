@@ -54,10 +54,68 @@ jobs:
 
       # These mirror the constraints on this milestone. They are cheap, and they
       # fail loudly if a later change crosses a line that was meant to hold.
-      - name: No database migrations in the application tree
+      # Roadmap PR 3 authorizes migrations, but only in one place. The frontend
+      # still has no database access, so a migration inside `app/` would be a
+      # migration the application could reach.
+      #
+      # SQL is allowed under db/ (the executable migrations) and schemas/ (the
+      # v0.1.0 design baseline), plus ONE allowlisted design document by exact
+      # path. A blanket docs/ exemption is not used: docs/ is a directory a
+      # migration could quietly be added to, and the point of this check is that
+      # migrations cannot appear anywhere except db/.
+      - name: Migrations live only in db/migrations
         run: |
-          if ls migrations 2>/dev/null | grep -q .; then
-            echo "A migrations/ directory has appeared. PR 1 must not add migrations."
+          allowed='docs/design/11_SCHEMA_DELTA_PROPOSAL.sql'
+
+          # An allowlist entry that no longer names a real file is a permanent
+          # hole nobody notices, so the entry has to keep earning its place.
+          if [ ! -f "$allowed" ]; then
+            echo "Allowlisted file $allowed no longer exists. Remove it from the allowlist."
+            exit 1
+          fi
+
+          stray=$(git ls-files '*.sql' \
+                  | grep -vE '^(db|schemas)/' \
+                  | grep -vxF "$allowed" || true)
+          if [ -n "$stray" ]; then
+            echo "SQL outside db/ and schemas/, and not the allowlisted design proposal:"
+            echo "$stray"
+            exit 1
+          fi
+          if git ls-files 'app/**' | grep -Ei 'migration|\.sql$'; then
+            echo "The application tree must contain no migrations."
+            exit 1
+          fi
+
+      # DDL only. A migration that carries rows is a data operation wearing a
+      # migration's clothes, and it runs on every environment including
+      # production without anyone deciding that it should.
+      - name: Migrations insert no data
+        run: |
+          if grep -rniE '^[[:space:]]*(insert|copy|update|delete)[[:space:]]' db/migrations/; then
+            echo "A migration writes rows. Migrations in this repository are DDL only."
+            exit 1
+          fi
+
+      - name: Personal-data structures stay dormant
+        run: |
+          if grep -rn 'contact_records' db/migrations/ \
+             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*--'; then
+            echo "contact_records must not be created. See D14-L and 10_DESIGN_RESPONSE.md §6.5."
+            exit 1
+          fi
+
+      # The same real-name boundary the application test enforces, applied to the
+      # database tree. Structural fixtures are all "Example ...".
+      #
+      # Case-SENSITIVE, matching the application test. Case-insensitively,
+      # "Nestl" matches inside the ordinary English word "honestly".
+      - name: The database tree names no real pilot account or event
+        run: |
+          names='Nestl|PepsiCo|Coca-Cola|Anheuser|Tyson|Kraft|Conagra|General Mills'
+          names="$names|Unilever|Danone|Niagara|Sherwin|Mondelez|Keurig|Hormel|Smithfield|PACK EXPO"
+          if grep -rnE "$names" db/; then
+            echo "A real pilot account or event name appears in the database tree."
             exit 1
           fi
 
@@ -74,3 +132,67 @@ jobs:
           grep -q 'publish = "dist"' netlify.toml
           grep -q 'status = 200' netlify.toml
           test -f app/public/_redirects
+
+  database:
+    name: Migration checks (PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    # The authorized migration-validation target for roadmap PR 3. No Supabase
+    # project is contacted and no production credential is required: the service
+    # container is created, migrated, tested and destroyed inside the job.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: radar
+          POSTGRES_PASSWORD: radar
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U radar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: radar
+      PGPASSWORD: radar
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The migration harness shells out to psql, so the client has to match the
+      # server major version. The runner image ships an older client by default.
+      - name: Install the PostgreSQL 16 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+
+      # Verified, not assumed. The design package explicitly refuses to assume a
+      # PostgreSQL major version, and pgcrypto is a hard dependency of the
+      # baseline schema's `gen_random_uuid()` defaults.
+      - name: Verify the server version and pgcrypto availability
+        run: |
+          psql -d postgres -tAc 'select version();'
+          psql -d postgres -tAc "select 1 from pg_available_extensions where name = 'pgcrypto';" \
+            | grep -q 1 || { echo 'pgcrypto is not available on this server.'; exit 1; }
+
+      # Empty -> forward -> rollback; v0.1.0 -> forward -> rollback to baseline,
+      # compared dump for dump; positive and negative schema-contract tests; and
+      # a deliberate migration edit that must be caught by checksum verification.
+      - name: Migration contract
+        run: bash db/verify.sh
