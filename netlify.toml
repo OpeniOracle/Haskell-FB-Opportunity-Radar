@@ -1,9 +1,15 @@
 # Netlify configuration — Haskell F&B Opportunity Radar
 #
-# Phase 1 PR 1 is a fixture-backed frontend. There is no API, no database, and no
-# outbound network call from the browser, which is why the CSP below can forbid
-# connections entirely. When PR 9 introduces the API-backed DataSource, `connect-src`
-# is the line that must change, deliberately and in review.
+# The Production Foundation gives the application a backend, so `connect-src`
+# changes from `'none'` to a narrow, project-specific allowlist. It is generated
+# at build time by `app/scripts/generate-headers.mjs` into `dist/_headers`,
+# because the one external origin the browser may address is THIS deployment's
+# Supabase project, and that differs between development, preview and
+# production. A policy written statically here could only be permissive enough
+# to cover all three, which is the opposite of a narrow allowlist.
+#
+# With no VITE_SUPABASE_URL configured the generated policy is
+# `connect-src 'self'` — same-origin functions only. Fail closed, not open.
 
 [build]
   base = "app"
@@ -15,8 +21,33 @@
   # Chromium is only needed for the local screenshot script, never for the build.
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
 
-# SPA fallback. Duplicated in app/public/_redirects so the behaviour survives if
-# this file is ever replaced by UI-configured settings.
+# The API. Same-origin by construction: the browser only ever addresses this
+# origin, so `connect-src` needs to permit exactly two things — 'self' and the
+# Supabase project.
+#
+# `scheduled-ingest` is deliberately absent. A scheduled function has no HTTP
+# route; giving it one would create the public invocation path the design
+# forbids, and the authenticated `admin-run` exists precisely so nobody needs to.
+[[redirects]]
+  from = "/api/status"
+  to = "/.netlify/functions/status"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin-run"
+  to = "/.netlify/functions/admin-run"
+  status = 200
+
+# Anything else under /api is not a route. Without this, an unmatched /api path
+# falls through to the SPA rule below and returns index.html with a 200, so a
+# typo in a client call looks like a successful request that returned HTML.
+[[redirects]]
+  from = "/api/*"
+  to = "/404.html"
+  status = 404
+
+# SPA fallback, last. Duplicated in app/public/_redirects so the behaviour
+# survives if this file is ever replaced by UI-configured settings.
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -29,11 +60,17 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
-    # This preview contains fabricated example content and must not be indexed.
-    X-Robots-Tag = "noindex, nofollow"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+    # An authenticated pilot dashboard must never be indexed.
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    # Content-Security-Policy is NOT set here. It is generated per-deployment
+    # into dist/_headers so it can name the exact Supabase origin.
 
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+[functions]
+  # Relative to `base = "app"`.
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

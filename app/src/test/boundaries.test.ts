@@ -26,11 +26,26 @@ function walk(dir: string): string[] {
   })
 }
 
+/**
+ * The two modules permitted to reach the network, and the one permitted to read
+ * build-time configuration.
+ *
+ * These exemptions NARROW the boundary; they do not remove it. Before the
+ * production foundation the application was fixture-backed and the honest rule
+ * was "no network at all". The application now has a backend, so the rule
+ * becomes "network only through these files" — which is still a rule a reviewer
+ * can check in one place, and still fails for every surface, hook and component.
+ */
+const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
+const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
+
 const files = walk(srcDir)
 const sources = files
   // This file necessarily contains the very strings it forbids.
   .filter((f) => !f.endsWith('boundaries.test.ts'))
   .map((f) => ({ path: f.slice(srcDir.length), text: readFileSync(f, 'utf8') }))
+
+const outsideNetworkModules = sources.filter((s) => !NETWORK_MODULES.includes(s.path))
 
 describe('milestone boundaries', () => {
   it('finds source files to check', () => {
@@ -42,16 +57,36 @@ describe('milestone boundaries', () => {
     ['XMLHttpRequest', /XMLHttpRequest/],
     ['WebSocket', /new\s+WebSocket/],
     ['EventSource', /new\s+EventSource/],
-  ])('makes no %s call anywhere in the application', (_label, pattern) => {
-    const offenders = sources.filter((s) => pattern.test(s.text)).map((s) => s.path)
+  ])('makes no %s call outside the approved network modules', (_label, pattern) => {
+    const offenders = outsideNetworkModules.filter((s) => pattern.test(s.text)).map((s) => s.path)
     expect(offenders).toEqual([])
   })
 
+  it('has exactly the approved network modules, and no more', () => {
+    // If a third module ever needs the network, that is a decision someone
+    // should have to make deliberately by editing this list.
+    const present = NETWORK_MODULES.filter((m) => sources.some((s) => s.path === m))
+    expect(present.sort()).toEqual([...NETWORK_MODULES].sort())
+  })
+
   it('references no remote origin', () => {
+    // The browser addresses its own origin and the Supabase project, and the
+    // Supabase URL arrives from configuration rather than being written down
+    // here. A literal external URL in the bundle is still a boundary breach.
     const offenders = sources
       .filter((s) => /https?:\/\/(?!www\.w3\.org)/.test(s.text))
       .map((s) => s.path)
     expect(offenders).toEqual([])
+  })
+
+  it('addresses only same-origin API paths', () => {
+    // The API client builds every URL from a root-relative path. An absolute
+    // URL there would put the browser back in direct contact with a host the
+    // CSP was narrowed to exclude.
+    const client = sources.find((s) => s.path === '/lib/apiClient.ts')
+    expect(client, 'apiClient.ts must exist').toBeDefined()
+    expect(client!.text).toMatch(/const API_ROOT = '\/api'/)
+    expect(client!.text).not.toMatch(/fetch\(\s*['"`]https?:/)
   })
 
   it('contains no credential-shaped values', () => {
@@ -71,9 +106,46 @@ describe('milestone boundaries', () => {
     }
   })
 
-  it('reads no environment variables', () => {
+  it('reads no server environment, anywhere', () => {
+    // `process.env` in a browser bundle is either dead code or a leak. The
+    // server-side names live in netlify/functions and never come here.
+    const offenders = sources.filter((s) => /process\.env/.test(s.text)).map((s) => s.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('reads build-time configuration only in the approved modules', () => {
     const offenders = sources
-      .filter((s) => /process\.env|import\.meta\.env/.test(s.text))
+      .filter((s) => !ENV_MODULES.includes(s.path))
+      .filter((s) => /import\.meta\.env/.test(s.text))
+      .map((s) => s.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('names no server-side secret variable', () => {
+    // Vite inlines every VITE_-prefixed variable into the bundle. A
+    // service-role key behind that prefix would be published, not configured.
+    const forbidden = [
+      'VITE_SUPABASE_SERVICE_ROLE_KEY',
+      'VITE_SUPABASE_DB_URL',
+      'VITE_MODEL_API_KEY',
+      'VITE_INGEST_SHARED_SECRET',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'SUPABASE_DB_URL',
+      'MODEL_API_KEY',
+      'INGEST_SHARED_SECRET',
+    ]
+    for (const name of forbidden) {
+      const offenders = sources.filter((s) => s.text.includes(name)).map((s) => s.path)
+      expect(offenders, `secret variable "${name}"`).toEqual([])
+    }
+  })
+
+  it('offers no self-registration path', () => {
+    // The pilot is invite-only. Self-registration is disabled on the Supabase
+    // project itself; this makes it impossible to reintroduce from the client
+    // without deleting a test.
+    const offenders = sources
+      .filter((s) => /\.auth\s*\.\s*signUp\s*\(/.test(s.text))
       .map((s) => s.path)
     expect(offenders).toEqual([])
   })

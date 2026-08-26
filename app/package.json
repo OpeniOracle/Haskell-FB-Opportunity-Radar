@@ -3,24 +3,26 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Haskell Food & Beverage Opportunity Radar — Phase 1 PR 1 application shell (fixture-backed)",
+  "description": "Haskell Food & Beverage Opportunity Radar \u2014 Phase 1 PR 1 application shell (fixture-backed)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run typecheck && vite build && node scripts/generate-headers.mjs",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.functions.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.12.0",
+    "@netlify/functions": "^2.8.2",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.5.2",
