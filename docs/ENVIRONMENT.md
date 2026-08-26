@@ -33,15 +33,35 @@ anywhere in `app/src`.
 | Variable | Required | Value |
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | yes | `https://<project-ref>.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | yes | The project's **publishable** (anon) key |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | yes | `sb_publishable_…` |
 | `VITE_RADAR_ENV` | no | `development` \| `preview` \| `production` |
 
-The anon key is in the bundle by design. It is safe **only because row-level
-security is enabled on every table** (migration 0015): `anon` can read nothing,
-and an authenticated session can read the dashboard tables and write none of
-them. If RLS were ever disabled, this key would become a full read of the
-database — which is why the posture is asserted by contract test in `db/test.mjs`
-rather than trusted to a dashboard toggle.
+### Why the current key system, and not the legacy pair
+
+This project uses Supabase's **current** API keys and deliberately does not
+configure the legacy `anon` / `service_role` JWTs.
+
+| | Legacy pair | Current pair |
+| --- | --- | --- |
+| Browser | `anon` JWT | `sb_publishable_…` |
+| Server | `service_role` JWT | `sb_secret_…` |
+| Rotation | **one unit** — rotating the service key invalidates the anon key and signs every user out | **independent** — the secret key rotates without touching the publishable key or any session |
+| Telling them apart | both are `eyJ…` JWTs, indistinguishable by shape | distinct prefixes |
+
+That second row is the one that matters in an incident. Rotating a leaked
+service-role key used to mean signing out every pilot reviewer at the same
+moment; now it does not. The third row is what makes a paste error catchable:
+`assertKeyShapes` in `app/netlify/functions/_shared/env.ts` rejects a secret key
+found behind a `VITE_` prefix, a publishable key found in the server slot, a
+legacy JWT in either, and any legacy variable name being set at all.
+
+The publishable key is in the bundle by design and is **not confidential** — it
+identifies the project and grants nothing on its own. Row-level security is what
+protects the data: `anon` can read nothing, and an authenticated session can read
+the dashboard tables and write none of them. If RLS were ever disabled, the
+publishable key would become a full read of the database — which is why the
+posture is asserted by contract test in `db/test.mjs` rather than trusted to a
+dashboard toggle.
 
 `VITE_SUPABASE_URL` is also read at **build** time by
 `app/scripts/generate-headers.mjs`, which writes the `connect-src` allowlist into
@@ -57,8 +77,9 @@ application can reach nothing but its own functions.
 | Variable | Value |
 | --- | --- |
 | `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | The project's **secret** (service-role) key. Bypasses RLS. |
-| `SEC_EDGAR_USER_AGENT` | See below — SEC requires a real monitored address |
+| `SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_…`. **Not a secret.** Committed in `netlify.toml`. Needed server-side so a function can read *as the caller* — under the current key system a user-scoped request sends the publishable key as `apikey` and the user's token as `Authorization`. Without it every server read would use the secret key and bypass RLS. |
+| `SUPABASE_SECRET_KEY` | `sb_secret_…`. **Confidential. Bypasses RLS.** Functions scope only. |
+| `SEC_EDGAR_USER_AGENT` | See below |
 | `INGEST_SHARED_SECRET` | Long random string; authenticates the manual admin trigger |
 
 ### Optional
@@ -72,28 +93,33 @@ application can reach nothing but its own functions.
 | `MODEL_API_KEY` | — | **Absent means classification fails closed.** Nothing is fabricated. |
 | `MODEL_ID` | — | Required when `MODEL_API_KEY` is set |
 | `MODEL_PROMPT_VERSION` | `v0` | Folded into the replay-cache key |
+| `SEC_CONTACT_CONFIRMED` | *(unset — SEC collection refuses)* | Set to exactly `confirmed` once an operator has verified the SEC contact mailbox is actively monitored |
 | `RADAR_ENV` | `development` | `development` \| `preview` \| `production` |
 
-### `SEC_EDGAR_USER_AGENT`
+### `SEC_EDGAR_USER_AGENT` — currently UNRESOLVED
 
 SEC requires every automated client to declare a User-Agent carrying a contact
 address that a human actually monitors, and rate-limits to 10 requests per
-second. The value currently committed in `netlify.toml` is:
+second. The value committed in `netlify.toml` is:
 
 ```
 Openi Analytics Haskell F&B Radar oracles@openi-analytics.com
 ```
 
-**This address is retained pending confirmation that it is actively monitored.**
-It is a real address rather than a placeholder, so collection is not blocked by
-it — but SEC's requirement is that a human reads what arrives there, and that is
-a fact about the mailbox, not about the string. Confirm or replace it.
+**That address is present but NOT confirmed, and SEC collection is blocked until
+it is.** A syntactically valid address is not the requirement. The requirement is
+that someone reads what arrives there — a fact about a mailbox, which no amount
+of parsing can establish. Appearing in configuration is not evidence of anything.
 
-`assertSecUserAgentUsable` refuses to start a run if the value ever contains an
-unresolved `<PLACEHOLDER>`, or contains no email address at all. Sending a
-literal placeholder to a federal regulator is a false contact declaration, and
-the failure mode without the check is silent — SEC serves the request either
-way.
+`assertSecUserAgentUsable` therefore refuses to run a collection unless
+`SEC_CONTACT_CONFIRMED=confirmed` is explicitly set, and separately rejects an
+unresolved `<PLACEHOLDER>` or a value with no address in it. The failure mode
+without this is silent: SEC serves the request either way, and nobody discovers
+the mailbox is unread until the day they needed to be reachable.
+
+**To clear it:** confirm that `oracles@openi-analytics.com` is an active,
+monitored Openi mailbox (or replace the address), then set
+`SEC_CONTACT_CONFIRMED=confirmed` in Netlify → Functions scope.
 
 ### `EGRESS_ALLOWLIST`
 
@@ -178,12 +204,22 @@ For each: choose **Same value for all deploy contexts** unless noted, set
 **Scopes** as given, and mark it **Secret** (Netlify then hides the value after
 saving, including from build logs).
 
-| # | Key | Scopes | Where the value comes from |
-| --- | --- | --- | --- |
-| 1 | `VITE_SUPABASE_ANON_KEY` | **Builds** only | Supabase → Project Settings → API Keys → **publishable** key |
-| 2 | `SUPABASE_SERVICE_ROLE_KEY` | **Functions** only | Supabase → Project Settings → API Keys → **secret / service_role** key |
-| 3 | `MODEL_API_KEY` | **Functions** only | Anthropic Console → API Keys |
-| 4 | `INGEST_SHARED_SECRET` | **Functions** only | Generate one: `openssl rand -base64 48` |
+| # | Key | Scopes | Secret? | Where the value comes from |
+| --- | --- | --- | --- | --- |
+| 1 | `VITE_SUPABASE_PUBLISHABLE_KEY` | **Builds** only | no | Supabase → Project Settings → API Keys → **Publishable key** (`sb_publishable_…`) |
+| 2 | `SUPABASE_SECRET_KEY` | **Functions** only | **yes** | Supabase → Project Settings → API Keys → **Create a secret key** (`sb_secret_…`) |
+| 3 | `INGEST_SHARED_SECRET` | **Functions** only | **yes** | Generate one: `openssl rand -base64 48` |
+| 4 | `MODEL_API_KEY` | **Functions** only | **yes** | Anthropic Console → API Keys. **May be left absent** for this PR. |
+
+**Do not create or paste a legacy `anon` or `service_role` JWT.** `assertKeyShapes`
+throws if either name is set, and CI fails if either name is referenced outside
+the code that forbids it. If some library turns out to require the legacy pair,
+report the specific failure rather than reverting quietly.
+
+`MODEL_API_KEY` being absent is a supported state: `/api/status` reports the
+model as unconfigured and every other check still passes. Collection,
+preservation and resolution all run; only classification refuses, and it refuses
+rather than inventing an answer.
 
 `SUPABASE_DB_URL` is optional and only needed if migrations are ever run from a
 machine rather than through the Supabase API. It is Supabase → Project Settings

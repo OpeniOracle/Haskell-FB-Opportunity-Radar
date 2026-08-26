@@ -157,6 +157,63 @@ jobs:
             exit 1
           fi
 
+      # Secret-leak detection across every tracked file.
+      #
+      # The publishable key is deliberately NOT in this list: it is not
+      # confidential, it is committed in netlify.toml on purpose, and treating it
+      # as a secret would train everyone to ignore this check.
+      - name: No secret is committed anywhere in the repository
+        run: |
+          if git grep -nE 'sb_secret_[A-Za-z0-9_-]{8,}' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)app/src/test/*'; then
+            echo "A Supabase SECRET key is committed."
+            exit 1
+          fi
+          if git grep -nE 'postgres(ql)?://[^[:space:]"'"'"']+' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)docs/**'; then
+            echo "A database connection string is committed."
+            exit 1
+          fi
+          if git grep -nE -- '-----BEGIN [A-Z ]*PRIVATE KEY-----' -- .; then
+            echo "A private key is committed."
+            exit 1
+          fi
+          if git grep -nE 'sk-ant-[A-Za-z0-9_-]{16,}' -- .; then
+            echo "An Anthropic API key is committed."
+            exit 1
+          fi
+
+      # The legacy Supabase key pair must not come back. It rotates as one unit
+      # — rotating the service key invalidates the anon key and signs everyone
+      # out — and the two are indistinguishable by shape, so a paste error puts a
+      # full-database key in the browser bundle with nothing to catch it.
+      - name: The legacy anon / service_role key pair is not configured
+        run: |
+          if git grep -nE '(VITE_)?SUPABASE_(ANON|SERVICE_ROLE)_KEY' \
+               -- . ':(exclude).github/workflows/ci.yml' \
+                    ':(exclude)app/netlify/functions/_shared/env.ts' \
+                    ':(exclude)app/src/test/boundaries.test.ts' \
+                    ':(exclude)docs/ENVIRONMENT.md'; then
+            echo "The legacy Supabase key names are referenced outside the code that forbids them."
+            exit 1
+          fi
+          # The secret key must never acquire a VITE_ prefix.
+          if git grep -nE 'VITE_SUPABASE_SECRET_KEY' -- . ':(exclude)app/netlify/functions/_shared/env.ts' ':(exclude)app/src/test/boundaries.test.ts'; then
+            echo "The Supabase secret key is exposed to the browser bundle."
+            exit 1
+          fi
+
+      # Confidential evidence is served by an authenticated same-origin proxy,
+      # never by a signed Storage URL. A signed URL is a bearer credential that
+      # outlives removal from the allowlist, and a cached response outlives even
+      # the token.
+      - name: Evidence is not served by signed Storage URLs
+        run: |
+          if git grep -nE 'createSignedUrl|getPublicUrl' -- app/ ':(exclude)app/src/test/*'; then
+            echo "A signed or public Storage URL is generated. Use /api/evidence/:id."
+            exit 1
+          fi
+          test -f app/netlify/functions/evidence.ts
+          grep -q "private, no-store" app/netlify/functions/evidence.ts
+
       - name: Netlify configuration is present and points at the app
         run: |
           grep -q 'base = "app"' netlify.toml

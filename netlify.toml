@@ -36,7 +36,16 @@
   VITE_RADAR_ENV = "development"
 
   # Server-side, non-secret. The functions runtime inherits these.
+  #
+  # The publishable key appears here deliberately. It is not confidential — it
+  # identifies the project and grants nothing on its own — and the server needs
+  # it to read AS A CALLER: under the current key system a user-scoped request
+  # sends the publishable key as `apikey` and the user's token as
+  # `Authorization`. Without it, every server read would have to use the SECRET
+  # key, which bypasses row-level security. Same value as the VITE_ one, under a
+  # different name, because the two have different scopes.
   SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
+  SUPABASE_PUBLISHABLE_KEY = "sb_publishable_kE97uOb8HCo51uT_e0mxqg_So2Z0dwH"
   SUPABASE_EVIDENCE_BUCKET = "evidence-raw"
   RADAR_ENV = "development"
 
@@ -48,11 +57,16 @@
   EGRESS_ALLOWLIST = "sec.gov,data.sec.gov,www.sec.gov,fsis.usda.gov,www.fsis.usda.gov"
 
   # SEC requires a declared User-Agent carrying an address a human monitors.
-  # oracles@openi-analytics.com is retained pending confirmation of an actively
-  # monitored address. `assertSecUserAgentUsable` refuses to start a collection
-  # run if an unresolved <PLACEHOLDER> is ever substituted here, because sending
-  # one would be a false contact declaration to a federal regulator.
+  #
+  # oracles@openi-analytics.com is present but NOT confirmed. A syntactically
+  # valid address is not the requirement — the requirement is that someone reads
+  # what arrives there, which is a fact about a mailbox and cannot be established
+  # by parsing. SEC_CONTACT_CONFIRMED is therefore deliberately unset, and
+  # `assertSecUserAgentUsable` refuses to run a collection until an operator
+  # sets it to "confirmed".
   SEC_EDGAR_USER_AGENT = "Openi Analytics Haskell F&B Radar oracles@openi-analytics.com"
+  # SEC_CONTACT_CONFIRMED is intentionally absent. Do not set it until the
+  # mailbox is verified as actively monitored.
 
   # Anthropic Direct, through the provider-neutral gateway. MODEL_ID stays
   # configurable; claude-sonnet-5 is the current stable Sonnet.
@@ -87,6 +101,15 @@
 [[redirects]]
   from = "/api/admin-run"
   to = "/.netlify/functions/admin-run"
+  status = 200
+
+# The authenticated evidence proxy. Confidential evidence is never served by a
+# signed Storage URL: a signed URL is a bearer credential that survives removal
+# from the allowlist until it expires, and an already-cached response survives
+# even that. This endpoint re-authorises every request instead.
+[[redirects]]
+  from = "/api/evidence/*"
+  to = "/.netlify/functions/evidence/:splat"
   status = 200
 
 # Anything else under /api is not a route. Without this, an unmatched /api path

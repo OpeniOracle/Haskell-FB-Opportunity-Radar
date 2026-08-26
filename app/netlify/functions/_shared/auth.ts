@@ -18,6 +18,9 @@ import { serverEnv } from './env.js'
 export interface Caller {
   readonly userId: string
   readonly email: string | null
+  /** True only when the address is on `auth_invite_allowlist`. */
+  readonly invited: boolean
+  readonly isAnonymous: boolean
 }
 
 export class UnauthorizedError extends Error {
@@ -36,8 +39,9 @@ function bearer(headers: Record<string, string | undefined>): string | null {
 
 /**
  * Verified against Supabase rather than by decoding the token locally. Decoding
- * proves the shape of a token, not that it is currently valid — a revoked or
- * expired session decodes perfectly well.
+ * proves the SHAPE of a token, not that it is currently valid — a revoked,
+ * expired or signed-out session decodes perfectly well, which is precisely the
+ * case this must reject.
  */
 export async function requireUser(
   headers: Record<string, string | undefined>,
@@ -46,13 +50,48 @@ export async function requireUser(
   if (!token) throw new UnauthorizedError()
 
   const env = serverEnv()
-  const client = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
+  const client = createClient(env.supabaseUrl, env.supabaseSecretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
   const { data, error } = await client.auth.getUser(token)
   if (error || !data.user) throw new UnauthorizedError('Session is not valid.')
 
-  return { userId: data.user.id, email: data.user.email ?? null }
+  const email = data.user.email ?? null
+  const isAnonymous = data.user.is_anonymous === true || email === null
+
+  // Membership is re-checked on EVERY request, not trusted from the token. A
+  // token issued before someone was removed from the allowlist is still
+  // cryptographically valid; the allowlist is the current answer.
+  let invited = false
+  if (email) {
+    const { data: rows } = await client
+      .from('auth_invite_allowlist')
+      .select('email_normalized')
+      .eq('email_normalized', email.trim().toLowerCase())
+      .limit(1)
+    invited = Array.isArray(rows) && rows.length > 0
+  }
+
+  return { userId: data.user.id, email, invited, isAnonymous }
+}
+
+/**
+ * A caller who is signed in AND still on the allowlist AND not anonymous.
+ *
+ * The three are separate questions. Being signed in is not being invited, and an
+ * anonymous session is signed in with nobody behind it.
+ */
+export async function requireInvitedUser(
+  headers: Record<string, string | undefined>,
+): Promise<Caller> {
+  const caller = await requireUser(headers)
+  if (caller.isAnonymous) {
+    throw new UnauthorizedError('Anonymous sessions are not permitted.')
+  }
+  if (!caller.invited) {
+    throw new UnauthorizedError('This account is not on the invitation allowlist.')
+  }
+  return caller
 }
 
 /** Length-independent comparison, so a wrong secret leaks nothing by timing. */

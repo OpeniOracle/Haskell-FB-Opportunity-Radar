@@ -119,3 +119,53 @@ export interface StatusResponse {
 export function getStatus(accessToken: string | null): Promise<ApiResult<StatusResponse>> {
   return apiRequest<StatusResponse>({ path: '/status', accessToken })
 }
+
+/**
+ * Fetch a preserved evidence object through the authenticated proxy.
+ *
+ * The caller only ever knows an evidence id. There is no storage path in the
+ * browser, no signed URL to copy out of devtools, and nothing that keeps working
+ * after the session ends — every fetch is re-authorised server-side.
+ *
+ * Returns a Blob rather than an object URL: an object URL would outlive the
+ * check that produced it, which is the property this design exists to remove.
+ */
+export async function fetchEvidenceObject(
+  evidenceId: string,
+  accessToken: string | null,
+): Promise<ApiResult<Blob>> {
+  const path = `${API_ROOT}/evidence/${encodeURIComponent(evidenceId)}`
+  assertRelative(path)
+
+  const headers: Record<string, string> = {}
+  if (accessToken) headers.authorization = `Bearer ${accessToken}`
+
+  let response: Response
+  try {
+    response = await fetch(path, { method: 'GET', headers, credentials: 'same-origin' })
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        code: 'network_unreachable',
+        message: error instanceof Error ? error.message : 'The request could not be sent.',
+        status: 0,
+      },
+    }
+  }
+
+  if (!response.ok) {
+    let code = 'request_failed'
+    let message = `Request failed with status ${response.status}.`
+    try {
+      const body = (await response.json()) as { error?: { code?: string; message?: string } }
+      code = body?.error?.code ?? code
+      message = body?.error?.message ?? message
+    } catch {
+      /* A non-JSON error body is still an error; the status carries the meaning. */
+    }
+    return { ok: false, error: { code, message, status: response.status } }
+  }
+
+  return { ok: true, value: await response.blob() }
+}

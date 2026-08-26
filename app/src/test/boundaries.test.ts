@@ -39,10 +39,18 @@ function walk(dir: string): string[] {
 const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
 const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
 
+/**
+ * Two files necessarily contain the very strings this suite forbids: this one,
+ * and the bundle scanner, which plants secret-shaped values in order to prove
+ * they never reach the build output. Excluding them by exact name keeps the
+ * exemption auditable — excluding all of `test/` would hide a real leak in any
+ * future test file.
+ */
+const SELF_REFERENTIAL = ['boundaries.test.ts', 'bundleSecrets.test.ts']
+
 const files = walk(srcDir)
 const sources = files
-  // This file necessarily contains the very strings it forbids.
-  .filter((f) => !f.endsWith('boundaries.test.ts'))
+  .filter((f) => !SELF_REFERENTIAL.some((name) => f.endsWith(name)))
   .map((f) => ({ path: f.slice(srcDir.length), text: readFileSync(f, 'utf8') }))
 
 const outsideNetworkModules = sources.filter((s) => !NETWORK_MODULES.includes(s.path))
@@ -125,11 +133,16 @@ describe('milestone boundaries', () => {
     // Vite inlines every VITE_-prefixed variable into the bundle. A
     // service-role key behind that prefix would be published, not configured.
     const forbidden = [
+      // The current secret key, and every shape of the legacy pair.
+      'SUPABASE_SECRET_KEY',
+      'VITE_SUPABASE_SECRET_KEY',
+      'SUPABASE_SERVICE_ROLE_KEY',
       'VITE_SUPABASE_SERVICE_ROLE_KEY',
+      'SUPABASE_ANON_KEY',
+      'VITE_SUPABASE_ANON_KEY',
       'VITE_SUPABASE_DB_URL',
       'VITE_MODEL_API_KEY',
       'VITE_INGEST_SHARED_SECRET',
-      'SUPABASE_SERVICE_ROLE_KEY',
       'SUPABASE_DB_URL',
       'MODEL_API_KEY',
       'INGEST_SHARED_SECRET',
@@ -138,6 +151,29 @@ describe('milestone boundaries', () => {
       const offenders = sources.filter((s) => s.text.includes(name)).map((s) => s.path)
       expect(offenders, `secret variable "${name}"`).toEqual([])
     }
+  })
+
+  it('carries no literal Supabase key of any kind', () => {
+    // A secret key here would be published to every visitor. A publishable key
+    // here would be harmless but wrong — it belongs in configuration, so that
+    // rotating it is not a code change.
+    const patterns: [string, RegExp][] = [
+      ['sb_secret_ key', /sb_secret_[A-Za-z0-9_-]+/],
+      ['sb_publishable_ key', /sb_publishable_[A-Za-z0-9_-]+/],
+      ['legacy JWT key', /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
+      ['service_role reference', /service_role/],
+    ]
+    for (const [label, pattern] of patterns) {
+      const offenders = sources.filter((s) => pattern.test(s.text)).map((s) => s.path)
+      expect(offenders, label).toEqual([])
+    }
+  })
+
+  it('names the publishable key, and only the publishable key', () => {
+    const client = sources.find((s) => s.path === '/lib/supabaseClient.ts')
+    expect(client, 'supabaseClient.ts must exist').toBeDefined()
+    expect(client!.text).toContain('VITE_SUPABASE_PUBLISHABLE_KEY')
+    expect(client!.text).not.toContain('VITE_SUPABASE_ANON_KEY')
   })
 
   it('offers no self-registration path', () => {

@@ -1,14 +1,21 @@
 /**
  * The browser's Supabase client.
  *
- * Holds the PUBLISHABLE (anon) key, which Vite compiles into the bundle and
- * anyone can read. That is expected and safe only because migration 0015 puts
- * row-level security on every table: `anon` can read nothing, and an
+ * Holds the PUBLISHABLE key (`sb_publishable_…`), which Vite compiles into the
+ * bundle and anyone can read. That is expected: it identifies the project and
+ * grants nothing on its own. Row-level security is what protects the data —
+ * migration 0015 puts RLS on every table, `anon` can read nothing, and an
  * authenticated session can read the dashboard tables and write none of them.
  *
- * If RLS were ever disabled, this key would become a full read of the database.
- * That is why `db/test.mjs` asserts the posture as a contract test rather than
- * trusting a Supabase dashboard toggle to stay where someone left it.
+ * The SECRET key (`sb_secret_…`) must never appear here. It bypasses RLS
+ * entirely and lives only in the Netlify Functions runtime. The two are
+ * distinguishable by prefix precisely so that a paste error is catchable, and
+ * `boundaries.test.ts` catches it.
+ *
+ * If RLS were ever disabled, the publishable key would become a full read of the
+ * database. That is why `db/test.mjs` asserts the posture as a contract test
+ * rather than trusting a Supabase dashboard toggle to stay where someone left
+ * it.
  *
  * Invite-only. There is no `signUp` call anywhere in this application, and
  * self-registration is disabled on the project itself, so an uninvited visitor
@@ -21,7 +28,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 export interface BrowserConfig {
   readonly url: string
-  readonly anonKey: string
+  readonly publishableKey: string
   readonly radarEnv: string
 }
 
@@ -34,11 +41,11 @@ export interface BrowserConfig {
  */
 export function browserConfig(): BrowserConfig | null {
   const url = import.meta.env.VITE_SUPABASE_URL
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !anonKey) return null
+  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  if (!url || !publishableKey) return null
   return {
     url,
-    anonKey,
+    publishableKey,
     radarEnv: import.meta.env.VITE_RADAR_ENV ?? 'development',
   }
 }
@@ -49,7 +56,7 @@ export function supabaseBrowser(): SupabaseClient | null {
   if (cached) return cached
   const config = browserConfig()
   if (!config) return null
-  cached = createClient(config.url, config.anonKey, {
+  cached = createClient(config.url, config.publishableKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
