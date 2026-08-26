@@ -63,10 +63,39 @@ function Assert-NoObservation {
 }
 
 function Invoke-OperatorGit {
+    <#
+        Run git and return its exit code and combined output as data.
+
+        THE ERRORACTIONPREFERENCE DANCE IS NOT DECORATION. git writes ordinary
+        progress to stderr -- `git fetch` announces "From https://github.com/..."
+        on every successful fetch. Windows PowerShell 5.1 turns a native
+        command's stderr into an ErrorRecord, and with $ErrorActionPreference
+        set to Stop that becomes a TERMINATING error even though git exited 0.
+        The script then aborts with the fetch banner as its reason.
+
+        PowerShell 7 does not do this by default, so the bug is invisible to
+        every check that runs on 7 and fires on the operator's machine. It was
+        caught by the Windows PowerShell 5.1 CI job and by nothing else.
+
+        The exit code is captured immediately, because the next statement would
+        overwrite $LASTEXITCODE.
+    #>
     [CmdletBinding()]
     param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Arguments)
-    $output = & git @Arguments 2>&1
-    return [pscustomobject]@{ Code = $LASTEXITCODE; Text = ($output -join "`n").Trim() }
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & git @Arguments 2>&1
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    # `2>&1` yields ErrorRecord objects for the stderr lines; ToString() gets
+    # their text without letting them stay errors.
+    $text = (@($output) | ForEach-Object { $_.ToString() }) -join "`n"
+    return [pscustomobject]@{ Code = $code; Text = $text.Trim() }
 }
 
 function Assert-CorrectCheckout {

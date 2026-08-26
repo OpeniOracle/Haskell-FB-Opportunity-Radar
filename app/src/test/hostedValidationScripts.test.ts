@@ -347,6 +347,28 @@ describe('the guards are shared, not merely similar', () => {
     }
   })
 
+  it("survives git writing its normal progress to stderr", () => {
+    // `git fetch` announces "From https://github.com/..." on stderr on every
+    // SUCCESSFUL fetch. Windows PowerShell 5.1 turns a native command's stderr
+    // into an ErrorRecord, and under $ErrorActionPreference = 'Stop' that
+    // becomes a terminating error even though git exited 0 -- so the script
+    // aborted with the fetch banner as its reason, right after passing the
+    // branch check. PowerShell 7 does not do this, so nothing running on 7 can
+    // see it.
+    const body = /function Invoke-OperatorGit \{[\s\S]*?\n\}/.exec(guards)?.[0] ?? ''
+    expect(body, 'Invoke-OperatorGit must not be left at the caller preference').toMatch(
+      /\$ErrorActionPreference = 'Continue'/,
+    )
+    expect(body, 'the caller preference must be restored').toMatch(
+      /finally \{[\s\S]*?\$ErrorActionPreference = \$previous/,
+    )
+    // The exit code has to be captured before the next statement overwrites it.
+    expect(body).toMatch(/\$code = \$LASTEXITCODE/)
+    expect(body, 'stderr lines arrive as ErrorRecords and must be flattened').toMatch(
+      /ForEach-Object \{ \$_\.ToString\(\) \}/,
+    )
+  })
+
   it('checks the repository, the tree, the branch and the remote head', () => {
     expect(guards).toMatch(/remote get-url origin/)
     expect(guards).toMatch(/status --porcelain/)
