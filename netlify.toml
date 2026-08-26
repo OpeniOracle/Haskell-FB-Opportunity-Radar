@@ -16,10 +16,61 @@
   command = "npm ci && npm run build"
   publish = "dist"
 
+# Non-secret configuration, committed deliberately.
+#
+# Everything here is either already public — the project URL appears in every
+# request the browser makes — or operational configuration that is safer
+# reviewed in a pull request than typed into a dashboard. Nothing below is a
+# credential.
+#
+# The two Supabase KEYS and MODEL_API_KEY are NOT here and must be entered in
+# the Netlify UI. docs/ENVIRONMENT.md gives the exact location and scope.
 [build.environment]
   NODE_VERSION = "22"
   # Chromium is only needed for the local screenshot script, never for the build.
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+
+  # Client-safe. Read at BUILD time by Vite, and by scripts/generate-headers.mjs
+  # which turns it into the CSP connect-src allowlist.
+  VITE_SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
+  VITE_RADAR_ENV = "development"
+
+  # Server-side, non-secret. The functions runtime inherits these.
+  SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
+  SUPABASE_EVIDENCE_BUCKET = "evidence-raw"
+  RADAR_ENV = "development"
+
+  # The single egress gateway's allowlist. An entry permits the host and its
+  # subdomains and nothing else. Corporate newsroom hosts are added as each
+  # connector is verified — the coverage matrix records them as Unverified, and
+  # allowlisting a host we have never successfully fetched would assert a
+  # verification that has not happened.
+  EGRESS_ALLOWLIST = "sec.gov,data.sec.gov,www.sec.gov,fsis.usda.gov,www.fsis.usda.gov"
+
+  # SEC requires a declared User-Agent carrying an address a human monitors.
+  # oracles@openi-analytics.com is retained pending confirmation of an actively
+  # monitored address. `assertSecUserAgentUsable` refuses to start a collection
+  # run if an unresolved <PLACEHOLDER> is ever substituted here, because sending
+  # one would be a false contact declaration to a federal regulator.
+  SEC_EDGAR_USER_AGENT = "Openi Analytics Haskell F&B Radar oracles@openi-analytics.com"
+
+  # Anthropic Direct, through the provider-neutral gateway. MODEL_ID stays
+  # configurable; claude-sonnet-5 is the current stable Sonnet.
+  MODEL_PROVIDER = "anthropic"
+  MODEL_ID = "claude-sonnet-5"
+  MODEL_PROMPT_VERSION = "v0"
+
+[context.production.environment]
+  VITE_RADAR_ENV = "production"
+  RADAR_ENV = "production"
+
+[context.deploy-preview.environment]
+  VITE_RADAR_ENV = "preview"
+  RADAR_ENV = "preview"
+
+[context.branch-deploy.environment]
+  VITE_RADAR_ENV = "preview"
+  RADAR_ENV = "preview"
 
 # The API. Same-origin by construction: the browser only ever addresses this
 # origin, so `connect-src` needs to permit exactly two things — 'self' and the

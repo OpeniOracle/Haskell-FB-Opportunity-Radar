@@ -1,0 +1,98 @@
+[
+  {
+    "version": "0001",
+    "name": "baseline_v0_1_0",
+    "checksum": "6692d501bcb19d815186d71ae0bd419236b93c1fd5260693a48b217ad2e9be9d",
+    "bytes": 20756
+  },
+  {
+    "version": "0002",
+    "name": "reference_vocabulary",
+    "checksum": "ea30d75ad03ea40e77d3c0cfc185124394c6d3c8da16af82848b688036d16612",
+    "bytes": 3640
+  },
+  {
+    "version": "0003",
+    "name": "collection_runs",
+    "checksum": "a13c7f8b7383c3d90c0fc4c8ce06dcd4b13a51fabcac5eba16b08cb48a898068",
+    "bytes": 5712
+  },
+  {
+    "version": "0004",
+    "name": "evidence_temporal_access_confidence",
+    "checksum": "da193473acc731e79f2376eff71a4633fefd207228bbc45f3edee103935cb0f9",
+    "bytes": 8272
+  },
+  {
+    "version": "0005",
+    "name": "organization_identity_scope",
+    "checksum": "22e1041f270f356cb2b9e536b1ea781e078e2fae6942243c6a3c3d918b48b123",
+    "bytes": 3153
+  },
+  {
+    "version": "0006",
+    "name": "facilities_and_candidates",
+    "checksum": "a658402c2e2066a0a4330633d65d417f375453900b3ad92083e3ee31452f0c8b",
+    "bytes": 5481
+  },
+  {
+    "version": "0007",
+    "name": "ownership_intervals",
+    "checksum": "ed7f6fc8ab13c869ef1ad3530614f37f1232d590f43189024aa88d93377be293",
+    "bytes": 7298
+  },
+  {
+    "version": "0008",
+    "name": "evidence_entity_links",
+    "checksum": "6a02b6035798f006c70c9e420bbaa4c06908836b7c7a92f0cd0a6b904af106af",
+    "bytes": 3015
+  },
+  {
+    "version": "0009",
+    "name": "research_staging",
+    "checksum": "114e1bd53a7cb6c9bef28a7c2b5c628013b62a918942ca71f9add17ef4d15477",
+    "bytes": 6853
+  },
+  {
+    "version": "0010",
+    "name": "licence_gated_engagement",
+    "checksum": "9d7aa6a1874696420c3c77dea2dc3a31f3befdec256c83d86c18ec81730c8077",
+    "bytes": 10739
+  },
+  {
+    "version": "0011",
+    "name": "account_source_expectations",
+    "checksum": "63c0a5d6a316f885e692716139a8764174ec32b7216484e74d010edee1f8fe6b",
+    "bytes": 3950
+  },
+  {
+    "version": "0012",
+    "name": "change_events_and_audit",
+    "checksum": "ba8c04cae400c1f6dc0b0f67391130df21dabe40d7cbf47f28e7fb0af7e1c82c",
+    "bytes": 4322
+  },
+  {
+    "version": "0013",
+    "name": "analytical_structures",
+    "checksum": "fc801f4b487ee31c2ad54dc835070b304820d976dce273e1edc28a745009f63a",
+    "bytes": 9863
+  },
+  {
+    "version": "0014",
+    "name": "non_scoring_evaluation_structures",
+    "checksum": "184d9dacab6c940b22354c6601308928322dcec739359b4f0d9f74b80b6b92f6",
+    "bytes": 5583
+  },
+  {
+    "version": "0015",
+    "name": "row_level_security",
+    "checksum": "c9f183a1191271479493def6534a449654e81a2da472cb8d805e5ce7dc5213b6",
+    "bytes": 11636
+  },
+  {
+    "version": "0016",
+    "name": "invite_only_auth_guard",
+    "checksum": "de8cd08d5617a5165c19bb7adb19ddffea7c727ecefd9aa659885e25c541ae0a",
+    "bytes": 3211
+  }
+]

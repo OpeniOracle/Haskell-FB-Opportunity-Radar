@@ -708,6 +708,90 @@ with o as (
 insert into opportunity_status_history (opportunity_id, to_status, actor_type, actor_id)
 select o.id, 'dismissed', 'user', 'tester' from o;`,
   },
+  // ---- Invite-only authentication (0016). --------------------------------
+  // Supabase's signup toggles are platform configuration with no table behind
+  // them, so they cannot be tested. This half can be, and it is the half that
+  // catches the day someone turns the toggles back on.
+  {
+    group: 'invite-only',
+    name: 'the invite allowlist ships EMPTY',
+    expect: 'ok',
+    sql: `
+do $$
+declare n int;
+begin
+    select count(*) into n from auth_invite_allowlist;
+    if n <> 0 then
+        raise exception 'auth_invite_allowlist must ship empty, found % row(s)', n;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'invite-only',
+    name: 'an uninvited address cannot create an account',
+    expect: 'Self-registration is disabled',
+    sql: `insert into auth.users (email) values ('stranger@example.invalid');`,
+  },
+  {
+    // Anonymous sign-in creates a user with no email, so refusing a null email
+    // refuses anonymous authentication at the database layer too.
+    group: 'invite-only',
+    name: 'an anonymous (email-less) account cannot be created',
+    expect: 'Anonymous and email-less accounts are not permitted',
+    sql: `insert into auth.users (email) values (null);`,
+  },
+  {
+    group: 'invite-only',
+    name: 'a blank email cannot create an account',
+    expect: 'Anonymous and email-less accounts are not permitted',
+    sql: `insert into auth.users (email) values ('   ');`,
+  },
+  {
+    group: 'invite-only',
+    name: 'an INVITED address can create an account, case-insensitively',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('invited@example.invalid', 'Invited@Example.invalid', 'tester');
+
+insert into auth.users (email) values ('INVITED@EXAMPLE.INVALID');
+
+do $$
+declare n int;
+begin
+    select count(*) into n from auth.users where lower(email) = 'invited@example.invalid';
+    if n <> 1 then
+        raise exception 'expected exactly one invited account, found %', n;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'invite-only',
+    name: 'the allowlist rejects a non-normalized entry',
+    expect: 'auth_invite_allowlist_is_normalized',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('Mixed@Case.invalid', 'Mixed@Case.invalid', 'tester');`,
+  },
+  {
+    group: 'invite-only',
+    name: 'the allowlist rejects an entry with no inviter',
+    expect: 'auth_invite_allowlist_inviter_present',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('someone@example.invalid', 'someone@example.invalid', '  ');`,
+  },
+  {
+    group: 'invite-only',
+    name: 'authenticated cannot read the invite allowlist',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from auth_invite_allowlist;`,
+  },
+
   // ---- Row-level security (0015). ---------------------------------------
   // These run as the `authenticated` role rather than inspecting catalogues,
   // because what matters is what a browser session can actually read.

@@ -132,6 +132,29 @@ export function modelEnv(): ModelEnv | null {
   }
 }
 
+/**
+ * SEC requires a declared User-Agent carrying an address a human actually
+ * monitors, and rate-limits to 10 requests per second.
+ *
+ * This refuses an unresolved placeholder rather than sending it. A string like
+ * `<MONITORED_OPENI_EMAIL>` reaching a federal regulator is a false contact
+ * declaration, not a cosmetic defect — and the failure mode without this check
+ * is silent, because SEC will happily serve the request.
+ */
+export function assertSecUserAgentUsable(userAgent: string): void {
+  if (/<[^>]+>/.test(userAgent)) {
+    throw new Error(
+      `SEC_EDGAR_USER_AGENT still contains an unresolved placeholder: "${userAgent}". ` +
+        'Replace it with a monitored contact address before any SEC request.',
+    )
+  }
+  if (!/[^\s@]+@[^\s@]+\.[^\s@]+/.test(userAgent)) {
+    throw new Error(
+      'SEC_EDGAR_USER_AGENT must contain a contact email address. See docs/ENVIRONMENT.md.',
+    )
+  }
+}
+
 /** The names a deployment must set, for documentation and for the health check. */
 export const REQUIRED_SERVER_VARS = [
   'SUPABASE_URL',

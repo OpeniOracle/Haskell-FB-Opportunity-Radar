@@ -1,5 +1,18 @@
 # Environment contract
 
+## The provisioned development project
+
+| | |
+| --- | --- |
+| Project | `haskell-fb-radar-dev` |
+| Reference | `dutmdlbangsthclgtkhy` |
+| Region | `us-east-1` |
+| PostgreSQL | 17.6.1.165 |
+| URL | `https://dutmdlbangsthclgtkhy.supabase.co` |
+| Evidence bucket | `evidence-raw`, **private** |
+
+`haskell-fb-radar-prod` does not exist yet and is deliberately not created.
+
 Every value the Radar needs at runtime, where it is set, and which half of the
 system may read it.
 
@@ -65,16 +78,22 @@ application can reach nothing but its own functions.
 
 SEC requires every automated client to declare a User-Agent carrying a contact
 address that a human actually monitors, and rate-limits to 10 requests per
-second. The format is:
+second. The value currently committed in `netlify.toml` is:
 
 ```
-Openi Analytics Haskell F&B Radar <MONITORED_OPENI_EMAIL>
+Openi Analytics Haskell F&B Radar oracles@openi-analytics.com
 ```
 
-**`<MONITORED_OPENI_EMAIL>` is a placeholder and must be replaced with a real
-monitored Openi address before any SEC production request is made.** Sending the
-placeholder would be a false contact declaration to a federal regulator, so the
-connector refuses to start while it is still there.
+**This address is retained pending confirmation that it is actively monitored.**
+It is a real address rather than a placeholder, so collection is not blocked by
+it — but SEC's requirement is that a human reads what arrives there, and that is
+a fact about the mailbox, not about the string. Confirm or replace it.
+
+`assertSecUserAgentUsable` refuses to start a run if the value ever contains an
+unresolved `<PLACEHOLDER>`, or contains no email address at all. Sending a
+literal placeholder to a federal regulator is a false contact declaration, and
+the failure mode without the check is silent — SEC serves the request either
+way.
 
 ### `EGRESS_ALLOWLIST`
 
@@ -143,3 +162,72 @@ Haskell network, database, identity system or endpoint.
 There is no variable that unlocks the D14-L tables. That gate is a foreign key to
 an empty `licence_authorizations` table, not a feature flag, so no configuration
 change can open it.
+
+---
+
+## What must be entered by hand, and where
+
+There is no Netlify CLI or API token in the automation environment, so **no
+Netlify variable can be set programmatically from here**. Everything non-secret
+is therefore committed to `netlify.toml`, where it is reviewable in a pull
+request. The four values below are secrets and are the only ones left to enter.
+
+Netlify → **Site configuration → Environment variables → Add a variable**.
+
+For each: choose **Same value for all deploy contexts** unless noted, set
+**Scopes** as given, and mark it **Secret** (Netlify then hides the value after
+saving, including from build logs).
+
+| # | Key | Scopes | Where the value comes from |
+| --- | --- | --- | --- |
+| 1 | `VITE_SUPABASE_ANON_KEY` | **Builds** only | Supabase → Project Settings → API Keys → **publishable** key |
+| 2 | `SUPABASE_SERVICE_ROLE_KEY` | **Functions** only | Supabase → Project Settings → API Keys → **secret / service_role** key |
+| 3 | `MODEL_API_KEY` | **Functions** only | Anthropic Console → API Keys |
+| 4 | `INGEST_SHARED_SECRET` | **Functions** only | Generate one: `openssl rand -base64 48` |
+
+`SUPABASE_DB_URL` is optional and only needed if migrations are ever run from a
+machine rather than through the Supabase API. It is Supabase → Project Settings
+→ Database → **Connection string → Session pooler**. Scope it to **Functions**
+if you set it, though no function reads it.
+
+Three deliberate scope choices:
+
+- **`VITE_SUPABASE_ANON_KEY` is Builds-only.** Vite inlines it at build time; a
+  function has no use for it, and a value present in a runtime that does not
+  need it is a value that can leak from a runtime that does not need it.
+- **The service-role key is Functions-only.** Scoping it to Builds would put a
+  key that bypasses every row-level security policy into the build log's
+  environment.
+- **`MODEL_API_KEY` is Functions-only** for the same reason, and its absence is
+  survivable: collection, preservation and resolution all run without it, and
+  the classification stage refuses rather than inventing an answer.
+
+## Supabase dashboard settings that cannot be set from code
+
+GoTrue's signup configuration is platform state with no table behind it, so it
+cannot be applied by a migration or tested in CI. Migration 0016 adds the half
+that *can* be enforced — a trigger on `auth.users` that refuses any address not
+on `auth_invite_allowlist`, and refuses a null email, which is what an anonymous
+sign-in looks like. **That is defence in depth, not a substitute.** Set these in
+Supabase → Authentication → Sign In / Providers:
+
+| Setting | Required value |
+| --- | --- |
+| Allow new users to sign up | **off** |
+| Allow anonymous sign-ins | **off** |
+| Confirm email | **on** |
+| Site URL | the production Netlify URL |
+| Redirect URLs | the production URL, plus `https://deploy-preview-*--haskell-fb-opportunity-radar.netlify.app/**` for previews |
+
+### Inviting someone
+
+Two steps, in this order. The trigger refuses the invite otherwise — which is
+what "invite-only" means: who may hold an account is a deliberate, auditable
+record rather than a property of who found the sign-up form.
+
+```sql
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by, note)
+values (lower(trim('Person@example.com')), 'Person@example.com', 'you@openi-analytics.com', 'Haskell pilot reviewer');
+```
+
+Then Supabase → Authentication → Users → **Invite user**.

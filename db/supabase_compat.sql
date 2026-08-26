@@ -53,3 +53,13 @@ stable
 as $$ select nullif(current_setting('request.jwt.claim.role', true), '') $$;
 
 grant usage on schema auth to anon, authenticated, service_role;
+
+-- `auth.users` exists on every Supabase project. Migration 0016 puts a trigger
+-- on it, so the test target needs a table of the same name with the columns that
+-- trigger reads. Only `id` and `email` matter here; reproducing GoTrue's full
+-- schema would be pretending to test something this shim cannot test.
+create table if not exists auth.users (
+    id                  uuid primary key default gen_random_uuid(),
+    email               text,
+    created_at          timestamptz not null default now()
+);
