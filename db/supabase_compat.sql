@@ -1,0 +1,55 @@
+-- Supabase compatibility shim for a PLAIN PostgreSQL test target.
+--
+-- Supabase provisions three roles and an `auth` schema before any migration
+-- runs. A bare postgres:16 or postgres:17 container does not, so 0015 — which
+-- grants to those roles and writes a policy against `auth.uid()` — would fail in
+-- CI for a reason that has nothing to do with the migration being wrong.
+--
+-- This file creates the minimum that makes the real migration runnable
+-- unmodified. It is applied ONLY to test databases. It is never applied to a
+-- Supabase project, where all of this already exists and is managed by the
+-- platform.
+--
+-- `auth.uid()` returns null here. That is deliberate and it is the interesting
+-- case: a null uid is what an unauthenticated request looks like, so the
+-- per-user policies are exercised in their deny direction by default.
+
+do $$
+begin
+    if not exists (select 1 from pg_roles where rolname = 'anon') then
+        create role anon nologin noinherit;
+    end if;
+    if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+        create role authenticated nologin noinherit;
+    end if;
+    if not exists (select 1 from pg_roles where rolname = 'service_role') then
+        create role service_role nologin noinherit bypassrls;
+    end if;
+end
+$$;
+
+grant usage on schema public to anon, authenticated, service_role;
+
+-- Supabase's default posture, reproduced so that the migration's REVOKE has
+-- something real to revoke. Testing a revoke against a role that was never
+-- granted anything proves nothing.
+grant all on all tables in schema public to anon, authenticated;
+grant all on all sequences in schema public to anon, authenticated;
+alter default privileges in schema public grant all on tables to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
+
+create schema if not exists auth;
+
+create or replace function auth.uid()
+returns uuid
+language sql
+stable
+as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+
+create or replace function auth.role()
+returns text
+language sql
+stable
+as $$ select nullif(current_setting('request.jwt.claim.role', true), '') $$;
+
+grant usage on schema auth to anon, authenticated, service_role;

@@ -708,6 +708,197 @@ with o as (
 insert into opportunity_status_history (opportunity_id, to_status, actor_type, actor_id)
 select o.id, 'dismissed', 'user', 'tester' from o;`,
   },
+  // ---- Row-level security (0015). ---------------------------------------
+  // These run as the `authenticated` role rather than inspecting catalogues,
+  // because what matters is what a browser session can actually read.
+  {
+    group: 'rls',
+    name: 'EVERY table in public has row-level security enabled',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    unprotected text;
+begin
+    select string_agg(c.relname, ', ' order by c.relname) into unprotected
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
+
+    if unprotected is not null then
+        raise exception 'RLS is not enabled on: %', unprotected;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'rls',
+    name: 'anon can read nothing at all',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    leaked text;
+begin
+    select string_agg(distinct table_name, ', ') into leaked
+    from information_schema.role_table_grants
+    where table_schema = 'public' and grantee = 'anon';
+
+    if leaked is not null then
+        raise exception 'anon holds table privileges on: %', leaked;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'rls',
+    name: 'authenticated holds no write privilege anywhere',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    writable text;
+begin
+    select string_agg(distinct table_name || ':' || privilege_type, ', ')
+      into writable
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and grantee = 'authenticated'
+      and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+
+    if writable is not null then
+        raise exception 'authenticated can write: %', writable;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CAN read the dashboard tables',
+    expect: 'ok',
+    sql: `
+set local role authenticated;
+select count(*) from opportunities;
+select count(*) from signals;
+select count(*) from evidence;
+select count(*) from sources;
+select count(*) from source_runs;
+select count(*) from organizations;
+select count(*) from facilities;
+select count(*) from account_source_expectations;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the licence gate',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from licence_authorizations;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read engagement observations',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from engagement_observations;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the audit trail',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from audit_events;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read research staging',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from research_claims;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the model replay cache',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from model_replay_cache;`,
+  },
+  {
+    // Preserved content lives in a private bucket. Handing the browser the path
+    // and relying on it not to ask is not a control.
+    group: 'rls',
+    name: 'an authenticated session CANNOT read preserved evidence body text',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select body_text from evidence limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the evidence storage path',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select raw_storage_uri from evidence limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the D14-L account-strategy score',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select account_strategy from opportunities limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the D14-L segment tier',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select target_tier from organizations limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CAN read cohort membership',
+    expect: 'ok',
+    sql: `
+set local role authenticated;
+select highest_value, canonical_name, scope_class from organizations limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT write, even to a table it can read',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+insert into organizations (canonical_name, organization_role)
+values ('Example Injected', 'manufacturer_brand');`,
+  },
+  {
+    // auth.uid() is null in the test shim, which is what an unauthenticated
+    // request looks like. The per-user policies must match nothing.
+    group: 'rls',
+    name: 'per-user rows are invisible when there is no authenticated subject',
+    expect: 'ok',
+    sql: `
+insert into user_read_state (user_id, surface, last_seen_at)
+values ('someone-else', 'pulse', now());
+
+set local role authenticated;
+do $$
+declare n int;
+begin
+    select count(*) into n from user_read_state;
+    if n <> 0 then
+        raise exception 'a null subject matched % per-user row(s)', n;
+    end if;
+end
+$$;`,
+  },
   {
     group: 'structure',
     name: 'a change event with an empty dedupe key is rejected',
