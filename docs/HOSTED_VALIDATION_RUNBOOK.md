@@ -153,191 +153,31 @@ picks up the new build-scope variable.
 
 ---
 
-## D. `/api/status` as the invited administrator
+## D–E. Everything else, in one script
 
-Get an access token from the browser console on the deployed preview, signed in
-as the bootstrap administrator:
+`scripts/hosted-validation.sh` runs every remaining hosted check in a single
+pass: `/api/status` authenticated and unauthenticated, the evidence-proxy canary
+(upload, retrieve, headers, path-leak scan), direct-Storage refusal from three
+angles, self-registration refusal, session revocation, and canary object cleanup.
 
-```js
-(await window.supabase?.auth.getSession())?.data?.session?.access_token
-// or, if the client is not exposed globally:
-JSON.parse(localStorage.getItem(
-  Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'))
-)).access_token
-```
-
-Then:
+The canary DATABASE rows are pre-staged and are removed afterwards from the
+automation side, so the script only needs to handle the object and the HTTP.
 
 ```bash
-PREVIEW="https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app"
-TOKEN="…"
+# In the browser console on the deploy preview, signed in as the administrator:
+#   JSON.parse(localStorage.getItem(Object.keys(localStorage)
+#     .find(k => k.startsWith('sb-') && k.endsWith('-auth-token')))).access_token
 
-# 1. Unauthenticated MUST be 401.
-curl -s -o /dev/null -w '%{http_code}\n' "$PREVIEW/api/status"
-
-# 2. Invalid token MUST be 401.
-curl -s -o /dev/null -w '%{http_code}\n' "$PREVIEW/api/status" \
-  -H "Authorization: Bearer not-a-real-token"
-
-# 3. Authenticated MUST be 200.
-curl -s "$PREVIEW/api/status" -H "Authorization: Bearer $TOKEN" | jq
+export TOKEN='<the access token>'
+export SECRET='<the sb_secret_… key>'
+bash scripts/hosted-validation.sh
 ```
 
-Expected shape — note that **no key, path, connection string or role name
-appears**:
+The script never prints either value and never writes them to a file. It signs
+the session out at the end deliberately — that is the revocation check — so sign
+back in afterwards.
 
-```json
-{
-  "ok": true,
-  "modelConfigured": false,
-  "radarEnv": "preview",
-  "caller":   { "userId": "…", "invited": true },
-  "database": { "reachable": true, "organizationsVisible": 15 },
-  "schema":   { "version": "0017" },
-  "storage":  { "bucket": "evidence-raw", "configured": true, "private": true },
-  "model":    { "configured": false, "describe": "unavailable" },
-  "auth":     { "inviteOnlyEnforced": true },
-  "sec":      { "contactConfirmed": true }
-}
-```
-
-`"modelConfigured": false` with `"ok": true` is the expected result for PR #9.
-`ok` reports the foundation — database reachable as the calling user. The model
-is reported separately and does not affect it.
-
-**4. Prove the response leaks nothing.** This is the check worth automating into
-your shell history rather than eyeballing:
-
-```bash
-curl -s "$PREVIEW/api/status" -H "Authorization: Bearer $TOKEN" \
-  | grep -Ei 'sb_secret_|service_role|postgres(ql)?://|eyJ[A-Za-z0-9_-]{20,}|evidence-raw/|sk-ant-' \
-  && echo 'LEAK' || echo 'clean'
-```
-
-`"model": { "configured": false }` is a pass, not a failure. Every other check
-must still be green with the model key absent.
-
----
-
-## E. Evidence proxy, end to end with a canary
-
-**Why a canary is needed.** The database half of this path is already proven
-hosted — the storage path is unreadable by any browser session, `storage.objects`
-is unreachable, `anon` cannot read evidence at all, and the bucket is private.
-What is *not* proven from the automation environment is the byte retrieval,
-because uploading an object needs the Storage API over HTTP.
-
-Run from a machine with network access and the secret key.
-
-```bash
-PROJECT="dutmdlbangsthclgtkhy"
-URL="https://$PROJECT.supabase.co"
-SECRET="sb_secret_…"          # never echo this into a shared terminal log
-PREVIEW="https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app"
-TOKEN="…"                     # the administrator's access token
-CANARY_EV="44444444-4444-4444-8444-444444444444"
-CANARY_RUN="55555555-5555-4555-8555-555555555555"
-CANARY_PATH="canary/evidence-proxy-canary.txt"
-```
-
-**1. Upload the canary object.**
-
-```bash
-printf 'evidence proxy canary %s\n' "$(date -u +%FT%TZ)" > /tmp/canary.txt
-curl -sS -X POST "$URL/storage/v1/object/evidence-raw/$CANARY_PATH" \
-  -H "Authorization: Bearer $SECRET" -H "apikey: $SECRET" \
-  -H "Content-Type: text/plain" --data-binary @/tmp/canary.txt
-```
-
-**2. Create the evidence row pointing at it.** SQL Editor:
-
-```sql
-insert into source_runs (id, source_id, status, run_status)
-values ('55555555-5555-4555-8555-555555555555', 'sec-edgar', 'success', 'success');
-
-insert into evidence (
-  id, source_id, source_run_id, original_url, resolved_url, title,
-  retrieved_at, content_hash, mime_type, extraction_status,
-  access_mode, raw_storage_uri
-) values (
-  '44444444-4444-4444-8444-444444444444', 'sec-edgar',
-  '55555555-5555-4555-8555-555555555555',
-  'https://data.sec.gov/canary', 'https://data.sec.gov/canary',
-  'Evidence proxy canary', now(), repeat('c', 64), 'text/plain', 'success',
-  'archived_full_text', 'canary/evidence-proxy-canary.txt'
-);
-```
-
-**3. The eight required tests.**
-
-```bash
-E="$PREVIEW/api/evidence/$CANARY_EV"
-
-# 1 — unauthenticated MUST be 401
-curl -s -o /dev/null -w '1 unauth: %{http_code}\n' "$E"
-
-# 2 — invalid session MUST be 401
-curl -s -o /dev/null -w '2 bad token: %{http_code}\n' "$E" \
-  -H "Authorization: Bearer not-a-real-token"
-
-# 3 — invited administrator MUST be 200 and return the canary body
-curl -s "$E" -H "Authorization: Bearer $TOKEN" | head -1
-
-# 4 — required no-cache headers
-curl -sI "$E" -H "Authorization: Bearer $TOKEN" \
-  | grep -Ei 'cache-control|pragma|content-disposition'
-# expect: cache-control: private, no-store   /   pragma: no-cache
-
-# 5 — the response must not reveal the bucket path
-curl -sD - "$E" -H "Authorization: Bearer $TOKEN" \
-  | grep -E 'evidence-raw|canary/|storage/v1' && echo 'LEAK' || echo '5 no path: clean'
-
-# 6 — direct ANONYMOUS bucket access MUST fail
-curl -s -o /dev/null -w '6 anon object: %{http_code}\n' \
-  "$URL/storage/v1/object/public/evidence-raw/$CANARY_PATH"
-
-# 7 — direct AUTHENTICATED browser access to storage MUST fail
-curl -s -o /dev/null -w '7 authed object: %{http_code}\n' \
-  "$URL/storage/v1/object/evidence-raw/$CANARY_PATH" \
-  -H "Authorization: Bearer $TOKEN" -H "apikey: $PUBLISHABLE"
-curl -s -o /dev/null -w '7b storage.objects via REST: %{http_code}\n' \
-  "$URL/rest/v1/objects?select=name" \
-  -H "Authorization: Bearer $TOKEN" -H "apikey: $PUBLISHABLE"
-
-# 8 — after sign-out the SAME token must stop working
-#     (sign out in the browser first, then re-run with the old token)
-curl -s -o /dev/null -w '8 revoked: %{http_code}\n' "$E" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Expected: `401`, `401`, the canary text, the two headers, `clean`, `400`/`404`,
-`400`/`403`, `400`/`403`, `401`.
-
-Test 8 is the one that distinguishes this design from signed URLs. A signed URL
-issued before sign-out keeps working until it expires; this endpoint stops at the
-next request.
-
-**4. Remove the canary and prove it is gone.**
-
-```bash
-curl -sS -X DELETE "$URL/storage/v1/object/evidence-raw/$CANARY_PATH" \
-  -H "Authorization: Bearer $SECRET" -H "apikey: $SECRET"
-```
-
-```sql
-delete from evidence   where id = '44444444-4444-4444-8444-444444444444';
-delete from source_runs where id = '55555555-5555-4555-8555-555555555555';
-
-select
-  (select count(*) from evidence)          as evidence_rows,       -- expect 0
-  (select count(*) from source_runs)       as run_rows,            -- expect 0
-  (select count(*) from storage.objects)   as stored_objects;      -- expect 0
-```
-
-```bash
-curl -s -o /dev/null -w 'canary after delete: %{http_code}\n' "$E" \
-  -H "Authorization: Bearer $TOKEN"   # expect 404
-```
+Paste the whole output into PR #9.
 
 ---
 
