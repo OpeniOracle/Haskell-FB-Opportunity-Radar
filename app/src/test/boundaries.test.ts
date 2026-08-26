@@ -40,7 +40,7 @@ const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
 const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
 
 /**
- * Three files necessarily contain the very strings this suite forbids, each for
+ * Five files necessarily contain the very strings this suite forbids, each for
  * a stated reason:
  *
  *   boundaries.test.ts    this file — it lists what it forbids
@@ -49,6 +49,14 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  *   cspPolicy.test.ts     asserts the exact Supabase origin the policy grants, so
  *                         it must name that origin, and spawns the generator with
  *                         an environment
+ *   sessionRevocation.test.ts
+ *                         mints real JWTs against a `.invalid` issuer URL and
+ *                         asserts that migration 0018 grants execute to
+ *                         `service_role` and to nobody else
+ *   hostedValidationScripts.test.ts
+ *                         reads the operator scripts to prove they never place a
+ *                         secret in argv, a file, or shell history, so it must
+ *                         name the patterns it is looking for
  *
  * Excluded by exact name so the exemption stays auditable. Excluding all of
  * `test/` would hide a real leak in any future test file.
@@ -57,6 +65,8 @@ const SELF_REFERENTIAL = [
   'boundaries.test.ts',
   'bundleSecrets.test.ts',
   'cspPolicy.test.ts',
+  'sessionRevocation.test.ts',
+  'hostedValidationScripts.test.ts',
 ]
 
 const files = walk(srcDir)

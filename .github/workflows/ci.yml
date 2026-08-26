@@ -222,6 +222,53 @@ jobs:
           test -f app/netlify/functions/evidence.ts
           grep -q "private, no-store" app/netlify/functions/evidence.ts
 
+      # A valid Supabase access token outlives sign-out: it stays
+      # cryptographically valid until its own `exp` even after the session is
+      # revoked. The evidence proxy therefore checks `auth.sessions` on every
+      # request, which is the only reason its refusal is immediate. Losing that
+      # would restore the exact property the proxy exists to remove, silently.
+      - name: The evidence proxy checks the session table, not just the token
+        run: |
+          test -f db/migrations/0018_evidence_session_guard.up.sql
+          grep -q 'requireLiveSession' app/netlify/functions/evidence.ts
+          grep -q 'authorize_evidence_access' app/netlify/functions/_shared/sessionGuard.ts
+          # Boolean only, service_role only. A function that returned rows, or
+          # that anyone could execute, would leak other users' sessions.
+          grep -qE 'returns[[:space:]]+boolean' db/migrations/0018_evidence_session_guard.up.sql
+          for role in public anon authenticated; do
+            grep -qE "revoke all on function[^;]*from $role" \
+              db/migrations/0018_evidence_session_guard.up.sql \
+              || { echo "execute is not revoked from $role"; exit 1; }
+          done
+          grep -qE 'grant execute on function[^;]*to service_role' \
+            db/migrations/0018_evidence_session_guard.up.sql
+
+      # The immediacy above belongs to ONE endpoint. Describing it as a property
+      # of Supabase tokens generally would be false everywhere else.
+      - name: Immediate revocation is never claimed beyond the evidence proxy
+        run: |
+          if grep -rn 'requireLiveSession\|authorize_evidence_access' \
+               app/netlify/functions/_shared/auth.ts; then
+            echo "The dashboard auth path acquired the session check without a decision."
+            exit 1
+          fi
+          grep -q 'dashboardTokenLifetime' app/netlify/functions/status.ts
+          test -f docs/adr/0015-evidence-proxy-immediate-revocation.md
+
+      # The operator handles the two confidential values by hand. No document
+      # may tell them to put either on a command line, where it lands in shell
+      # history and in the process table.
+      - name: No document instructs the operator to export a credential
+        run: |
+          if grep -rnE '^[[:space:]]*(export|set|\$env:)[[:space:]]*(TOKEN|SECRET)[[:space:]]*=' \
+               docs/ scripts/ README.md 2>/dev/null; then
+            echo "A document or script assigns a credential on a command line."
+            exit 1
+          fi
+          test -f scripts/Invoke-HostedValidation.ps1
+          grep -q 'AsSecureString' scripts/Invoke-HostedValidation.ps1
+          grep -qE 'read[[:space:]]+-rs[[:space:]]+TOKEN' scripts/hosted-validation.sh
+
       - name: Netlify configuration is present and points at the app
         run: |
           grep -q 'base = "app"' netlify.toml

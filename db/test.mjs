@@ -46,6 +46,23 @@ insert into research_claims (
 values ('claim-1', ${BATCH}, 'f.jsonl', 'line 1', 'entity',
         'example-alpha', 'has_name', '"Example Alpha Foods"'::jsonb, current_date${extra.vals});`
 
+/**
+ * One signed-in, allowlisted user, for the 0018 guard cases.
+ *
+ * Fixed ids so a case can name the session it is about to delete. The `auth`
+ * tables are the compatibility shim's on a test target and GoTrue's on Supabase;
+ * only `id`, `email` and `user_id` are touched, which both have.
+ */
+const guardFixture = () => `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('live@example.invalid', 'live@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000a0', 'live@example.invalid');
+
+insert into auth.sessions (id, user_id)
+values ('00000000-0000-4000-8000-0000000000aa', '00000000-0000-4000-8000-0000000000a0');`
+
 /** @type {{group: string, name: string, expect: string, sql: string}[]} */
 const CASES = [
   // ---- 1. A date without its precision. ---------------------------------
@@ -879,6 +896,229 @@ insert into auth.users (email) values ('person@example.invalid');`,
     sql: `
 set local role authenticated;
 select count(*) from reserved_service_addresses;`,
+  },
+
+  // ---- Evidence session guard (0018). ------------------------------------
+  // The evidence proxy's immediate revocation depends entirely on this
+  // function. `app/src/test/sessionRevocation.test.ts` models it in memory and
+  // proves the TypeScript side; these cases hold the SQL to the same statements
+  // against real PostgreSQL.
+  //
+  // A helper sets up one signed-in, allowlisted user per case. Cases then remove
+  // exactly one of the four preconditions and assert the answer flips.
+  {
+    group: 'session-guard',
+    name: 'a live, allowlisted session is authorised',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        (select id from auth.users where email = 'live@example.invalid'),
+        (select s.id from auth.sessions s
+          join auth.users u on u.id = s.user_id
+         where u.email = 'live@example.invalid')) into v;
+    if v is not true then
+        raise exception 'a live allowlisted session must be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    // This is the whole point of the migration: the access token is unchanged
+    // and unexpired, and the answer still flips to false the moment GoTrue
+    // deletes the session row.
+    group: 'session-guard',
+    name: 'deleting the session revokes access immediately',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+delete from auth.sessions
+ where user_id = (select id from auth.users where email = 'live@example.invalid');
+
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        (select id from auth.users where email = 'live@example.invalid'),
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a deleted session must not be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'a session belonging to a DIFFERENT user is refused',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('other@example.invalid', 'other@example.invalid', 'tester');
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000bb', 'other@example.invalid');
+
+do $$
+declare v boolean;
+begin
+    -- Other user's id paired with the first user's session id. Both halves
+    -- exist; the pairing does not.
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000bb',
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a mismatched session/user pair must be refused, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'removing the allowlist entry revokes access immediately',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+delete from auth_invite_allowlist where email_normalized = 'live@example.invalid';
+
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        (select id from auth.users where email = 'live@example.invalid'),
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a de-listed user must not be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'a deleted user is refused',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+delete from auth.users where email = 'live@example.invalid';
+
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000a0',
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a deleted user must not be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'null arguments are refused rather than treated as a wildcard',
+    expect: 'ok',
+    sql: `
+do $$
+declare v boolean;
+begin
+    if public.authorize_evidence_access(null, null) is not false
+       or public.authorize_evidence_access('00000000-0000-4000-8000-0000000000a0', null) is not false
+       or public.authorize_evidence_access(null, '00000000-0000-4000-8000-0000000000aa') is not false
+    then
+        raise exception 'null arguments must be refused';
+    end if;
+end
+$$;`,
+  },
+  {
+    // A browser session must not be able to call this even to probe. Learning
+    // that a given session id exists is itself information about another user.
+    group: 'session-guard',
+    name: 'authenticated cannot execute the guard function',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select public.authorize_evidence_access(
+    '00000000-0000-4000-8000-0000000000a0',
+    '00000000-0000-4000-8000-0000000000aa');`,
+  },
+  {
+    group: 'session-guard',
+    name: 'anon cannot execute the guard function',
+    expect: 'permission denied',
+    sql: `
+set local role anon;
+select public.authorize_evidence_access(
+    '00000000-0000-4000-8000-0000000000a0',
+    '00000000-0000-4000-8000-0000000000aa');`,
+  },
+  {
+    group: 'session-guard',
+    name: 'the guard returns a boolean and nothing else',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    rettype text;
+    definer boolean;
+    cfg     text[];
+begin
+    select pg_catalog.format_type(p.prorettype, null), p.prosecdef, p.proconfig
+      into rettype, definer, cfg
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'authorize_evidence_access';
+
+    if rettype is null then
+        raise exception 'authorize_evidence_access is not installed';
+    end if;
+    -- A set-returning or composite result would hand back session rows.
+    if rettype <> 'boolean' then
+        raise exception 'guard must return boolean, returns %', rettype;
+    end if;
+    if not definer then
+        raise exception 'guard must be security definer, or the caller needs auth rights';
+    end if;
+    -- Without a pinned search_path a caller could shadow auth.sessions.
+    if cfg is null or not (cfg::text like '%search_path%') then
+        raise exception 'guard must pin search_path';
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'execute is granted to service_role only',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    granted text;
+begin
+    select string_agg(g, ', ' order by g) into granted
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace,
+           lateral unnest(array['anon', 'authenticated', 'public']) as g
+     where n.nspname = 'public'
+       and p.proname = 'authorize_evidence_access'
+       and has_function_privilege(g, p.oid, 'execute');
+
+    if granted is not null then
+        raise exception 'guard is executable by: %', granted;
+    end if;
+
+    if not exists (
+        select 1 from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = 'authorize_evidence_access'
+          and has_function_privilege('service_role', p.oid, 'execute')
+    ) then
+        raise exception 'service_role cannot execute the guard; the proxy would fail closed forever';
+    end if;
+end
+$$;`,
   },
 
   // ---- Row-level security (0015). ---------------------------------------

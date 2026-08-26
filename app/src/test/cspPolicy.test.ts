@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { APP_ROOT } from '@/test/paths'
 
@@ -11,13 +12,45 @@ import { APP_ROOT } from '@/test/paths'
  * these assertions are what a reviewer would otherwise have to re-derive on
  * every build.
  */
+/**
+ * Generated into a scratch directory, from a fixed copy of `index.html`.
+ *
+ * NOT from `dist/`. `bundleSecrets.test.ts` runs a real `vite build`, which
+ * removes and rewrites that directory; reading it from here raced with that and
+ * produced a policy with no script hash — a red test with nothing wrong behind
+ * it. The seams the generator exposes for this are documented in
+ * `scripts/generate-headers.mjs`.
+ */
+let workDir: string
+
+beforeAll(() => {
+  workDir = mkdtempSync(join(tmpdir(), 'csp-'))
+  // The real page's inline script: the pre-paint theme applier, verbatim, so
+  // the hash assertion is about the thing that actually ships.
+  writeFileSync(
+    join(workDir, 'index.html'),
+    readFileSync(join(APP_ROOT, 'index.html'), 'utf8'),
+    'utf8',
+  )
+})
+
+afterAll(() => {
+  rmSync(workDir, { recursive: true, force: true })
+})
+
 function generate(env: Record<string, string>): string {
+  const output = join(workDir, '_headers')
   execFileSync('node', ['scripts/generate-headers.mjs'], {
     cwd: APP_ROOT,
-    env: { ...process.env, ...env },
+    env: {
+      ...process.env,
+      CSP_HTML_SOURCE: join(workDir, 'index.html'),
+      CSP_OUTPUT_PATH: output,
+      ...env,
+    },
     stdio: 'pipe',
   })
-  return readFileSync(join(APP_ROOT, 'dist', '_headers'), 'utf8')
+  return readFileSync(output, 'utf8')
 }
 
 const PROJECT = 'https://dutmdlbangsthclgtkhy.supabase.co'

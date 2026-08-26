@@ -18,6 +18,11 @@ import { failure, json, methodNotAllowed } from './_shared/http.js'
 import { UnauthorizedError, requireUser } from './_shared/auth.js'
 import { supabaseAdmin, supabaseAsUser } from './_shared/supabaseAdmin.js'
 import { modelGateway } from './_shared/modelGateway.js'
+import {
+  SessionRevokedError,
+  productionGuardDeps,
+  requireLiveSession,
+} from './_shared/sessionGuard.js'
 import { MissingEnvError, REQUIRED_SERVER_VARS, serverEnv } from './_shared/env.js'
 
 export const handler: Handler = async (event) => {
@@ -72,6 +77,29 @@ export const handler: Handler = async (event) => {
 
   const gateway = modelGateway()
 
+  // Is the evidence proxy's session guard actually INSTALLED on this project?
+  // Asked by calling it with an id pair that cannot exist: an installed function
+  // answers `false`, a missing one raises `undefined function`. Reporting
+  // "enforced" from a constant would survive a database that never got
+  // migration 0018, which is the one case worth catching.
+  const ZERO = '00000000-0000-0000-0000-000000000000'
+  const { error: guardProbeError } = await supabaseAdmin().rpc('authorize_evidence_access', {
+    p_user_id: ZERO,
+    p_session_id: ZERO,
+  })
+
+  // What the CALLER's own token would get at the evidence proxy. Useful to an
+  // operator and safe to report to its owner: it is a fact about their session,
+  // and the reason for a refusal is never included.
+  let evidenceAccess: { authorized: boolean; jwtVerification: string | null }
+  try {
+    const live = await requireLiveSession(token, productionGuardDeps())
+    evidenceAccess = { authorized: true, jwtVerification: live.verificationMode }
+  } catch (error) {
+    if (!(error instanceof SessionRevokedError)) throw error
+    evidenceAccess = { authorized: false, jwtVerification: null }
+  }
+
   // `ok` reflects the FOUNDATION: can we reach the database as the caller.
   // The model is reported separately and deliberately does not affect it — an
   // absent model key is a supported state in which collection, preservation and
@@ -101,6 +129,17 @@ export const handler: Handler = async (event) => {
     auth: {
       // Whether the invite guard is in force, not who is on the list.
       inviteOnlyEnforced: true,
+      /**
+       * The evidence proxy refuses a signed-out access token on the caller's
+       * next request, because it checks `auth.sessions` per request. This is a
+       * property of THAT endpoint only — ordinary reads below keep Supabase's
+       * documented behaviour, in which an issued access token stays usable
+       * until it expires.
+       */
+      evidenceSessionCheckInstalled: !guardProbeError,
+      evidenceAccessAuthorized: evidenceAccess.authorized,
+      jwtVerification: evidenceAccess.jwtVerification,
+      dashboardTokenLifetime: 'supabase_default_until_exp',
     },
     sec: {
       contactConfirmed: env.secContactConfirmed,

@@ -19,6 +19,10 @@ import { APP_ROOT } from '@/test/paths'
  */
 const source = readFileSync(join(APP_ROOT, 'netlify/functions/evidence.ts'), 'utf8')
 const authSource = readFileSync(join(APP_ROOT, 'netlify/functions/_shared/auth.ts'), 'utf8')
+const guardSource = readFileSync(
+  join(APP_ROOT, 'netlify/functions/_shared/sessionGuard.ts'),
+  'utf8',
+)
 
 describe('evidence proxy contract', () => {
   it('sends the required no-cache headers', () => {
@@ -31,15 +35,18 @@ describe('evidence proxy contract', () => {
     expect(source).toMatch(/function deny\([\s\S]*?\.\.\.NO_STORE/)
   })
 
-  it('requires an invited, non-anonymous session', () => {
-    expect(source).toContain('requireInvitedUser')
-    expect(authSource).toContain('isAnonymous')
-    expect(authSource).toContain('auth_invite_allowlist')
+  it('requires a live, invited, non-anonymous session', () => {
+    // Not `requireInvitedUser`: that gate accepts a valid token, and a valid
+    // token outlives sign-out. See sessionRevocation.test.ts for the behaviour.
+    expect(source).toContain('requireLiveSession')
+    expect(guardSource).toContain('anonymous session')
   })
 
-  it('re-checks allowlist membership on every request rather than trusting the token', () => {
-    // A token issued before someone was removed is still cryptographically
-    // valid. Membership has to be the current answer, not the minted one.
+  it('re-checks the session and the allowlist on every request', () => {
+    // A token issued before someone was removed — or before they signed out —
+    // is still cryptographically valid. Both facts have to be looked up per
+    // request, not read off the token.
+    expect(guardSource).toContain('authorize_evidence_access')
     expect(authSource).toMatch(/from\('auth_invite_allowlist'\)/)
   })
 

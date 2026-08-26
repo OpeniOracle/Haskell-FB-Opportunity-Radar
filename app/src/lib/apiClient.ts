@@ -122,7 +122,16 @@ export interface StatusResponse {
     readonly configured: boolean
     readonly private: boolean | null
   }
-  readonly auth: { readonly inviteOnlyEnforced: boolean }
+  readonly auth: {
+    readonly inviteOnlyEnforced: boolean
+    /** Migration 0018's `authorize_evidence_access` is present on the project. */
+    readonly evidenceSessionCheckInstalled: boolean
+    /** Whether THIS caller's token would be accepted by the evidence proxy. */
+    readonly evidenceAccessAuthorized: boolean
+    readonly jwtVerification: 'asymmetric' | 'hs256' | 'delegated' | null
+    /** Ordinary reads keep Supabase's documented token lifetime. Unchanged. */
+    readonly dashboardTokenLifetime: string
+  }
   readonly sec: { readonly contactConfirmed: boolean }
 }
 

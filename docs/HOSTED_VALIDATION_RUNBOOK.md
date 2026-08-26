@@ -155,27 +155,99 @@ picks up the new build-scope variable.
 
 ## D–E. Everything else, in one script
 
-`scripts/hosted-validation.sh` runs every remaining hosted check in a single
-pass: `/api/status` authenticated and unauthenticated, the evidence-proxy canary
-(upload, retrieve, headers, path-leak scan), direct-Storage refusal from three
-angles, self-registration refusal, session revocation, and canary object cleanup.
+Two scripts, doing the same checks under the same names. **PowerShell is the
+primary procedure**; the Bash one is the equivalent for a Linux or macOS
+operator.
 
-The canary DATABASE rows are pre-staged and are removed afterwards from the
-automation side, so the script only needs to handle the object and the HTTP.
+### Nothing is typed on a command line
+
+Neither script takes a credential as a parameter, an environment variable, or an
+argument, and neither writes one to disk. Both prompt with the input hidden and
+keep the values in process memory only.
+
+`export TOKEN=…` was the earlier instruction and it was wrong: an exported value
+sits in the shell's environment for every later process to read, and the command
+that set it sits in shell history — `.bash_history`, or PSReadLine's
+`ConsoleHost_history.txt`, which is a plain text file on disk. Do not do it, and
+do not paste either value into a terminal for any other reason.
+
+| Property | How |
+| --- | --- |
+| hidden while typed | `Read-Host -AsSecureString` / `read -rs` |
+| never in `ps` output | PowerShell builds headers in memory; Bash passes the whole request to `curl --config -` on stdin |
+| never in shell history | nothing confidential is ever typed as a command |
+| never on disk | no temporary files; the scripts write nothing but console output |
+| redacted from errors | both filter output through a redactor; Bash uses parameter expansion rather than `sed`, because a `sed` script is itself an argv |
+| cleared on exit | PowerShell `finally` + `PowerShell.Exiting`; Bash `trap … EXIT INT TERM HUP` |
+| refuses to be watched | both abort under verbose/trace; PowerShell also refuses a running transcript, a breakpoint, and `-Debug` |
+
+### The scripts refuse to run against the wrong tree
+
+Before prompting for anything, both check that `origin` is
+`OpeniOracle/Haskell-FB-Opportunity-Radar`, that the working tree is clean, that
+the branch is `claude/production-foundation` — **the head branch of PR #9** — and
+that `HEAD` equals `origin/claude/production-foundation` after a fresh fetch.
+Validating a tree that differs from the pull request proves nothing about the
+pull request.
+
+### The canary is created and removed by the run
+
+Each run creates its own collection run, two evidence rows and one Storage
+object, with identifiers unique to that run, and removes all of them in a
+`finally` block — on success, on failure, and on Ctrl-C. Nothing is left staged
+in the hosted database waiting for a human to come back.
+
+### Windows — the primary procedure
+
+```powershell
+cd C:\path\to\Haskell-FB-Opportunity-Radar
+git switch claude/production-foundation
+git pull
+pwsh -File .\scripts\Invoke-HostedValidation.ps1
+```
+
+Windows PowerShell 5.1 works too:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Invoke-HostedValidation.ps1
+```
+
+It will ask for two values, each hidden as you type:
+
+1. **Administrator access token.** In the browser console on the deploy preview,
+   signed in as the administrator:
+
+   ```js
+   JSON.parse(localStorage.getItem(Object.keys(localStorage)
+     .find(k => k.startsWith('sb-') && k.endsWith('-auth-token')))).access_token
+   ```
+
+2. **Supabase secret key** (`sb_secret_…`), from Project Settings → API keys.
+
+### Linux / macOS
 
 ```bash
-# In the browser console on the deploy preview, signed in as the administrator:
-#   JSON.parse(localStorage.getItem(Object.keys(localStorage)
-#     .find(k => k.startsWith('sb-') && k.endsWith('-auth-token')))).access_token
-
-export TOKEN='<the access token>'
-export SECRET='<the sb_secret_… key>'
+cd /path/to/Haskell-FB-Opportunity-Radar
+git switch claude/production-foundation && git pull
 bash scripts/hosted-validation.sh
 ```
 
-The script never prints either value and never writes them to a file. It signs
-the session out at the end deliberately — that is the revocation check — so sign
-back in afterwards.
+### What it runs
+
+`/api/status` authenticated and unauthenticated; the evidence-proxy canary
+(create, retrieve, byte comparison, header assertions, path- and signed-URL leak
+scan); the ADR 0014 reference-only `409`; direct-Storage refusal from seven
+angles with one positive control; self-registration refusal; **sign-out
+revocation**; and canary cleanup with proof.
+
+The revocation check is check 8 and it runs last, because it ends the session.
+Sign back in afterwards.
+
+It also prints one INFORMATIONAL line: what `/api/status` answered *after*
+sign-out. That is not a pass or a fail. `/api/status` does not perform the
+session-table check, so an already issued token may still work there until it
+expires — Supabase's documented behaviour. Immediate revocation is a property of
+`/api/evidence`, which checks `auth.sessions` on every request. See ADR 0015.
 
 Paste the whole output into PR #9.
 

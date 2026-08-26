@@ -87,6 +87,7 @@ application can reach nothing but its own functions.
 | Variable | Default | Value |
 | --- | --- | --- |
 | `SUPABASE_DB_URL` | — | Session-pooler connection string. Only for `db/migrate.mjs` and `db/seed.mjs`; no function uses it. |
+| `SUPABASE_JWT_SECRET` | — | **Normally absent.** Only needed by a project still signing access tokens with HS256 that publishes no JWKS — see *JWT verification* below. |
 | `SUPABASE_EVIDENCE_BUCKET` | `evidence-raw` | Private Storage bucket for preserved evidence |
 | `EGRESS_ALLOWLIST` | *(empty — denies everything)* | Comma-separated hostnames the egress gateway may reach |
 | `MODEL_PROVIDER` | `anthropic` | `anthropic` \| `bedrock` \| `vertex` |
@@ -180,10 +181,16 @@ configured — by **name**, never by value:
   "radarEnv": "preview",
   "caller":  { "userId": "…", "invited": true },
   "database": { "reachable": true, "organizationsVisible": 15 },
-  "schema":   { "version": "0017" },
+  "schema":   { "version": "0018" },
   "storage":  { "bucket": "evidence-raw", "configured": true, "private": true },
   "model":    { "configured": false, "describe": "unavailable" },
-  "auth":     { "inviteOnlyEnforced": true },
+  "auth":     {
+    "inviteOnlyEnforced": true,
+    "evidenceSessionCheckInstalled": true,
+    "evidenceAccessAuthorized": true,
+    "jwtVerification": "asymmetric",
+    "dashboardTokenLifetime": "supabase_default_until_exp"
+  },
   "sec":      { "contactConfirmed": true },
   "requiredServerVariables": ["SUPABASE_URL", "..."],
   "egressAllowlistSize": 5
@@ -199,6 +206,30 @@ refuses rather than inventing an answer.
 The endpoint reads **as the calling user**, not as the service role. That is
 deliberate — a status check querying with the service role would report success
 even with every RLS policy missing, which is the failure it exists to catch.
+
+### JWT verification, and what `dashboardTokenLifetime` is telling you
+
+`jwtVerification` names how the evidence proxy verified the caller's token:
+
+| Mode | Meaning |
+| --- | --- |
+| `asymmetric` | The project uses JWT signing keys. The public half came from `/auth/v1/.well-known/jwks.json` and verification happened locally. **This is the mode to be in** — there is no secret to hold. |
+| `hs256` | The project still uses the legacy shared JWT secret, and `SUPABASE_JWT_SECRET` is set. Verified locally. |
+| `delegated` | Neither was available, so GoTrue verified the signature via `/auth/v1/user`. Still cryptographic verification; performed by the issuer rather than by us. |
+
+`evidenceSessionCheckInstalled` is probed, not asserted: `/api/status` calls
+`authorize_evidence_access` with an id pair that cannot exist and reports whether
+the function answered. A project that never received migration 0018 shows
+`false` rather than quietly serving evidence without the check.
+
+`dashboardTokenLifetime` is there to stop a true statement about one endpoint
+being read as a claim about the whole project.
+
+**A Supabase access token stays valid until its `exp`, even after sign-out.**
+`/api/evidence` is the exception, and only because it additionally checks
+`auth.sessions` on every request — so a signed-out token is refused there on the
+caller's next request. Every other authenticated read on this project keeps the
+platform's documented behaviour. See ADR 0015.
 
 ---
 

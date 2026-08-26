@@ -42,6 +42,15 @@ export interface ServerEnv {
    */
   readonly supabasePublishableKey: string
   readonly supabaseSecretKey: string
+  /**
+   * The legacy shared JWT secret, OPTIONAL and normally absent.
+   *
+   * Only needed when the project still signs access tokens with HS256 and
+   * publishes no JWKS. With asymmetric JWT signing keys the public half is
+   * fetched from `/auth/v1/.well-known/jwks.json` and there is no secret to
+   * hold at all, which is the posture to be in. See `_shared/jwt.ts`.
+   */
+  readonly supabaseJwtSecret: string | undefined
   readonly evidenceBucket: string
   readonly egressAllowlist: readonly string[]
   readonly secEdgarUserAgent: string
@@ -218,6 +227,7 @@ export function serverEnv(): ServerEnv {
     supabaseUrl: v.SUPABASE_URL!,
     supabasePublishableKey: v.SUPABASE_PUBLISHABLE_KEY!,
     supabaseSecretKey: v.SUPABASE_SECRET_KEY!,
+    supabaseJwtSecret: read('SUPABASE_JWT_SECRET'),
     evidenceBucket: read('SUPABASE_EVIDENCE_BUCKET') ?? 'evidence-raw',
     egressAllowlist: (read('EGRESS_ALLOWLIST') ?? '')
       .split(',')
@@ -303,6 +313,7 @@ export const REQUIRED_SERVER_VARS = [
 
 export const OPTIONAL_SERVER_VARS = [
   'SUPABASE_DB_URL',
+  'SUPABASE_JWT_SECRET',
   'SUPABASE_EVIDENCE_BUCKET',
   'EGRESS_ALLOWLIST',
   'SEC_CONTACT_CONFIRMED',
@@ -320,4 +331,5 @@ export const FORBIDDEN_VARS = [
   'VITE_SUPABASE_ANON_KEY',
   'VITE_SUPABASE_SECRET_KEY',
   'VITE_SUPABASE_SERVICE_ROLE_KEY',
+  'VITE_SUPABASE_JWT_SECRET',
 ] as const

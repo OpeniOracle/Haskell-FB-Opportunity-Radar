@@ -15,11 +15,22 @@
  *     object outlives the credential that fetched it.
  *
  * This endpoint replaces the URL-as-credential with a per-request authorisation
- * decision. Every fetch re-verifies the session against Supabase and re-checks
- * the invitation allowlist, so removing someone takes effect on their next
- * request rather than on their last URL's expiry. The response is marked
- * `private, no-store` so no shared cache may retain it, and the storage path
- * never leaves the server — the client only ever knows an evidence id.
+ * decision. Every fetch verifies the token's signature, refuses it at `exp` with
+ * no grace, and then asks the database whether the SESSION named in the token
+ * still exists and still belongs to that user — see `_shared/sessionGuard.ts`.
+ * Signing out deletes that session row, so a signed-out access token stops
+ * working here on the caller's very next request even though it remains
+ * cryptographically valid. Allowlist membership is re-checked in the same call,
+ * so removing someone takes effect immediately rather than at token expiry.
+ *
+ * THAT IMMEDIACY IS THIS ENDPOINT'S PROPERTY, not the platform's. Ordinary
+ * dashboard reads keep Supabase's documented behaviour, in which an already
+ * issued access token stays usable until it expires. Nothing here changes that,
+ * and nothing elsewhere should be described as if it did.
+ *
+ * The response is marked `private, no-store` so no shared cache may retain it,
+ * and the storage path never leaves the server — the client only ever knows an
+ * evidence id.
  *
  * WHAT IS NOT LOGGED. No token, no key, no storage path, no object bytes, no
  * signed URL. The log line carries an evidence id and an outcome, which is what
@@ -27,8 +38,12 @@
  * leak.
  */
 import type { Handler, HandlerEvent } from '@netlify/functions'
-import { UnauthorizedError, requireInvitedUser } from './_shared/auth.js'
 import { MissingEnvError, serverEnv } from './_shared/env.js'
+import {
+  SessionRevokedError,
+  productionGuardDeps,
+  requireLiveSession,
+} from './_shared/sessionGuard.js'
 import { supabaseAdmin, supabaseAsUser } from './_shared/supabaseAdmin.js'
 import { failure, methodNotAllowed } from './_shared/http.js'
 
@@ -77,16 +92,21 @@ export const handler: Handler = async (event) => {
   }
 
   const authorization = event.headers.authorization ?? event.headers.Authorization
+  const token = /^Bearer\s+(.+)$/i.exec((authorization ?? '').trim())?.[1] ?? ''
 
-  // Signed in, still invited, not anonymous. All three, on every request.
+  // Verified signature, unexpired, LIVE session, still allowlisted, not
+  // anonymous. All of it, on every request.
   let caller
   try {
-    caller = await requireInvitedUser({ authorization })
+    caller = await requireLiveSession(token, productionGuardDeps())
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
+    if (error instanceof SessionRevokedError) {
       // One message for every authentication failure. Distinguishing "no
       // session" from "not invited" from "revoked" tells an unauthenticated
-      // caller which half of the guess was right.
+      // caller which half of the guess was right. The reason is logged, and
+      // the reasons are deliberately coarse — they never name a user or a
+      // session id.
+      console.log(`[evidence] deny reason=${error.reason}`)
       return deny(401, 'unauthorized', 'Authentication required.')
     }
     throw error
@@ -96,8 +116,6 @@ export const handler: Handler = async (event) => {
   if (!evidenceId) {
     return deny(404, 'not_found', 'No such evidence record.')
   }
-
-  const token = /^Bearer\s+(.+)$/i.exec((authorization ?? '').trim())?.[1] ?? ''
 
   // Visibility is decided by RLS, as the caller — not by the secret key. If the
   // caller cannot see the row, the object behind it is not theirs to fetch.

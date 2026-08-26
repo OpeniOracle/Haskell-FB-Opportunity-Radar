@@ -63,3 +63,20 @@ create table if not exists auth.users (
     email               text,
     created_at          timestamptz not null default now()
 );
+
+-- `auth.sessions` exists on every Supabase project: GoTrue writes one row per
+-- signed-in session and DELETES it on sign-out. Migration 0018 reads it to give
+-- the evidence proxy immediate revocation, so the test target needs a table of
+-- the same name with the two columns that function reads.
+--
+-- Only `id` and `user_id` matter here. GoTrue's real table also carries device
+-- metadata, AAL and refresh timings; reproducing those would be pretending to
+-- test something this shim cannot test. The cascade matches GoTrue's, so
+-- deleting a user in a test removes their sessions the way it does in reality.
+create table if not exists auth.sessions (
+    id          uuid primary key default gen_random_uuid(),
+    user_id     uuid not null references auth.users (id) on delete cascade,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now(),
+    not_after   timestamptz
+);
