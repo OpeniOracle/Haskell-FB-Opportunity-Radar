@@ -12,7 +12,7 @@
     environment variable, or a command-line argument, and nothing confidential
     is ever written to disk. Both values are prompted for with the input hidden,
     held as SecureString, and materialised into a plain string only inside the
-    single function that builds a request header — inside a try/finally that
+    single function that builds a request header -- inside a try/finally that
     drops it again immediately. Console output is filtered through a redactor
     that would replace either value if it ever appeared. The script refuses to
     start under -Verbose, -Debug, an active transcript, a breakpoint or script
@@ -20,7 +20,7 @@
 
     THE CANARY. This script creates its own evidence records and its own storage
     object, with identifiers unique to the run, and removes all of them in a
-    finally block — on success, on failure, and on Ctrl-C. Nothing is left
+    finally block -- on success, on failure, and on Ctrl-C. Nothing is left
     staged in the hosted database waiting for a human.
 
 .EXAMPLE
@@ -69,7 +69,7 @@ function Write-Section([string] $Title) { Write-Host "`n== $Title" -ForegroundCo
 function Pass([string] $What) { $script:Pass++; Write-Host "  PASS  $What" -ForegroundColor Green }
 function Fail([string] $What, [string] $Why) {
     $script:Fail++
-    Write-Host "  FAIL  $What — $(Protect-Text $Why)" -ForegroundColor Red
+    Write-Host "  FAIL  $What -- $(Protect-Text $Why)" -ForegroundColor Red
 }
 function Note([string] $What) { Write-Host "  note  $What" -ForegroundColor DarkGray }
 function Check([string] $What, [bool] $Ok, [string] $Why = '') {
@@ -115,7 +115,7 @@ $script:SupportsSkipError = (Get-Command Invoke-WebRequest).Parameters.ContainsK
 
 function Invoke-Http {
     <#
-        Returns Status/Body/Headers and never throws on an HTTP error status —
+        Returns Status/Body/Headers and never throws on an HTTP error status --
         a 401 is an ANSWER here, not an exception.
 
         `Auth` and `ApiKey` name WHICH credential to use, never the credential
@@ -227,7 +227,7 @@ function Get-Json($Response) {
     try { return $Response.Body | ConvertFrom-Json } catch { return $null }
 }
 
-# The caller's own token, decoded WITHOUT verifying it — used only to read the
+# The caller's own token, decoded WITHOUT verifying it -- used only to read the
 # `exp` claim so the revocation check can prove the token had not merely expired.
 function Get-TokenExpiry {
     Use-Plain -Secure $script:TokenSecure -Body {
@@ -267,7 +267,7 @@ try {
     $script:SecretSecure = Read-SecretValue -Prompt 'Supabase secret key'
 
     # A run-unique canary. Nothing here collides with another run, and nothing
-    # here is left behind — see the finally block.
+    # here is left behind -- see the finally block.
     $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
     $canary = [pscustomobject]@{
         RunId      = [guid]::NewGuid().ToString()
@@ -318,7 +318,7 @@ try {
     Check 'an unknown evidence id is 404' ($unknown.Status -eq 404) "got $($unknown.Status)"
 
     # ---------------------------------------------------------------------
-    Write-Section '5. Evidence canary — create, retrieve, verify'
+    Write-Section '5. Evidence canary -- create, retrieve, verify'
 
     $runBody = @{
         id = $canary.SourceRun; source_id = 'sec-edgar'; status = 'success'
@@ -446,7 +446,7 @@ try {
     # Supabase's documented behaviour: an issued access token remains valid
     # until it expires. Only the evidence proxy checks the session table.
     $statusAfter = Invoke-Http -Uri "$Preview/api/status" -Auth token
-    Note "informational — /api/status after sign-out answered $($statusAfter.Status)."
+    Note "informational -- /api/status after sign-out answered $($statusAfter.Status)."
     Note 'That endpoint does NOT perform the session-table check, and this run does not'
     Note 'assert a value for it. Immediate revocation is a property of /api/evidence only.'
     $script:Info += "api/status after sign-out: $($statusAfter.Status)"
@@ -457,7 +457,7 @@ catch {
 }
 finally {
     # ---------------------------------------------------------------------
-    # 9. Cleanup — always. Success, failure, or Ctrl-C.
+    # 9. Cleanup -- always. Success, failure, or Ctrl-C.
     if ($canary -and $canary.Created.Count -gt 0) {
         Write-Section '9. Canary cleanup'
         try {
@@ -482,7 +482,7 @@ finally {
             $runsLeft = Invoke-Http -Uri "$SupabaseUrl/rest/v1/source_runs?select=id" -Auth secret -ApiKey secret
             Check 'no collection runs remain' ($runsLeft.Body.Trim() -eq '[]') "remaining: $(Protect-Text $runsLeft.Body)"
         } catch {
-            Write-Host "  FAIL  cleanup — $(Protect-Text $_.Exception.Message)" -ForegroundColor Red
+            Write-Host "  FAIL  cleanup -- $(Protect-Text $_.Exception.Message)" -ForegroundColor Red
             Write-Host "  Canary identifiers, for manual removal:" -ForegroundColor Yellow
             Write-Host "    evidence: $($canary.Archived), $($canary.Reference)"
             Write-Host "    source_run: $($canary.SourceRun)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# PR #9 hosted validation — Bash equivalent of scripts/Invoke-HostedValidation.ps1.
+# PR #9 hosted validation -- Bash equivalent of scripts/Invoke-HostedValidation.ps1.
 #
 # The PowerShell script is the primary procedure. This one exists for a
 # Linux/macOS operator and performs the SAME checks under the same names, so two
@@ -10,7 +10,7 @@
 # command-line argument, and neither is ever written to disk:
 #
 #   * both are prompted for with `read -rs`, so the characters are not echoed and
-#     never enter shell history — nothing is typed on a command line;
+#     never enter shell history -- nothing is typed on a command line;
 #   * every request that carries a credential builds its headers in a curl
 #     config read from STDIN, so the value never appears in `ps` output;
 #   * redaction is done with bash parameter expansion rather than `sed`, because
@@ -20,7 +20,7 @@
 #
 # THE CANARY. This script creates its own evidence records and its own storage
 # object with identifiers unique to the run, and removes all of them in the exit
-# trap — on success, on failure, and on Ctrl-C. Nothing is left staged in the
+# trap -- on success, on failure, and on Ctrl-C. Nothing is left staged in the
 # hosted database waiting for a human.
 #
 #   cd /path/to/Haskell-FB-Opportunity-Radar
@@ -66,11 +66,11 @@ CREATED=""
 
 sect() { printf '\n== %s\n' "$1"; }
 ok()   { PASS=$((PASS+1)); printf '  PASS  %s\n' "$1"; }
-bad()  { FAIL=$((FAIL+1)); printf '  FAIL  %s — %s\n' "$1" "$(redact "$2")"; }
+bad()  { FAIL=$((FAIL+1)); printf '  FAIL  %s -- %s\n' "$1" "$(redact "$2")"; }
 note() { printf '  note  %s\n' "$1"; }
 check() { if [ "$2" = "1" ]; then ok "$1"; else bad "$1" "${3:-}"; fi }
 
-# Redaction without argv. `sed -e "s/$TOKEN/…/"` would put the token in `ps`.
+# Redaction without argv. `sed -e "s/$TOKEN/.../"` would put the token in `ps`.
 redact() {
     local text="$1"
     [ -n "$TOKEN" ] && text="${text//$TOKEN/<TOKEN>}"
@@ -128,7 +128,7 @@ printf '  head: %s\n' "$HEAD_SHA"
 # --- HTTP, with credentials kept out of argv. ------------------------------
 #
 # Sets HTTP_STATUS, HTTP_HEADERS and HTTP_BODY. `--config -` reads the request
-# — including the Authorization and apikey headers — from stdin, so nothing
+# -- including the Authorization and apikey headers -- from stdin, so nothing
 # confidential ever reaches the process table.
 http() {
     local method="$1" url="$2" auth="$3" apikey="$4" body="${5:-}" ctype="${6:-application/json}"
@@ -310,7 +310,7 @@ http GET "$PREVIEW/api/evidence/00000000-0000-4000-8000-000000000000" token none
 check "an unknown evidence id is 404" "$([ "$HTTP_STATUS" = 404 ] && echo 1 || echo 0)" "got $HTTP_STATUS"
 
 # ---------------------------------------------------------------------------
-sect "5. Evidence canary — create, retrieve, verify"
+sect "5. Evidence canary -- create, retrieve, verify"
 http POST "$SUPABASE_URL/rest/v1/source_runs" secret secret \
     "{\"id\":\"$CANARY_RUN\",\"source_id\":\"sec-edgar\",\"status\":\"success\",\"run_status\":\"success\",\"items_seen\":1,\"items_stored\":1}"
 check "canary collection run created" "$(case $HTTP_STATUS in 200|201|204) echo 1;; *) echo 0;; esac)" "got $HTTP_STATUS $HTTP_BODY"
@@ -411,7 +411,7 @@ note "the token still had ${LEFT}s before its own exp"
 # documented behaviour: an issued access token remains valid until it expires.
 # Only the evidence proxy checks the session table.
 http GET "$PREVIEW/api/status" token none
-note "informational — /api/status after sign-out answered $HTTP_STATUS."
+note "informational -- /api/status after sign-out answered $HTTP_STATUS."
 note "That endpoint does NOT perform the session-table check, and this run does not"
 note "assert a value for it. Immediate revocation is a property of /api/evidence only."
 

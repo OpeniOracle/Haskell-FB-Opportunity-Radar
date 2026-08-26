@@ -349,12 +349,256 @@ jobs:
             fi
           done
 
+      # Windows PowerShell 5.1 reads a BOM-less .ps1/.psm1 as Windows-1252, so a
+      # single em dash ends a string the parser never sees closed and the whole
+      # file stops parsing. Checked here as well as on the Windows runner
+      # because it is cheap, runs on every push, and names the offending byte.
+      - name: Operator scripts are ASCII only
+        run: |
+          bad=0
+          for f in scripts/*.ps1 scripts/*.psm1 scripts/*.sh; do
+            if LC_ALL=C grep -nP '[\x80-\xFF]' "$f"; then
+              echo "$f contains a byte above 0x7F; Windows PowerShell 5.1 would misread it."
+              bad=1
+            fi
+          done
+          test "$bad" -eq 0
+          # A BOM would also make 5.1 read UTF-8, but ASCII needs none and a BOM
+          # is one stripped byte away from being useless.
+          for f in scripts/*.ps1 scripts/*.psm1; do
+            head -c 3 "$f" | LC_ALL=C grep -q $'\xef\xbb\xbf' && { echo "$f has a BOM"; exit 1; }
+          done
+          echo "all operator scripts are pure ASCII"
+
       - name: Netlify configuration is present and points at the app
         run: |
           grep -q 'base = "app"' netlify.toml
           grep -q 'publish = "dist"' netlify.toml
           grep -q 'status = 200' netlify.toml
           test -f app/public/_redirects
+
+  windows-operator-scripts:
+    name: Operator scripts (Windows PowerShell 5.1)
+    runs-on: windows-latest
+
+    # WHY THIS JOB EXISTS.
+    #
+    # The operator runs these on Windows, and Windows PowerShell 5.1 reads a
+    # BOM-less .ps1 or .psm1 as Windows-1252, NOT UTF-8. An em dash is E2 80 94
+    # in UTF-8, which cp1252 decodes as three characters ending in a curly
+    # double quote -- and that quote opens a string the parser never sees
+    # closed. The result is `a-euro-quote` on screen followed by
+    # unexpected-token, unterminated-string and missing-brace errors dozens of
+    # lines from the actual character.
+    #
+    # Parsing with PowerShell 7 on Linux CANNOT catch this: 7 assumes UTF-8, so
+    # the file parses perfectly there and fails on the operator's machine. The
+    # claim "works on Windows PowerShell 5.1" is only true if 5.1 says so, which
+    # is what this job is for.
+    #
+    # `shell: powershell` is Windows PowerShell 5.1. `shell: pwsh` would be
+    # PowerShell 7 and would defeat the point.
+
+    steps:
+      # LF in the working tree. Git for Windows would otherwise rewrite line
+      # endings on checkout, which shows up as a dirty tree and would make the
+      # refusal tests below pass or fail for the wrong reason.
+      - name: Keep line endings as committed
+        shell: bash
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        with:
+          # A named branch, not a detached merge commit: the scripts check the
+          # branch and compare HEAD against the freshly fetched remote head, so
+          # they need a real one to check.
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Report the interpreter, so the evidence names itself
+        shell: powershell
+        run: |
+          $PSVersionTable | Format-List | Out-String | Write-Host
+          if ($PSVersionTable.PSEdition -ne 'Desktop') {
+            Write-Host "This job must run on Windows PowerShell (Desktop edition), not PowerShell 7."
+            exit 1
+          }
+          if ($PSVersionTable.PSVersion.Major -ne 5) {
+            Write-Host "Expected PowerShell 5.x, got $($PSVersionTable.PSVersion)."
+            exit 1
+          }
+
+      - name: Every operator PowerShell file parses under 5.1
+        shell: powershell
+        run: |
+          $files = @(
+            'scripts\OperatorGuards.psm1',
+            'scripts\Send-BootstrapInvitation.ps1',
+            'scripts\Invoke-HostedValidation.ps1'
+          )
+          $failed = 0
+          foreach ($file in $files) {
+            $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file), [ref] $null, [ref] $errors)
+            if ($errors) {
+              $failed++
+              Write-Host "FAIL  $file"
+              foreach ($e in $errors) {
+                Write-Host ("        line {0}: {1}" -f $e.Extent.StartLineNumber, $e.Message)
+              }
+            } else {
+              Write-Host "ok    $file"
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
+
+      - name: The module actually imports, and exports what the scripts call
+        shell: powershell
+        run: |
+          Import-Module .\scripts\OperatorGuards.psm1 -Force
+          $expected = 'Assert-NoObservation','Assert-CorrectCheckout',
+                      'Invoke-OperatorGit','Read-SecretValue','Use-Plain'
+          foreach ($name in $expected) {
+            if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
+              Write-Host "FAIL  $name is not exported"
+              exit 1
+            }
+            Write-Host "ok    $name"
+          }
+
+      - name: Operator PowerShell sources are ASCII only
+        shell: powershell
+        run: |
+          $failed = 0
+          foreach ($file in Get-ChildItem scripts -Include *.ps1,*.psm1 -Recurse) {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            $bad = @($bytes | Where-Object { $_ -gt 127 })
+            if ($bad.Count -gt 0) {
+              $failed++
+              Write-Host "FAIL  $($file.Name) has $($bad.Count) byte(s) above 0x7F"
+            } else {
+              Write-Host "ok    $($file.Name) ($($bytes.Length) bytes, all ASCII)"
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
+
+      # The guards, exercised as refusals rather than asserted from source. Each
+      # case must abort with its OWN message: a script that refused everything
+      # for one reason would pass a weaker version of this test.
+      - name: Refusal - a repository that is not this one
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\Send-BootstrapInvitation.ps1 -Repository 'someone/else' 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'must not run against another repository') {
+            Write-Host 'FAIL: wrong-repository refusal did not fire'; exit 1
+          }
+          if ($out -match 'email address to invite') {
+            Write-Host 'FAIL: it prompted before refusing'; exit 1
+          }
+
+      - name: Refusal - the wrong branch
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\Send-BootstrapInvitation.ps1 -Branch 'not-the-pr-branch' 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch "expected 'not-the-pr-branch'") {
+            Write-Host 'FAIL: wrong-branch refusal did not fire'; exit 1
+          }
+
+      - name: Refusal - a dirty working tree
+        shell: powershell
+        run: |
+          Set-Content -Path .\ci-dirty-tree-probe.txt -Value 'untracked' -Encoding Ascii
+          try {
+            $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+              -File .\scripts\Send-BootstrapInvitation.ps1 2>&1 | Out-String
+          } finally {
+            Remove-Item .\ci-dirty-tree-probe.txt -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host $out
+          if ($out -notmatch 'working tree is not clean') {
+            Write-Host 'FAIL: dirty-tree refusal did not fire'; exit 1
+          }
+
+      - name: Refusal - verbose output, before anything else
+        shell: powershell
+        run: |
+          # Verbose is refused by Assert-NoObservation, which runs BEFORE the
+          # repository guard -- so this must abort without a single PASS line.
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -Command `
+            "`$VerbosePreference='Continue'; & .\scripts\Send-BootstrapInvitation.ps1" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'Refusing to run with verbose output enabled') {
+            Write-Host 'FAIL: verbose refusal did not fire'; exit 1
+          }
+          if ($out -match 'PASS  origin is') {
+            Write-Host 'FAIL: it reached the repository guard before refusing'; exit 1
+          }
+
+      - name: Refusal - debug output
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -Command `
+            "`$DebugPreference='Continue'; & .\scripts\Send-BootstrapInvitation.ps1" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'Refusing to run with debug output enabled') {
+            Write-Host 'FAIL: debug refusal did not fire'; exit 1
+          }
+
+      - name: Refusal - script tracing
+        shell: powershell
+        run: |
+          # Set-PSDebug -Trace expands and prints every line as it runs, headers
+          # included. The guard cannot read the trace level, so it switches
+          # tracing off before anything sensitive happens; this proves the
+          # script still completes its refusal rather than dying under a trace.
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -Command `
+            "Set-PSDebug -Trace 2; & .\scripts\Send-BootstrapInvitation.ps1 -Repository 'someone/else'" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'must not run against another repository') {
+            Write-Host 'FAIL: the script did not survive tracing to reach its refusal'; exit 1
+          }
+
+      - name: Refusal - the reserved SEC mailbox
+        shell: powershell
+        run: |
+          # This one runs the FULL repository guard first, so it also proves the
+          # guards pass on a correct checkout. The address is refused before the
+          # secret is requested, so nothing is sent and no key is involved.
+          # The branch is read from the checkout rather than assumed, so this
+          # step is about the ADDRESS. The wrong-branch refusal has its own step
+          # above; here the repository guard is expected to pass.
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          # `cmd /c` to feed stdin: PowerShell has no input-redirection operator,
+          # and this is the reliable way to give powershell.exe a line to read.
+          $out = cmd /c "echo oracles@openi-analytics.com | powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Send-BootstrapInvitation.ps1 -Branch $branch 2>&1" | Out-String
+          Write-Host $out
+          if ($out -notmatch 'PASS  working tree is clean') {
+            Write-Host 'FAIL: the repository guard did not pass on a correct checkout'; exit 1
+          }
+          if ($out -notmatch 'reserved for SEC') {
+            Write-Host 'FAIL: reserved-address refusal did not fire'; exit 1
+          }
+          if ($out -match 'Supabase secret key') {
+            Write-Host 'FAIL: it asked for the key before refusing the address'; exit 1
+          }
+          if ($out -notmatch 'No invitation was sent') {
+            Write-Host 'FAIL: it did not report that nothing was sent'; exit 1
+          }
+
+      - name: The hosted validator refuses on the same guards
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\Invoke-HostedValidation.ps1 -Repository 'someone/else' 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'must not run against another repository') {
+            Write-Host 'FAIL: the validator did not refuse'; exit 1
+          }
 
   database:
     name: Migration checks (PostgreSQL ${{ matrix.pg }})

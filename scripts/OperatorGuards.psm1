@@ -6,7 +6,7 @@
     Both `Invoke-HostedValidation.ps1` and `Send-BootstrapInvitation.ps1` handle
     the Supabase secret key and both act against a specific commit of a specific
     repository. The checks that make either of those safe are identical, so they
-    live here once rather than being copied and drifting apart — a guard that
+    live here once rather than being copied and drifting apart -- a guard that
     exists in two places is a guard that will eventually be strengthened in one.
 
     Nothing in this module prints, stores, or returns a secret. `Use-Plain`
@@ -53,7 +53,7 @@ function Assert-NoObservation {
     Set-PSDebug -Off
 
     # Stop-Transcript throws when none is running, which is how one is detected.
-    # If one WAS running it is now stopped, and we still refuse — the operator
+    # If one WAS running it is now stopped, and we still refuse -- the operator
     # should start a clean session rather than trust a partially captured one.
     $transcribing = $false
     try { Stop-Transcript | Out-Null; $transcribing = $true } catch { $transcribing = $false }
@@ -117,7 +117,7 @@ function Assert-CorrectCheckout {
     $head = (Invoke-OperatorGit rev-parse HEAD).Text
     $remoteHead = (Invoke-OperatorGit rev-parse FETCH_HEAD).Text
     if ($head -ne $remoteHead) {
-        throw "HEAD is $head but origin/$Branch is $remoteHead. Pull, then run again — the pull request is the remote branch."
+        throw "HEAD is $head but origin/$Branch is $remoteHead. Pull, then run again -- the pull request is the remote branch."
     }
     & $Report "  PASS  HEAD matches origin/$Branch"
 
@@ -151,8 +151,8 @@ function Use-Plain {
         Materialise a SecureString for exactly as long as the caller needs it.
 
         The BSTR is zeroed on the way out. The .NET String handed to the
-        scriptblock cannot be zeroed — strings are immutable and the runtime
-        owns the copy — which is a limitation of the platform, not a choice made
+        scriptblock cannot be zeroed -- strings are immutable and the runtime
+        owns the copy -- which is a limitation of the platform, not a choice made
         here. Keeping its lifetime to a single call is the mitigation.
     #>
     [CmdletBinding()]

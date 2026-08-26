@@ -278,7 +278,7 @@ describe('hosted validation scripts — the two runs are comparable', () => {
     // Asserting a value there would be asserting a platform behaviour this
     // project does not control and does not change. See ADR 0015.
     for (const [name, text] of scripts) {
-      expect(text, name).toMatch(/informational — \/api\/status after sign-out/)
+      expect(text, name).toMatch(/informational (--|\u2014) \/api\/status after sign-out/)
       expect(text, name).toMatch(/property of \/api\/evidence only/)
     }
   })
@@ -498,6 +498,87 @@ describe('the runbook stops recommending the dashboard invite button', () => {
       expect(paragraph, `unqualified mention: "${paragraph.trim().slice(0, 90)}…"`).toMatch(
         /Do not use|never used|Site URL|template|TEMPLATES|instead|see step 2/i,
       )
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+describe('the operator scripts are readable by Windows PowerShell 5.1', () => {
+  /**
+   * WHY THIS TEST EXISTS.
+   *
+   * Windows PowerShell 5.1 reads a `.ps1` or `.psm1` file WITHOUT a byte-order
+   * mark as **Windows-1252**, not UTF-8. An em dash (U+2014) is `E2 80 94` in
+   * UTF-8, which cp1252 decodes as `a-circumflex, euro, right-double-quote` —
+   * and that final quote character opens a string the parser never sees closed.
+   * The reported symptom was `â€"` on screen followed by unexpected-token,
+   * unterminated-string and missing-brace errors dozens of lines later, nowhere
+   * near the actual character.
+   *
+   * A BOM would also fix it. ASCII is better: an ASCII file is byte-identical
+   * whether the reader assumes UTF-8, Windows-1252, or anything else in that
+   * family, so it cannot be broken by a tool that strips a BOM, by a copy
+   * through a text field, or by an editor saving in the local code page.
+   *
+   * `.psm1` matters as much as `.ps1`: the module is imported by both scripts,
+   * so a single non-ASCII character in it takes down every operator procedure
+   * on the project — which is exactly what happened.
+   */
+  const OPERATOR_SOURCES: [string, string][] = [
+    ['scripts/OperatorGuards.psm1', guards],
+    ['scripts/Send-BootstrapInvitation.ps1', invite],
+    ['scripts/Invoke-HostedValidation.ps1', ps],
+    ['scripts/hosted-validation.sh', sh],
+  ]
+
+  it.each(OPERATOR_SOURCES)('%s contains no non-ASCII character', (name, text) => {
+    const offenders: string[] = []
+    const lines = text.split('\n')
+    lines.forEach((line, index) => {
+      for (const character of line) {
+        const code = character.codePointAt(0) ?? 0
+        if (code > 127) {
+          offenders.push(
+            `${name}:${index + 1} U+${code.toString(16).toUpperCase().padStart(4, '0')} ${JSON.stringify(character)}`,
+          )
+        }
+      }
+    })
+    expect(
+      offenders,
+      `Windows PowerShell 5.1 decodes these as Windows-1252 and the file stops parsing.\n${offenders.join('\n')}`,
+    ).toEqual([])
+  })
+
+  it.each(OPERATOR_SOURCES)('%s survives a round trip through Windows-1252', (name, text) => {
+    // The decisive property, stated directly rather than inferred from the
+    // character scan: the bytes mean the same thing under either decoder.
+    const utf8 = Buffer.from(text, 'utf8')
+    const asLatin = utf8.toString('latin1')
+    expect(asLatin, `${name} changes meaning when read as Windows-1252`).toBe(text)
+  })
+
+  it('names the punctuation that caused this, so it cannot come back quietly', () => {
+    for (const [name, text] of OPERATOR_SOURCES) {
+      for (const [label, character] of [
+        ['em dash', '\u2014'],
+        ['en dash', '\u2013'],
+        ['curly left quote', '\u201C'],
+        ['curly right quote', '\u201D'],
+        ['curly apostrophe', '\u2019'],
+        ['ellipsis', '\u2026'],
+        ['section sign', '\u00A7'],
+        ['non-breaking space', '\u00A0'],
+      ] as const) {
+        expect(text.includes(character), `${name} contains a ${label}`).toBe(false)
+      }
+    }
+  })
+
+  it('adds no byte-order mark, because ASCII does not need one', () => {
+    for (const [name, text] of OPERATOR_SOURCES) {
+      expect(text.charCodeAt(0), `${name} starts with a BOM`).not.toBe(0xfeff)
     }
   })
 })

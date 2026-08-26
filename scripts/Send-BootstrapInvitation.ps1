@@ -7,7 +7,7 @@
 
     Supabase's *Invite user* action in the dashboard offers no way to name a
     redirect. It always sends the invitation to the project's **Site URL**,
-    which is the production origin — and PR #9 is unmerged, so production does
+    which is the production origin -- and PR #9 is unmerged, so production does
     not yet contain `/auth/callback` or any of the other authentication routes.
     An invitation sent that way lands on an application that cannot read it,
     which is exactly the failure this milestone was opened to fix.
@@ -15,9 +15,9 @@
     So the invitation is sent server-side, through the Auth Admin endpoint, with
     the preview callback named explicitly and checked before it is used.
 
-    SECRET HANDLING. The `sb_secret_…` key is prompted for with the input
+    SECRET HANDLING. The `sb_secret_...` key is prompted for with the input
     hidden, held as a SecureString, and materialised into a plain string only
-    inside `Use-Plain` — for the duration of one request, inside a try/finally
+    inside `Use-Plain` -- for the duration of one request, inside a try/finally
     that drops it again. It is never a parameter, never an environment variable,
     never written to disk, and never printed. The script refuses to start under
     a transcript, verbose or debug output, script tracing, or a debugger,
@@ -55,7 +55,7 @@ $SupabaseUrl = 'https://dutmdlbangsthclgtkhy.supabase.co'
 
     A constant, not a parameter. The whole purpose of the script is that the
     invitation reaches the PREVIEW, and a redirect that can be overridden on the
-    command line is a redirect that will eventually be overridden by accident —
+    command line is a redirect that will eventually be overridden by accident --
     back to the production Site URL, which is the bug being fixed. It must also
     be byte-identical to an entry in Supabase's Redirect URL allowlist, because
     Supabase silently falls back to the Site URL for a value that is not on it.
@@ -64,7 +64,7 @@ $RedirectTo = 'https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.ap
 
 <#
     Reserved for SEC operational notices. Migration 0017 refuses to allowlist it
-    and 0016 then refuses to create the account, so this would fail anyway — but
+    and 0016 then refuses to create the account, so this would fail anyway -- but
     it fails here, before a secret has been typed, with an explanation.
 #>
 $ReservedAddress = 'oracles@openi-analytics.com'
@@ -103,7 +103,7 @@ function Invoke-Supabase {
         One request, with the secret key as both `apikey` and bearer token,
         built inside Use-Plain so it never reaches the process table.
 
-        Returns Status and Body. THE CALLER MUST NOT PRINT THE BODY — every
+        Returns Status and Body. THE CALLER MUST NOT PRINT THE BODY -- every
         response here carries user records.
     #>
     param(
@@ -189,7 +189,7 @@ try {
     # Shape check without ever printing the value.
     $shapeOk = Use-Plain -Secure $script:SecretSecure -Body { param($k) $k.StartsWith('sb_secret_') }
     if (-not $shapeOk) {
-        throw 'That is not an sb_secret_… key. This project does not use the legacy service_role JWT; see docs/ENVIRONMENT.md.'
+        throw 'That is not an sb_secret_... key. This project does not use the legacy service_role JWT; see docs/ENVIRONMENT.md.'
     }
     Pass 'key has the expected shape'
 
@@ -224,7 +224,7 @@ values (lower(trim('$email')), '$email', '$email', 'Bootstrap Openi administrato
     #     by contrast, is exactly the thing worth resending.
     $users = Invoke-Supabase -Path '/auth/v1/admin/users?page=1&per_page=200'
     if ($users.Status -ne 200) {
-        throw "Could not list existing accounts (HTTP $($users.Status)). The secret key must be an sb_secret_… key with admin rights."
+        throw "Could not list existing accounts (HTTP $($users.Status)). The secret key must be an sb_secret_... key with admin rights."
     }
     $existing = $null
     try {
@@ -281,11 +281,11 @@ If the password is the problem, use Forgot password on the sign-in page instead.
         # Supabase's error text can quote the request. Redacted, and truncated,
         # so a long body cannot smuggle something past a skim.
         $reason = Protect-Text $invite.Body
-        if ($reason.Length -gt 300) { $reason = $reason.Substring(0, 300) + '…' }
+        if ($reason.Length -gt 300) { $reason = $reason.Substring(0, 300) + '...' }
         Fail "Supabase refused the invitation (HTTP $($invite.Status))."
         if ($invite.Status -eq 422 -or $invite.Status -eq 400) {
             Note 'A 400/422 here usually means the redirect is not on the Redirect URL allowlist,'
-            Note 'or the address is already registered. Check § A of the runbook.'
+            Note 'or the address is already registered. Check section A of the runbook.'
         }
         Note "detail: $reason"
     }
@@ -301,13 +301,13 @@ finally {
         Write-Host 'Invitation sent. Nothing about it was printed, by design.' -ForegroundColor Green
         Write-Host ''
         Write-Host 'What must happen when you open the emailed link:'
-        Write-Host '  1. /auth/callback — briefly, "Checking your session…"'
-        Write-Host '  2. /auth/set-password — "Choose a password", addressed to you'
-        Write-Host '  3. / — the Daily Pulse, with your address and a Sign out control'
+        Write-Host '  1. /auth/callback -- briefly, "Checking your session..."'
+        Write-Host '  2. /auth/set-password -- "Choose a password", addressed to you'
+        Write-Host '  3. / -- the Daily Pulse, with your address and a Sign out control'
         Write-Host ''
         Write-Host 'The address bar must carry NO token by step 2, and Back must not reach one.'
         Write-Host 'If you land on the production origin instead, the Invite user email template'
-        Write-Host 'is overriding the redirect — see docs/HOSTED_VALIDATION_RUNBOOK.md § A.'
+        Write-Host 'is overriding the redirect -- see docs/HOSTED_VALIDATION_RUNBOOK.md section A.'
     } else {
         Write-Host 'No invitation was sent.' -ForegroundColor Yellow
     }
