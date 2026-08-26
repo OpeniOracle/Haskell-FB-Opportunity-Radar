@@ -792,6 +792,95 @@ set local role authenticated;
 select count(*) from auth_invite_allowlist;`,
   },
 
+  // ---- Reserved service addresses (0017). --------------------------------
+  {
+    group: 'reserved-addresses',
+    name: 'the reserved-address table ships EMPTY',
+    expect: 'ok',
+    sql: `
+do $$
+declare n int;
+begin
+    select count(*) into n from reserved_service_addresses;
+    if n <> 0 then
+        raise exception 'reserved_service_addresses must ship empty, found %', n;
+    end if;
+end
+$$;`,
+  },
+  {
+    // A shared role mailbox has readers who change without anyone revoking
+    // anything, and every action it takes is attributed to a mailbox rather
+    // than a person.
+    group: 'reserved-addresses',
+    name: 'a reserved service mailbox cannot be allowlisted',
+    expect: 'reserved service address',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('ops@example.invalid', 'ops@example.invalid', 'tester');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'a reserved mailbox cannot be allowlisted under different casing',
+    expect: 'reserved service address',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values (lower('OPS@Example.invalid'), 'OPS@Example.invalid', 'tester');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'an existing allowlist row cannot be UPDATED onto a reserved address',
+    expect: 'reserved service address',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('person@example.invalid', 'person@example.invalid', 'tester');
+
+update auth_invite_allowlist
+   set email_normalized = 'ops@example.invalid',
+       email_as_entered = 'ops@example.invalid'
+ where email_normalized = 'person@example.invalid';`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'a reserved mailbox therefore cannot become an account at all',
+    expect: 'Self-registration is disabled',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth.users (email) values ('ops@example.invalid');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'an ordinary address is still allowlistable',
+    expect: 'ok',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('person@example.invalid', 'person@example.invalid', 'tester');
+
+insert into auth.users (email) values ('person@example.invalid');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'authenticated cannot read the reserved-address table',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from reserved_service_addresses;`,
+  },
+
   // ---- Row-level security (0015). ---------------------------------------
   // These run as the `authenticated` role rather than inspecting catalogues,
   // because what matters is what a browser session can actually read.

@@ -75,12 +75,15 @@ function verify() {
       (select count(*) from account_source_expectations
         where expectation = 'not_applicable')                          as not_applicable,
       (select count(*) from licence_authorizations)                    as licence_rows,
+      (select count(*) from reserved_service_addresses)                as reserved_addresses,
+      (select count(*) from auth_invite_allowlist)                     as invited_addresses,
       (select count(*) from organizations
         where highest_value and target_tier <> 'not_targeted')         as tiered
   `)
   const [
     cohort, ciks, sources, enabledSources, families, eventTypes,
-    expectations, notApplicable, licenceRows, tiered,
+    expectations, notApplicable, licenceRows, reservedAddresses,
+    invitedAddresses, tiered,
   ] = rows.split('|')
 
   console.log(`  pilot cohort .................. ${cohort}`)
@@ -90,6 +93,8 @@ function verify() {
   console.log(`  signal event types ............ ${eventTypes}`)
   console.log(`  coverage expectations ......... ${expectations} (${notApplicable} not_applicable)`)
   console.log(`  licence authorizations ........ ${licenceRows}`)
+  console.log(`  reserved service addresses .... ${reservedAddresses}`)
+  console.log(`  invited addresses ............. ${invitedAddresses}`)
   console.log(`  accounts carrying a tier ...... ${tiered}`)
 
   const problems = []
@@ -101,6 +106,11 @@ function verify() {
   }
   if (Number(tiered) !== 0) {
     problems.push(`${tiered} account(s) carry a target_tier; D14-L forbids it`)
+  }
+  // The SEC contact mailbox must be reserved, or nothing stops someone
+  // inviting it in good faith.
+  if (Number(reservedAddresses) < 1) {
+    problems.push('no service address is reserved; the SEC contact mailbox must be')
   }
   if (Number(enabledSources) !== 0) {
     problems.push(

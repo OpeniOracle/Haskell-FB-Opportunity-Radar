@@ -45,42 +45,88 @@ into PR #9. A setting believed to be off is not a setting that is off.
 
 ## B. Bootstrap the Openi administrator
 
-Order matters. The allowlist entry must exist first, or the trigger refuses the
-invitation — which is exactly what "invite-only" means.
+**Use a named individual's Openi address.** Not a shared mailbox, not
+`oracles@openi-analytics.com` — that one is reserved for SEC operational notices
+and migration 0017 refuses to allowlist it, so the attempt fails rather than
+succeeding quietly. A shared mailbox is the wrong thing to hold an account: its
+readers change without anyone revoking anything, every action would be attributed
+to a mailbox rather than a person, and a password reset sent to it is visible to
+everyone who reads it.
 
-**1. Allowlist the address.** Supabase → SQL Editor:
+**Order matters, and it is enforced.** The allowlist entry must exist BEFORE
+Supabase creates the user. The trigger from migration 0016 fires
+`before insert on auth.users`, so an invitation sent to an address that is not
+yet allowlisted fails at the moment Supabase tries to create the row — the
+invitation email is never sent, and Supabase reports the database error. That is
+the intended behaviour, not a bug to work around.
+
+The full sequence, in order:
+
+| # | Step | Where | What enforces it |
+| --- | --- | --- | --- |
+| 1 | Insert the address into `auth_invite_allowlist` | SQL Editor | 0017 refuses a reserved service address |
+| 2 | Invite the same address | Dashboard → Authentication → Users | 0016 refuses any address not from step 1 |
+| 3 | Accept the invitation, set a password, sign in | Email → browser | Supabase Auth |
+| 4 | Prove an unlisted address is refused | SQL Editor | 0016 |
+| 5 | Prove exactly one account exists | SQL Editor | — |
+
+**Step 1 — allowlist the address FIRST.** Supabase → SQL Editor. Replace
+`firstname.lastname@openi-analytics.com` with the real individual address:
 
 ```sql
 insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by, note)
 values (
-  lower(trim('ADMIN@openi-analytics.com')),
-  'ADMIN@openi-analytics.com',
-  'ADMIN@openi-analytics.com',
+  lower(trim('firstname.lastname@openi-analytics.com')),
+  'firstname.lastname@openi-analytics.com',
+  'firstname.lastname@openi-analytics.com',
   'Bootstrap Openi administrator, PR #9'
 );
+
+-- Confirm the row landed before going near the dashboard.
+select email_normalized, invited_at from auth_invite_allowlist;
 ```
 
-**2. Invite.** Authentication → Users → **Invite user**, same address.
+If you mistakenly use the SEC mailbox, this step fails with
+`oracles@openi-analytics.com is a reserved service address (SEC EDGAR
+automated-source identification and operational notices) and must not hold an
+application account.` That is correct. Use an individual address.
 
-**3. Complete the invitation and sign in** from the invitation email.
+**Step 2 — invite.** Authentication → **Users → Invite user**, the same address.
 
-**4. Prove the guard refuses an address that was not allowlisted.** SQL Editor:
+Sanity check that the order was enforced: try inviting a *different*, unlisted
+address first. It must fail with `Self-registration is disabled. … was not
+invited; add it to auth_invite_allowlist first.` If it succeeds, migration 0016
+did not apply and you should stop.
+
+**Step 3 — accept the invitation and sign in.** Follow the emailed link, set a
+password, and reach the deployed preview signed in.
+
+**Step 4 — prove the guard refuses what it should.** SQL Editor:
 
 ```sql
--- MUST fail with: Self-registration is disabled. …
+-- MUST fail: Self-registration is disabled. …
 insert into auth.users (id, email)
 values (gen_random_uuid(), 'not-invited@example.invalid');
 
--- MUST fail with: Anonymous and email-less accounts are not permitted…
+-- MUST fail: Anonymous and email-less accounts are not permitted…
 insert into auth.users (id, email) values (gen_random_uuid(), null);
+
+-- MUST fail: … is a reserved service address …
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('oracles@openi-analytics.com', 'oracles@openi-analytics.com', 'test');
 ```
 
-**5. Confirm exactly one account exists.**
+All three are already proven on this project; running them again confirms
+nothing drifted between then and your session.
+
+**Step 5 — confirm exactly one account exists.**
 
 ```sql
-select count(*) as accounts, count(*) filter (where email is null) as anonymous
-from auth.users;
--- expected: accounts = 1, anonymous = 0
+select
+  (select count(*) from auth.users)                          as accounts,       -- 1
+  (select count(*) from auth.users where email is null)      as anonymous,      -- 0
+  (select count(*) from auth_invite_allowlist)               as allowlisted,    -- 1
+  (select count(*) from reserved_service_addresses)          as reserved;       -- 1
 ```
 
 Do **not** invite any Haskell user yet.
@@ -89,10 +135,18 @@ Do **not** invite any Haskell user yet.
 
 ## C. Netlify variables
 
-Site configuration → Environment variables. Values, scopes and the reasoning are
-in `docs/ENVIRONMENT.md`. In short: `VITE_SUPABASE_PUBLISHABLE_KEY` (Builds),
-`SUPABASE_SECRET_KEY` (Functions, secret), `INGEST_SHARED_SECRET` (Functions,
-secret), and optionally `MODEL_API_KEY` (Functions, secret).
+Site configuration → Environment variables. **Three values now**, all for every
+deploy context (one development project currently serves all of them):
+
+| Key | Scope | Contexts | Secret |
+| --- | --- | --- | --- |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | **Builds** | all | no |
+| `SUPABASE_SECRET_KEY` | **Functions** | all | yes |
+| `INGEST_SHARED_SECRET` | **Functions** | all | yes |
+
+`MODEL_API_KEY` (Functions, secret) is **optional** and may be left absent.
+`SEC_EDGAR_USER_AGENT` and `SEC_CONTACT_CONFIRMED` need no entry — both are
+committed in `netlify.toml`. Full reasoning in `docs/ENVIRONMENT.md`.
 
 Then **Deploys → Trigger deploy → Clear cache and deploy site**, so the build
 picks up the new build-scope variable.
@@ -135,16 +189,21 @@ appears**:
 ```json
 {
   "ok": true,
+  "modelConfigured": false,
   "radarEnv": "preview",
-  "caller": { "userId": "…", "invited": true },
+  "caller":   { "userId": "…", "invited": true },
   "database": { "reachable": true, "organizationsVisible": 15 },
-  "schema":   { "version": "0016" },
+  "schema":   { "version": "0017" },
   "storage":  { "bucket": "evidence-raw", "configured": true, "private": true },
   "model":    { "configured": false, "describe": "unavailable" },
   "auth":     { "inviteOnlyEnforced": true },
-  "sec":      { "contactConfirmed": false }
+  "sec":      { "contactConfirmed": true }
 }
 ```
+
+`"modelConfigured": false` with `"ok": true` is the expected result for PR #9.
+`ok` reports the foundation — database reachable as the calling user. The model
+is reported separately and does not affect it.
 
 **4. Prove the response leaks nothing.** This is the check worth automating into
 your shell history rather than eyeballing:
@@ -282,9 +341,13 @@ curl -s -o /dev/null -w 'canary after delete: %{http_code}\n' "$E" \
 
 ---
 
-## F. SEC contact
+## F. SEC contact — done
 
-Do not set `SEC_CONTACT_CONFIRMED` until someone has confirmed that
-`oracles@openi-analytics.com` is an active, monitored Openi mailbox — or replaced
-it. Until then SEC collection refuses to run, by design, and that is the correct
-state rather than a blocker to work around.
+`oracles@openi-analytics.com` was confirmed on 2026-08-26 as an active, monitored
+Openi mailbox. `SEC_CONTACT_CONFIRMED = "true"` is committed in `netlify.toml`,
+so there is nothing to enter and nothing to toggle. `/api/status` reports
+`sec.contactConfirmed: true`.
+
+The mailbox is reserved for automated-source identification and operational
+notices only, and `reserved_service_addresses` makes it impossible to allowlist
+as an application account.

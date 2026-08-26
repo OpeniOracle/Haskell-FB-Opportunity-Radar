@@ -94,5 +94,11 @@
     "name": "invite_only_auth_guard",
     "checksum": "de8cd08d5617a5165c19bb7adb19ddffea7c727ecefd9aa659885e25c541ae0a",
     "bytes": 3211
+  },
+  {
+    "version": "0017",
+    "name": "reserved_service_addresses",
+    "checksum": "63394ff56da8741401863ba7b7e71e4ecf698de0cfe35a8e8c7fba209a287d28",
+    "bytes": 2899
   }
 ]

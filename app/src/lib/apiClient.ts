@@ -108,12 +108,22 @@ export async function apiRequest<T>(request: ApiRequest): Promise<ApiResult<T>> 
 
 export interface StatusResponse {
   readonly ok: boolean
+  /** Independent of `ok`: an absent model key is a supported state. */
+  readonly modelConfigured: boolean
   readonly radarEnv: string
-  readonly caller: { readonly userId: string }
+  readonly caller: { readonly userId: string; readonly invited: boolean }
   readonly database:
     | { readonly reachable: true; readonly organizationsVisible: number }
     | { readonly reachable: false; readonly code: string }
-  readonly model: { readonly available: boolean; readonly describe: string }
+  readonly model: { readonly configured: boolean; readonly describe: string }
+  readonly schema: { readonly version: string | null }
+  readonly storage: {
+    readonly bucket: string
+    readonly configured: boolean
+    readonly private: boolean | null
+  }
+  readonly auth: { readonly inviteOnlyEnforced: boolean }
+  readonly sec: { readonly contactConfirmed: boolean }
 }
 
 export function getStatus(accessToken: string | null): Promise<ApiResult<StatusResponse>> {

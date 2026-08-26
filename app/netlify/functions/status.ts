@@ -72,8 +72,13 @@ export const handler: Handler = async (event) => {
 
   const gateway = modelGateway()
 
+  // `ok` reflects the FOUNDATION: can we reach the database as the caller.
+  // The model is reported separately and deliberately does not affect it — an
+  // absent model key is a supported state in which collection, preservation and
+  // resolution all still run, and only classification refuses.
   return json(200, {
     ok: !error,
+    modelConfigured: gateway.available,
     radarEnv: env.radarEnv,
     caller: { userId: caller.userId, invited: caller.invited },
     database: error
@@ -87,8 +92,8 @@ export const handler: Handler = async (event) => {
       configured: bucket !== null,
       private: bucket ? bucket.public === false : null,
     },
-    // Reported by availability and model id. The key is never read here and
-    // could not be printed even by mistake — `describe` is built from MODEL_ID.
+    // The key is never read here and could not be printed even by mistake:
+    // `describe` is built from MODEL_ID and the provider name, never the key.
     model: {
       configured: gateway.available,
       describe: gateway.describe,

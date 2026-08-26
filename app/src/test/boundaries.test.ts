@@ -40,13 +40,24 @@ const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
 const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
 
 /**
- * Two files necessarily contain the very strings this suite forbids: this one,
- * and the bundle scanner, which plants secret-shaped values in order to prove
- * they never reach the build output. Excluding them by exact name keeps the
- * exemption auditable — excluding all of `test/` would hide a real leak in any
- * future test file.
+ * Three files necessarily contain the very strings this suite forbids, each for
+ * a stated reason:
+ *
+ *   boundaries.test.ts    this file — it lists what it forbids
+ *   bundleSecrets.test.ts plants secret-shaped values to prove they never reach
+ *                         the build output, and reads `process.env` to plant them
+ *   cspPolicy.test.ts     asserts the exact Supabase origin the policy grants, so
+ *                         it must name that origin, and spawns the generator with
+ *                         an environment
+ *
+ * Excluded by exact name so the exemption stays auditable. Excluding all of
+ * `test/` would hide a real leak in any future test file.
  */
-const SELF_REFERENTIAL = ['boundaries.test.ts', 'bundleSecrets.test.ts']
+const SELF_REFERENTIAL = [
+  'boundaries.test.ts',
+  'bundleSecrets.test.ts',
+  'cspPolicy.test.ts',
+]
 
 const files = walk(srcDir)
 const sources = files

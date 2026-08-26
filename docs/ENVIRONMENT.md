@@ -93,33 +93,49 @@ application can reach nothing but its own functions.
 | `MODEL_API_KEY` | — | **Absent means classification fails closed.** Nothing is fabricated. |
 | `MODEL_ID` | — | Required when `MODEL_API_KEY` is set |
 | `MODEL_PROMPT_VERSION` | `v0` | Folded into the replay-cache key |
-| `SEC_CONTACT_CONFIRMED` | *(unset — SEC collection refuses)* | Set to exactly `confirmed` once an operator has verified the SEC contact mailbox is actively monitored |
+| `SEC_CONTACT_CONFIRMED` | `false` | Exactly `true` or `false`. **Committed as `true` in `netlify.toml`** — see below. Not a secret. |
 | `RADAR_ENV` | `development` | `development` \| `preview` \| `production` |
 
-### `SEC_EDGAR_USER_AGENT` — currently UNRESOLVED
+### `SEC_EDGAR_USER_AGENT` — CONFIRMED
 
 SEC requires every automated client to declare a User-Agent carrying a contact
 address that a human actually monitors, and rate-limits to 10 requests per
-second. The value committed in `netlify.toml` is:
+second. Committed in `netlify.toml`:
 
 ```
-Openi Analytics Haskell F&B Radar oracles@openi-analytics.com
+SEC_EDGAR_USER_AGENT  = "Openi Analytics Haskell F&B Radar oracles@openi-analytics.com"
+SEC_CONTACT_CONFIRMED = "true"
 ```
 
-**That address is present but NOT confirmed, and SEC collection is blocked until
-it is.** A syntactically valid address is not the requirement. The requirement is
-that someone reads what arrives there — a fact about a mailbox, which no amount
-of parsing can establish. Appearing in configuration is not evidence of anything.
+**Confirmed 2026-08-26**: `oracles@openi-analytics.com` is an active, monitored
+Openi mailbox.
 
-`assertSecUserAgentUsable` therefore refuses to run a collection unless
-`SEC_CONTACT_CONFIRMED=confirmed` is explicitly set, and separately rejects an
-unresolved `<PLACEHOLDER>` or a value with no address in it. The failure mode
-without this is silent: SEC serves the request either way, and nobody discovers
-the mailbox is unread until the day they needed to be reachable.
+#### `SEC_CONTACT_CONFIRMED` holds no secret
 
-**To clear it:** confirm that `oracles@openi-analytics.com` is an active,
-monitored Openi mailbox (or replace the address), then set
-`SEC_CONTACT_CONFIRMED=confirmed` in Netlify → Functions scope.
+It is a boolean recording that a person checked something. Committing it is
+better than putting it in a dashboard: the attestation then has an author, a
+date and a diff, which is what makes it auditable. A dashboard toggle has none of
+those, and nobody can tell later who flipped it or when.
+
+`parseSecConfirmation` accepts **only** the exact strings `true` and `false`, and
+throws on anything else. Loose truthiness is refused on purpose — if `1`, `yes`
+or `TRUE ` were accepted, an unrelated typo could switch a regulatory declaration
+on by accident, and the failure would be silent because SEC serves the request
+either way.
+
+#### The mailbox is not an application account
+
+It is a shared, role-based address for automated-source identification and
+operational notices. It must never hold an account, and migration 0017 makes
+that impossible rather than merely documented: `reserved_service_addresses`
+lists it, and a trigger refuses to put a reserved address on
+`auth_invite_allowlist` — on INSERT *and* on UPDATE. Since migration 0016 makes
+an account impossible without an allowlist entry, the mailbox cannot become a
+user by any route, including someone inviting it in good faith.
+
+Why it matters: a shared mailbox's readers change without anyone revoking
+anything, every action it took would be attributed to a mailbox rather than a
+person, and a password reset sent to it is visible to everyone who reads it.
 
 ### `EGRESS_ALLOWLIST`
 
@@ -160,17 +176,25 @@ configured — by **name**, never by value:
 ```json
 {
   "ok": true,
-  "radarEnv": "development",
+  "modelConfigured": false,
+  "radarEnv": "preview",
+  "caller":  { "userId": "…", "invited": true },
   "database": { "reachable": true, "organizationsVisible": 15 },
-  "model": { "available": false, "describe": "unavailable" },
+  "schema":   { "version": "0017" },
+  "storage":  { "bucket": "evidence-raw", "configured": true, "private": true },
+  "model":    { "configured": false, "describe": "unavailable" },
+  "auth":     { "inviteOnlyEnforced": true },
+  "sec":      { "contactConfirmed": true },
   "requiredServerVariables": ["SUPABASE_URL", "..."],
   "egressAllowlistSize": 5
 }
 ```
 
-`"model": { "available": false }` is a legitimate state, not a failure: every
-non-model stage runs, and the classification stage refuses rather than inventing
-an answer.
+`modelConfigured: false` is a **legitimate state, not a failure**, and it does
+not affect `ok`. `ok` reports the foundation — whether the database is reachable
+*as the calling user*. Collection, preservation, entity resolution, storage and
+authentication all run without a model key; only classification refuses, and it
+refuses rather than inventing an answer.
 
 The endpoint reads **as the calling user**, not as the service role. That is
 deliberate — a status check querying with the service role would report success
@@ -204,12 +228,28 @@ For each: choose **Same value for all deploy contexts** unless noted, set
 **Scopes** as given, and mark it **Secret** (Netlify then hides the value after
 saving, including from build logs).
 
-| # | Key | Scopes | Secret? | Where the value comes from |
-| --- | --- | --- | --- | --- |
-| 1 | `VITE_SUPABASE_PUBLISHABLE_KEY` | **Builds** only | no | Supabase → Project Settings → API Keys → **Publishable key** (`sb_publishable_…`) |
-| 2 | `SUPABASE_SECRET_KEY` | **Functions** only | **yes** | Supabase → Project Settings → API Keys → **Create a secret key** (`sb_secret_…`) |
-| 3 | `INGEST_SHARED_SECRET` | **Functions** only | **yes** | Generate one: `openssl rand -base64 48` |
-| 4 | `MODEL_API_KEY` | **Functions** only | **yes** | Anthropic Console → API Keys. **May be left absent** for this PR. |
+**Three values now.** A fourth is optional and may be left for later.
+
+| # | Key | Scope | Deploy contexts | Secret? | Where the value comes from |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `VITE_SUPABASE_PUBLISHABLE_KEY` | **Builds** | All (Production, Deploy previews, Branch deploys) | no | Supabase → Project Settings → API Keys → **Publishable key** (`sb_publishable_…`) |
+| 2 | `SUPABASE_SECRET_KEY` | **Functions** | All | **yes** | Supabase → Project Settings → API Keys → **Create a secret key** (`sb_secret_…`) |
+| 3 | `INGEST_SHARED_SECRET` | **Functions** | All | **yes** | Generate one: `openssl rand -base64 48` |
+| — | `MODEL_API_KEY` | **Functions** | All | **yes** | Anthropic Console. **Optional.** Leave absent for PR #9. |
+
+"All contexts" is correct *today* because one development project serves every
+context. When `haskell-fb-radar-prod` exists, values 1 and 2 become
+**per-context**: the production context points at the production project and the
+preview contexts stay on development. A preview pointed at production data is a
+production deployment with a preview URL and no access-control story.
+
+Scope, not context, is the security boundary here:
+
+- **`VITE_SUPABASE_PUBLISHABLE_KEY` is Builds-only.** Vite inlines it at build
+  time; a function has no use for it, and a value present in a runtime that does
+  not need it is a value that can leak from a runtime that does not need it.
+- **`SUPABASE_SECRET_KEY` and `INGEST_SHARED_SECRET` are Functions-only.**
+  Scoping either to Builds would put it into the build log's environment.
 
 **Do not create or paste a legacy `anon` or `service_role` JWT.** `assertKeyShapes`
 throws if either name is set, and CI fails if either name is referenced outside

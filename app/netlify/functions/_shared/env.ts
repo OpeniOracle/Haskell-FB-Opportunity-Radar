@@ -79,6 +79,27 @@ function read(name: string): string | undefined {
   return value && value.trim() !== '' ? value.trim() : undefined
 }
 
+/**
+ * `SEC_CONTACT_CONFIRMED` is an ATTESTATION, not a feature flag: a person
+ * asserting that a mailbox is read. Only the exact string `true` counts.
+ *
+ * Loose truthiness is refused deliberately. If `1`, `yes` or `TRUE ` were
+ * accepted, a typo elsewhere in the environment could switch a regulatory
+ * declaration on by accident, and the failure would be silent — SEC serves the
+ * request either way. An unrecognised value is a configuration error, not a
+ * quiet `false`, because a `false` that was meant to be `true` blocks
+ * collection with no explanation.
+ */
+export function parseSecConfirmation(raw: string | undefined): boolean {
+  if (raw === undefined) return false
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  throw new Error(
+    `SEC_CONTACT_CONFIRMED must be exactly "true" or "false"; got "${raw}". ` +
+      'It records that a human has verified the SEC contact mailbox is monitored.',
+  )
+}
+
 function require_(names: string[]): Record<string, string> {
   const found: Record<string, string> = {}
   const missing: string[] = []
@@ -203,7 +224,7 @@ export function serverEnv(): ServerEnv {
       .map((h) => h.trim().toLowerCase())
       .filter(Boolean),
     secEdgarUserAgent: v.SEC_EDGAR_USER_AGENT!,
-    secContactConfirmed: read('SEC_CONTACT_CONFIRMED') === 'confirmed',
+    secContactConfirmed: parseSecConfirmation(read('SEC_CONTACT_CONFIRMED')),
     ingestSharedSecret: v.INGEST_SHARED_SECRET!,
     radarEnv,
   }
@@ -265,7 +286,7 @@ export function assertSecUserAgentUsable(env: ServerEnv): void {
   if (!env.secContactConfirmed) {
     throw new Error(
       'The SEC contact address is not confirmed as an actively monitored mailbox. ' +
-        'Set SEC_CONTACT_CONFIRMED=confirmed only once an operator has verified that ' +
+        'Set SEC_CONTACT_CONFIRMED=true only once an operator has verified that ' +
         'someone reads it. No SEC request may be sent before then.',
     )
   }
