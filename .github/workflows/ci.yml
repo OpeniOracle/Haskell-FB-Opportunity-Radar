@@ -195,8 +195,13 @@ jobs:
             echo "The legacy Supabase key names are referenced outside the code that forbids them."
             exit 1
           fi
-          # The secret key must never acquire a VITE_ prefix.
-          if git grep -nE 'VITE_SUPABASE_SECRET_KEY' -- . ':(exclude)app/netlify/functions/_shared/env.ts' ':(exclude)app/src/test/boundaries.test.ts'; then
+          # The secret key must never acquire a VITE_ prefix. This file is
+          # excluded for the same reason the others are: it necessarily contains
+          # the string it forbids.
+          if git grep -nE 'VITE_SUPABASE_SECRET_KEY' \
+               -- . ':(exclude).github/workflows/ci.yml' \
+                    ':(exclude)app/netlify/functions/_shared/env.ts' \
+                    ':(exclude)app/src/test/boundaries.test.ts'; then
             echo "The Supabase secret key is exposed to the browser bundle."
             exit 1
           fi
