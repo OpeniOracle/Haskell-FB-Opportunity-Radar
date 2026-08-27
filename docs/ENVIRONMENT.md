@@ -369,3 +369,21 @@ values (lower(trim('Person@example.com')), 'Person@example.com', 'you@openi-anal
 ```
 
 Then Supabase → Authentication → Users → **Invite user**.
+
+## Live collection (added by the first live-data phase)
+
+| Variable | Scope | Required by | Notes |
+| --- | --- | --- | --- |
+| `SEC_EDGAR_USER_AGENT` | Functions, all contexts | the scheduled collector and `admin-run` | Must name the organisation **and a monitored contact address**. SEC's fair-access guidance asks for one; an anonymous agent is the one that gets blocked. Example: `Openi-Haskell-FB-Radar/1.0 (oracles@openi-analytics.com)` |
+| `EGRESS_ALLOWLIST` | Functions, all contexts | the egress gateway | Comma-separated hosts. For the first cohort: `sec.gov,data.sec.gov,www.sec.gov,mars.com,www.mars.com` |
+| `INGEST_SHARED_SECRET` | Functions, all contexts | `admin-run` | The operator credential for a manual run. Distinct from any user session; a signed-in reviewer cannot force a collection. |
+
+**A connector cannot grant itself egress.** If `EGRESS_ALLOWLIST` does not
+permit a connector's hosts, that source fails with a message naming the host to
+add, and the run continues for the others. Merging a connector's own hosts into
+the allowlist would defeat the control that ADR 0002 exists to provide.
+
+**What is deliberately NOT configured here:** no CIK. The SEC connector resolves
+each company's CIK at run time from SEC's own `company_tickers.json`, matched
+against the canonical name held in the database. A CIK in configuration is used
+only as a cross-check, and a mismatch fails the run rather than picking a winner.
