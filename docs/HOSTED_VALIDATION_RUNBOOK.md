@@ -196,7 +196,7 @@ Windows PowerShell 5.1 loopback test parses the real request line to prove it.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 pwsh -File .\scripts\Send-BootstrapInvitation.ps1
 ```
@@ -351,7 +351,7 @@ accounts ever have is the one their owner chooses.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\New-PreprovisionedAccounts.ps1
 ```
@@ -464,7 +464,7 @@ in the hosted database waiting for a human to come back.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 pwsh -File .\scripts\Invoke-HostedValidation.ps1
 ```
@@ -491,7 +491,7 @@ It will ask for two values, each hidden as you type:
 
 ```bash
 cd /path/to/Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation && git pull
+git switch main && git pull
 bash scripts/hosted-validation.sh
 ```
 

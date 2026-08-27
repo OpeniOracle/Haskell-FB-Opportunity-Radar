@@ -76,6 +76,15 @@ const ENV_MODULES = [
  *                         and friends — as open-redirect candidates. A return-path
  *                         test that could not name an external origin would be
  *                         testing nothing
+ *   liveConnectors.test.ts
+ *                         drives the SEC and Mars connectors against recorded
+ *                         transport contracts, so it must name the real filers
+ *                         and the real endpoints. A connector test that could
+ *                         not write `data.sec.gov` or `PepsiCo` would be
+ *                         asserting against an imaginary API — and the point of
+ *                         the pilot-cohort rule is that the APPLICATION must not
+ *                         hard-code the roster, not that a test may not name the
+ *                         companies whose transport it is checking
  *   authAccessibility.test.tsx
  *                         asserts that no key, token or `service_role` string
  *                         reaches the rendered sign-in page, so it must name them
@@ -98,6 +107,7 @@ const SELF_REFERENTIAL = [
   'authGate.test.tsx',
   'authAccessibility.test.tsx',
   'apiContract.test.ts',
+  'liveConnectors.test.ts',
 ]
 
 const files = walk(srcDir)
