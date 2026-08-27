@@ -72,6 +72,7 @@ if (-not $Scenario) {
     #>
     $interpreter = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
     $failed = 0
+    $failing = @{}
     $failLog = Join-Path ([System.IO.Path]::GetTempPath()) "openi-preprovision-failures-$PID.txt"
     if (Test-Path -LiteralPath $failLog) { Remove-Item -LiteralPath $failLog -Force }
     $env:OPENI_PREPROVISION_FAILLOG = $failLog
@@ -85,9 +86,29 @@ if (-not $Scenario) {
             '-ScriptPath', $ScriptPath
         )
         if ($Branch) { $arguments += @('-Branch', $Branch) }
-        & $interpreter @arguments
-        if ($LASTEXITCODE -ne 0) {
+        <#
+            CAPTURED, THEN PRINTED, SO THE ORDER IS THE ORDER IT HAPPENED.
+
+            A child inherits the parent's stdout handle, so letting it write
+            straight through interleaves its output with the parent's headers
+            unpredictably -- in CI the log showed one scenario's transcript
+            arriving after the final tally, which makes a tail unreadable and
+            cost a diagnosis cycle. Reading each child to completion and
+            echoing it puts every line back in sequence.
+
+            $ErrorActionPreference is relaxed across the call because 2>&1 on
+            a native command turns its stderr into ErrorRecords, and under
+            'Stop' the first one would end the parent instead of the child.
+        #>
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $transcript = @(& $interpreter @arguments 2>&1 | ForEach-Object { "$_" })
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = $previousPreference
+        $transcript | ForEach-Object { Write-Host $_ }
+        if ($code -ne 0) {
             $failed++
+            $failing[$name] = $transcript
             Write-Host "  scenario '$name' FAILED" -ForegroundColor Red
         }
     }
@@ -97,6 +118,15 @@ if (-not $Scenario) {
             Write-Host 'WHY EACH FAILING SCENARIO FAILED' -ForegroundColor Red
             Get-Content -LiteralPath $failLog | ForEach-Object { Write-Host $_ }
             Remove-Item -LiteralPath $failLog -Force
+            Write-Host ""
+        }
+        # And the failing scenario's own last words, last of all, because the
+        # CI step can only print a tail and this is what has to be in it.
+        foreach ($name in $failing.Keys) {
+            Write-Host "--- last 40 lines of scenario '$name' ---" -ForegroundColor Red
+            $lines = $failing[$name]
+            $from = [Math]::Max(0, $lines.Count - 40)
+            for ($i = $from; $i -lt $lines.Count; $i++) { Write-Host $lines[$i] }
             Write-Host ""
         }
         Write-Host "$failed of 4 scenarios failed" -ForegroundColor Red
