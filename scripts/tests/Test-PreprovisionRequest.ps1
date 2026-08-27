@@ -409,18 +409,31 @@ $serve = {
             UserAgent = $request.UserAgent
         })
 
+        # WHICH address this request is about, read back out of the request
+        # itself. A run covering two people asks about each in turn, and a
+        # double that answered with one fixed address would hand the second
+        # person the first person's record -- which the script under test
+        # rightly refuses as a mismatch. The double has to be as specific as
+        # the real API is.
+        $subject = $ADDRESS
+        if ($bodyText -match '"email"\s*:\s*"([^"]+)"') {
+            $subject = $Matches[1]
+        } elseif ($request.RawUrl -match '(?:filter|eq)[=.]([^&]+)') {
+            $subject = [System.Uri]::UnescapeDataString($Matches[1])
+        }
+
         $payload =
             if ($request.RawUrl -like '*auth_invite_allowlist*') {
                 # The one scenario in which nobody is on the list.
                 if ($scenario -eq 'unlisted') { '[]' }
-                else { '[{"email_normalized":"listed"}]' }
+                else { '[{"email_normalized":"' + $subject + '"}]' }
             } elseif ($request.RawUrl -like '*admin/users?filter*') {
                 if ($scenario -eq 'existing') {
-                    '{"users":[{"id":"00000000-0000-4000-8000-000000000009","email":"' + $ADDRESS + '"}]}'
+                    '{"users":[{"id":"00000000-0000-4000-8000-000000000009","email":"' + $subject + '"}]}'
                 } else { '{"users":[]}' }
             } else {
                 # The create-user response. A full user record, never printed.
-                '{"id":"00000000-0000-4000-8000-000000000001","email":"' + $ADDRESS + '","role":"authenticated"}'
+                '{"id":"00000000-0000-4000-8000-000000000001","email":"' + $subject + '","role":"authenticated"}'
             }
 
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
