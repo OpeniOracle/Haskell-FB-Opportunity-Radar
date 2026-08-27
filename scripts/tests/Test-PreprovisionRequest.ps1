@@ -72,6 +72,9 @@ if (-not $Scenario) {
     #>
     $interpreter = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
     $failed = 0
+    $failLog = Join-Path ([System.IO.Path]::GetTempPath()) "openi-preprovision-failures-$PID.txt"
+    if (Test-Path -LiteralPath $failLog) { Remove-Item -LiteralPath $failLog -Force }
+    $env:OPENI_PREPROVISION_FAILLOG = $failLog
     foreach ($name in 'happy', 'unlisted', 'existing', 'unconfirmed') {
         Write-Host ""
         Write-Host "=============== scenario: $name ===============" -ForegroundColor Cyan
@@ -90,9 +93,16 @@ if (-not $Scenario) {
     }
     Write-Host ""
     if ($failed -gt 0) {
+        if (Test-Path -LiteralPath $failLog) {
+            Write-Host 'WHY EACH FAILING SCENARIO FAILED' -ForegroundColor Red
+            Get-Content -LiteralPath $failLog | ForEach-Object { Write-Host $_ }
+            Remove-Item -LiteralPath $failLog -Force
+            Write-Host ""
+        }
         Write-Host "$failed of 4 scenarios failed" -ForegroundColor Red
         exit 1
     }
+    if (Test-Path -LiteralPath $failLog) { Remove-Item -LiteralPath $failLog -Force }
     Write-Host "all 4 scenarios passed" -ForegroundColor Green
     exit 0
 }
@@ -659,6 +669,20 @@ if ($script:Fail -gt 0) {
     Write-Host ''
     Write-Host 'FAILURES'
     foreach ($failure in $script:Failures) { Write-Host "  $failure" }
+    <#
+        AND ALSO WHERE THE PARENT CAN REACH THEM.
+
+        Four scenarios produce a few hundred lines between them, and the CI
+        step can only print a tail. A failure in the FIRST scenario therefore
+        scrolls off the end of the log while three later successes remain --
+        which is exactly what happened, leaving a red step whose reason was
+        nowhere in the log. Each child appends its own failures to a file the
+        parent prints last, so the verdict is always inside the tail.
+    #>
+    if ($env:OPENI_PREPROVISION_FAILLOG) {
+        $lines = @("--- $Scenario ---") + ($script:Failures | ForEach-Object { "  $_" })
+        Add-Content -LiteralPath $env:OPENI_PREPROVISION_FAILLOG -Value $lines
+    }
     exit 1
 }
 exit 0
