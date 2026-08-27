@@ -446,7 +446,13 @@ jobs:
           grep -q 'base = "app"' netlify.toml
           grep -q 'publish = "dist"' netlify.toml
           grep -q 'status = 200' netlify.toml
-          test -f app/public/_redirects
+          # The SPA fallback must exist -- a deep link that 404s on refresh is a
+          # broken application. It is asserted HERE, in netlify.toml, and not as
+          # `test -f app/public/_redirects`, which is what this line used to be.
+          # That assertion required the duplicate catch-all that shadowed every
+          # /api route: a check that made the outage mandatory.
+          grep -q 'from = "/\*"' netlify.toml
+          grep -q 'to = "/index.html"' netlify.toml
 
   windows-operator-scripts:
     name: Operator scripts (Windows PowerShell 5.1)
