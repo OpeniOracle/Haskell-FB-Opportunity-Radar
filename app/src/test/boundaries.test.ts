@@ -37,7 +37,22 @@ function walk(dir: string): string[] {
  * can check in one place, and still fails for every surface, hook and component.
  */
 const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
-const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
+/*
+  Three modules may read build-time configuration.
+
+  `supabaseClient.ts` needs the project URL and publishable key.
+  `vite-env.d.ts` declares their types.
+  `DataSourceContext.tsx` reads `import.meta.env.DEV` and nothing else — it is
+  the build-time constant that decides whether the fixture module is reachable
+  at all. Reading it here is what lets the production bundle exclude fixtures
+  structurally rather than skip them at runtime, so this entry buys a stronger
+  guarantee than it costs.
+*/
+const ENV_MODULES = [
+  '/lib/supabaseClient.ts',
+  '/vite-env.d.ts',
+  '/data/DataSourceContext.tsx',
+]
 
 /**
  * Seven files necessarily contain the very strings this suite forbids, each for
