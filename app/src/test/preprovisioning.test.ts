@@ -65,6 +65,31 @@ describe('administrator pre-provisioning', () => {
     }
   })
 
+  it('counts allowlist rows in a way Windows PowerShell 5.1 agrees with', () => {
+    /*
+      `@($body | ConvertFrom-Json)` is not a row count on 5.1.
+
+      Given `[]`, 5.1 emits $null rather than an empty collection, and
+      `@($null)` has one element -- so "did this query return a row?" answered
+      YES to an empty result, and an address that was NOT on the allowlist was
+      reported as allowlisted. It only ever went wrong on the interpreter the
+      operator actually runs, which is why the loopback test is the thing that
+      found it.
+    */
+    for (const [name, text] of [
+      ['pre-provisioning', script],
+      ['the invitation script', read('scripts/Send-BootstrapInvitation.ps1')],
+    ] as const) {
+      expect(text, `${name} must not count rows through @(ConvertFrom-Json)`).not.toMatch(
+        /@\(\s*\$\w+\.Body\s*\|\s*ConvertFrom-Json\s*\)/,
+      )
+      expect(text, `${name} must use the shared row helper`).toMatch(/ConvertFrom-JsonRows/)
+    }
+    const guards = read('scripts/OperatorGuards.psm1')
+    expect(guards).toMatch(/function ConvertFrom-JsonRows/)
+    expect(guards).toMatch(/Export-ModuleMember[\s\S]*ConvertFrom-JsonRows/)
+  })
+
   it('requires the allowlist row to exist before it creates anything', () => {
     expect(script).toMatch(/auth_invite_allowlist\?select=email_normalized&email_normalized=eq\./)
     expect(script).toMatch(/is not on auth_invite_allowlist/)

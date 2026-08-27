@@ -199,5 +199,32 @@ function Use-Plain {
     }
 }
 
+function ConvertFrom-JsonRows {
+    <#
+    .SYNOPSIS
+        A JSON array as a real array, on both interpreters.
+
+    .DESCRIPTION
+        `@($body | ConvertFrom-Json)` IS NOT A ROW COUNT ON WINDOWS POWERSHELL 5.1.
+
+        Given the body `[]`, 5.1's ConvertFrom-Json emits $null rather than an
+        empty collection, and `@($null)` has one element. Any check of the form
+        "did this query return a row?" therefore answers YES to an empty result
+        -- and answers it silently, on the one interpreter the operator scripts
+        actually run on. The pre-provisioning loopback test caught it as an
+        address that is not on the allowlist being reported as allowlisted.
+
+        This returns a genuine array: zero elements for `[]`, `null` or an
+        unparseable body, one for a single object, N for N.
+    #>
+    param([string] $Body)
+
+    if (-not $Body) { return @() }
+    $parsed = $null
+    try { $parsed = $Body | ConvertFrom-Json } catch { return @() }
+    if ($null -eq $parsed) { return @() }
+    return @($parsed)
+}
+
 Export-ModuleMember -Function Assert-NoObservation, Assert-CorrectCheckout,
-    Invoke-OperatorGit, Read-SecretValue, Use-Plain
+    Invoke-OperatorGit, Read-SecretValue, Use-Plain, ConvertFrom-JsonRows

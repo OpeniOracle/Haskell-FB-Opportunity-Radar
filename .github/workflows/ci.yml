@@ -573,7 +573,8 @@ jobs:
         run: |
           Import-Module .\scripts\OperatorGuards.psm1 -Force
           $expected = 'Assert-NoObservation','Assert-CorrectCheckout',
-                      'Invoke-OperatorGit','Read-SecretValue','Use-Plain'
+                      'Invoke-OperatorGit','Read-SecretValue','Use-Plain',
+                      'ConvertFrom-JsonRows'
           foreach ($name in $expected) {
             if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
               Write-Host "FAIL  $name is not exported"
@@ -581,6 +582,37 @@ jobs:
             }
             Write-Host "ok    $name"
           }
+
+      # AN EMPTY JSON ARRAY IS ZERO ROWS, INCLUDING ON 5.1.
+      #
+      # `@($body | ConvertFrom-Json)` is not a row count here: 5.1 emits $null
+      # for `[]`, and `@($null)` has one element -- so "did this query return a
+      # row?" answered YES to an empty result, and an address that was not on
+      # the allowlist was reported as allowlisted. Asserted on the interpreter
+      # where it actually differs.
+      - name: An empty JSON array counts as no rows
+        shell: powershell
+        run: |
+          Import-Module .\scripts\OperatorGuards.psm1 -Force
+          $cases = @(
+            @{ Body = '[]';                       Expected = 0 },
+            @{ Body = '';                         Expected = 0 },
+            @{ Body = 'not json';                 Expected = 0 },
+            @{ Body = '[{"a":1}]';                Expected = 1 },
+            @{ Body = '{"a":1}';                  Expected = 1 },
+            @{ Body = '[{"a":1},{"a":2}]';        Expected = 2 }
+          )
+          $failed = 0
+          foreach ($case in $cases) {
+            $count = (ConvertFrom-JsonRows $case.Body).Count
+            if ($count -ne $case.Expected) {
+              Write-Host ("FAIL  '{0}' gave {1} rows, expected {2}" -f $case.Body, $count, $case.Expected)
+              $failed++
+            } else {
+              Write-Host ("ok    '{0}' -> {1}" -f $case.Body, $count)
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
 
       - name: Operator PowerShell sources are ASCII only
         shell: powershell
