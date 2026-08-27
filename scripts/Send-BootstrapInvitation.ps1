@@ -381,13 +381,40 @@ If the password is the problem, use Forgot password on the sign-in page instead.
     # ---------------------------------------------------------------------
     Write-Host "`n== 4. Send" -ForegroundColor Cyan
     Note "redirect: $RedirectTo"
-    Say '  This must be byte-identical to an entry in Supabase > Authentication >'
-    Say '  URL Configuration > Redirect URLs. Supabase silently falls back to the'
-    Say '  Site URL for a value that is not on the allowlist, which looks exactly'
-    Say '  like the bug this script exists to avoid.'
+    Say '  Sent as the redirect_to QUERY PARAMETER, which is where the raw GoTrue'
+    Say '  endpoint reads it. It must also be byte-identical to an entry in'
+    Say '  Supabase > Authentication > URL Configuration > Redirect URLs:'
+    Say '  Supabase silently falls back to the Site URL for a value that is not on'
+    Say '  the allowlist, which looks exactly like the bug this script exists to avoid.'
 
-    $payload = @{ email = $email; options = @{ redirectTo = $RedirectTo } } | ConvertTo-Json -Compress
-    $invite = Invoke-Supabase -Method POST -Path '/auth/v1/invite' -Body $payload
+    <#
+        REDIRECT_TO IS A QUERY PARAMETER, NOT A BODY FIELD.
+
+        This is the defect that sent the second live invitation to production.
+        The Supabase JavaScript SDK takes `redirectTo` as an option and puts it
+        on the URL for you; the RAW GoTrue endpoint has no such field. An
+        `options.redirectTo` object in the JSON body is simply IGNORED -- not
+        rejected, ignored -- and GoTrue then falls back to the project's Site
+        URL, which is production. Nothing fails, nothing warns, and the
+        invitation arrives pointing at an origin that does not have the
+        authentication routes yet.
+
+        So the destination goes where GoTrue actually reads it:
+
+            POST /auth/v1/invite?redirect_to=<URL-encoded absolute URL>
+
+        `EscapeDataString` and not string concatenation: the value contains `:`
+        and `/`, and an unencoded one is a different URL than the allowlist
+        entry Supabase compares against -- which would put us straight back in
+        the silent Site-URL fallback.
+
+        The body carries the address and nothing else. Putting the callback in
+        both places would be worse than useless: it would look correct in
+        review while still relying on the query parameter to do the work.
+    #>
+    $encodedRedirect = [uri]::EscapeDataString($RedirectTo)
+    $payload = @{ email = $email } | ConvertTo-Json -Compress
+    $invite = Invoke-Supabase -Method POST -Path "/auth/v1/invite?redirect_to=$encodedRedirect" -Body $payload
 
     if ($invite.Status -in 200, 201) {
         # Two fields, read and discarded. The body carries a full user record and

@@ -30,7 +30,7 @@ export function AuthLayout({
       <header className="auth-shell__head">
         <span className="auth-brand">
           <span className="auth-brand__mark" aria-hidden="true">
-            <Icon name="pulse" />
+            <Icon name="pulse" className="auth-brand__glyph" />
           </span>
           <span className="auth-brand__text">
             <span className="auth-brand__product">Opportunity Radar</span>
@@ -59,24 +59,55 @@ export function AuthLayout({
 /**
  * The one way this application reports a problem in a form.
  *
- * `role="alert"` so it is announced when it appears, and `aria-describedby`
- * wiring is the caller's job — see the pages. A visual-only error is invisible
- * to the person most likely to be struggling with the form.
+ * A COMPACT CALLOUT, NOT A PANEL. The previous version was a flex row holding
+ * an unsized `<svg>` and the message; the icon expanded to fill the line and
+ * `flex: none` held it there, so the triangle swallowed the card and the text
+ * was squeezed into a column a few characters wide. The shape below is the
+ * correction and its rules are enforced by measurement in a real browser
+ * (`scripts/browser-layout-test.mjs`), not by inspection:
+ *
+ *   - the icon is a fixed 20px box that can neither grow nor shrink;
+ *   - the message takes every remaining pixel, with `min-width: 0` so a long
+ *     unbroken string wraps instead of pushing the row wider than the card;
+ *   - the height comes from the text, so there is no fixed colour panel.
+ *
+ * `role="alert"` because a failure that appears after a submit has to be
+ * announced; the message is the live region's only content, so nothing else on
+ * the page is read out with it.
  */
 export function FormError({ id, children }: { id: string; children: ReactNode }) {
   return (
-    <p className="auth-form__error" id={id} role="alert">
-      <Icon name="alert" />
-      <span>{children}</span>
+    <p className="auth-status auth-status--error" id={id} role="alert" data-testid="auth-status-error">
+      <Icon name="alert" className="auth-status__icon" />
+      <span className="auth-status__message" data-status-message>
+        {children}
+      </span>
     </p>
   )
 }
 
+/**
+ * The confirmation counterpart.
+ *
+ * `role="status"` with `aria-live="polite"` rather than `alert`: a confirmation
+ * is not an interruption, and a screen reader should finish the sentence it is
+ * on before reading it. The wording is the caller's -- and on the recovery page
+ * it is deliberately the same whether or not an account exists, which is a
+ * property the browser test asserts so a future edit cannot quietly turn this
+ * into an account-enumeration oracle.
+ */
 export function FormNotice({ children }: { children: ReactNode }) {
   return (
-    <p className="auth-form__notice" role="status">
-      <Icon name="check" />
-      <span>{children}</span>
+    <p
+      className="auth-status auth-status--notice"
+      role="status"
+      aria-live="polite"
+      data-testid="auth-status-notice"
+    >
+      <Icon name="check" className="auth-status__icon" />
+      <span className="auth-status__message" data-status-message>
+        {children}
+      </span>
     </p>
   )
 }

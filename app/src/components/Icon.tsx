@@ -36,6 +36,8 @@ export type IconName =
 interface IconProps {
   name: IconName
   className?: string
+  /** Edge length in pixels. CSS on `className` overrides it. */
+  size?: number
 }
 
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -138,10 +140,27 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
 }
 
-export function Icon({ name, className }: IconProps) {
+/**
+ * THE DEFAULT SIZE IS LOAD-BEARING. Do not remove it.
+ *
+ * An `<svg>` with a `viewBox` and no width or height is a replaced element
+ * whose used width resolves to the space available. Inside a flex row that
+ * means it takes the whole line, and `flex: none` -- which every icon rule here
+ * sets, to stop icons being squashed -- then refuses to shrink it back. That is
+ * not a hypothetical: it shipped. The login error icon measured 252x252 at a
+ * 360px viewport and 344x344 at 1440px, leaving the message an 84px column, and
+ * every DOM-only test passed because jsdom has no layout engine to measure.
+ *
+ * These are presentation attributes, so any caller that sets a size in CSS
+ * still wins -- the sized call sites are unaffected. What changes is that an
+ * icon with NO size is now 20px instead of unbounded.
+ */
+export function Icon({ name, className, size = 20 }: IconProps) {
   return (
     <svg
       className={className}
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

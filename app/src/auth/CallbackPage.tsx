@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AuthLayout } from '@/auth/AuthLayout'
+import { AuthLayout, FormError } from '@/auth/AuthLayout'
 import { AuthPending } from '@/auth/RequireAuth'
 import { useAuth } from '@/auth/authContext'
 import {
@@ -20,17 +20,19 @@ import {
  *
  * The order of operations here is the design, and it is not arbitrary:
  *
- *   1. Read the credential out of `location` ONCE, synchronously, before any
- *      await and before anything renders.
+ *   1. Read the credential out of `location` ONCE, DURING RENDER — before any
+ *      effect, any paint, and any redirect a child could queue.
  *   2. Scrub it from the address bar and the history entry immediately —
  *      `replaceState`, so it is not one Back press away.
  *   3. Redeem it.
  *   4. Confirm the account is non-anonymous and still on the invitation
  *      allowlist (`adoptSession` does both — see `AuthProvider`).
  *   5. Send an invited user to set a password; send everyone else onward.
+ *      NEVER to `/login`: an invited person has no password yet, and a login
+ *      form is not a place to create one.
  *
- * Steps 1 and 2 happen in a ref-guarded effect that runs exactly once. React
- * StrictMode double-invokes effects in development, and a second read of an
+ * Step 1 is ref-guarded so it happens exactly once. React StrictMode
+ * double-invokes render in development, and a second read of an
  * already-scrubbed URL would find nothing and report a perfectly good
  * invitation as missing.
  *
@@ -51,15 +53,42 @@ export function CallbackPage() {
   const started = useRef(false)
   const [failure, setFailure] = useState<RedeemFailure | null>(null)
 
+  /*
+    CAPTURED DURING RENDER, NOT IN AN EFFECT.
+
+    A Supabase implicit invitation arrives as a URL FRAGMENT. A fragment is
+    never sent to a server and is destroyed by any navigation -- so if anything
+    routes before the credential is read, it is gone with no way to recover it
+    and the person is handed a login form they cannot use, which is precisely
+    the reported failure. An effect runs after the first paint and after any
+    redirect a child may have queued during that render; reading here happens
+    before either can occur.
+
+    The ref makes it exactly once. React StrictMode double-invokes render in
+    development, and a second read of an already-scrubbed URL would find nothing
+    and report a perfectly good invitation as missing.
+  */
+  const capture = useRef<{
+    credential: ReturnType<typeof parseUrlCredential>
+    onboarding: boolean
+    credentialType: string | null
+  } | null>(null)
+  if (capture.current === null) {
+    const credential = parseUrlCredential(window.location.search, window.location.hash)
+    capture.current = {
+      credential,
+      onboarding: isInvitationOnboarding(credential),
+      // `none` carries no type; every other shape does.
+      credentialType: credential.kind === 'none' ? null : credential.type,
+    }
+  }
+
   useEffect(() => {
     if (started.current) return
     started.current = true
 
-    // 1. Read once, synchronously.
-    const credential = parseUrlCredential(window.location.search, window.location.hash)
-    const onboarding = isInvitationOnboarding(credential)
-    // `none` carries no type; every other shape does.
-    const credentialType = credential.kind === 'none' ? null : credential.type
+    // 1. Already read, above, before anything could discard it.
+    const { credential, onboarding, credentialType } = capture.current!
 
     // 2. Scrub before anything else can observe it.
     scrubCredentialFromHistory('/auth/callback')
@@ -96,13 +125,15 @@ export function CallbackPage() {
     return (
       <AuthLayout
         title="This account cannot be used"
-        lede={message ?? 'This account is not on the invitation list for the Radar.'}
         footer={
           <Link className="auth-shell__link" to="/login">
             Back to sign in
           </Link>
         }
       >
+        <FormError id="callback-standing-error">
+          {message ?? 'This account is not on the invitation list for the Radar.'}
+        </FormError>
         <p className="auth-card__note">
           The link itself was valid. Ask your administrator to add the address to the invitation
           list, then request a new invitation.
@@ -115,13 +146,21 @@ export function CallbackPage() {
     return (
       <AuthLayout
         title="That link cannot be used"
-        lede={FAILURE_MESSAGE}
         footer={
           <Link className="auth-shell__link" to="/login">
             Back to sign in
           </Link>
         }
       >
+        {/*
+          A DEDICATED, NEUTRAL invitation error -- not a bounce to /login, which
+          is what the broken flow did and which left the invited person to guess
+          that the login form was where a password gets created. One sentence
+          for expired, spent, malformed and missing alike: which one it was is a
+          fact about somebody's account, and the person holding a bad link is
+          not necessarily that somebody.
+        */}
+        <FormError id="callback-link-error">{FAILURE_MESSAGE}</FormError>
         <p className="auth-card__note">
           If you already set a password, sign in normally — the link is only needed once.
         </p>

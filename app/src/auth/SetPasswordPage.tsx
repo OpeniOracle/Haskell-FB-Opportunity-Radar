@@ -116,7 +116,7 @@ export function SetPasswordPage({ mode }: { mode: 'invitation' | 'recovery' }) {
         <ul className="auth-form__requirements" id={requirementsId}>
           {PASSWORD_REQUIREMENTS.map((requirement) => (
             <li className="auth-form__requirement" key={requirement}>
-              <Icon name="check" />
+              <Icon name="check" className="auth-form__requirement-glyph" />
               <span>{requirement}</span>
             </li>
           ))}

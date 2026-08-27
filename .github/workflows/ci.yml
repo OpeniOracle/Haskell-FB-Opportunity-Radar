@@ -160,6 +160,25 @@ jobs:
             exit 1
           fi
 
+      # The browser-layout harness mounts the real pages against the TEST
+      # authentication port -- a port that answers yes. It has its own Vite
+      # config and its own gitignored output directory so `npm run build`
+      # cannot reach it, and this is what holds that apart. A harness that
+      # leaked into a shipped chunk would be an authentication bypass sitting
+      # in the bundle.
+      - name: The test authentication fake is not reachable from the application
+        run: |
+          if grep -rn "test/browser/harness\|test/authFake" app/src/main.tsx app/src/App.tsx \
+               app/src/auth app/src/components app/src/surfaces app/index.html 2>/dev/null; then
+            echo "The application imports the test authentication harness or fake."
+            exit 1
+          fi
+          if grep -rn "harness" app/vite.config.ts; then
+            echo "The production Vite config references the harness."
+            exit 1
+          fi
+          echo "ok    harness and fake are confined to the harness build"
+
       # Secret-leak detection across every tracked file.
       #
       # The publishable key is deliberately NOT in this list: it is not
@@ -668,6 +687,57 @@ jobs:
           # `shell: powershell` propagates $LASTEXITCODE, so this step states its
           # own verdict explicitly instead of inheriting the child's.
           exit 0
+
+  browser-layout:
+    name: Rendered browser layout (Chromium)
+    runs-on: ubuntu-latest
+
+    # WHY A REAL BROWSER, AND WHY THIS JOB IS NOT OPTIONAL.
+    #
+    # The authentication status panels shipped visually broken: an `<svg>` with
+    # a viewBox and no dimensions resolves its used width against the available
+    # space, so the icon measured 252x252 at a 360px viewport and 344x344 at
+    # 1440px, and `flex: none` refused to shrink it back. The message was left
+    # an 84px column and the card overflowed its own viewport.
+    #
+    # Every DOM test passed, honestly: jsdom has no layout engine, so
+    # `getBoundingClientRect()` returns zeroes there and "the icon is 252px
+    # wide" is not a fact jsdom can hold. The accessibility suite asserted roles
+    # and text, which were correct throughout. Only a real engine can measure a
+    # real box, which is what this job does -- at 360, 390, 768 and 1440.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      # Chromium only. The other engines would triple the install for no
+      # additional signal: this measures CSS box geometry, not engine quirks.
+      - name: Install Chromium
+        working-directory: app
+        run: npx playwright install --with-deps chromium
+
+      - name: Measure the authentication screens at four viewports
+        working-directory: app
+        run: npm run test:browser
+
+      # The screenshots are the reviewable half. They are worth keeping whether
+      # the job passed or failed -- on a failure they are the diagnosis.
+      - name: Upload the rendered screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-screens
+          path: app/browser-screenshots/
+          if-no-files-found: error
 
   database:
     name: Migration checks (PostgreSQL ${{ matrix.pg }})

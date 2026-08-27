@@ -437,13 +437,49 @@ describe('the bootstrap invitation helper', () => {
     const paramBlock = /^param\(([\s\S]*?)^\)/m.exec(invite)?.[1] ?? ''
     expect(paramBlock).not.toMatch(/RedirectTo|Redirect|Callback/i)
     expect(invite).toMatch(/\$RedirectTo = '/)
-    expect(invite).toMatch(/redirectTo = \$RedirectTo/)
     // Production must never be the destination while PR #9 is unmerged.
-    expect(invite).not.toMatch(/redirectTo[^\n]*https:\/\/haskell-fb-opportunity-radar\.netlify\.app/)
+    expect(invite).not.toMatch(/RedirectTo[^\n]*https:\/\/haskell-fb-opportunity-radar\.netlify\.app/)
+  })
+
+  /**
+   * THE SECOND LIVE INVITATION WENT TO PRODUCTION BECAUSE OF THIS.
+   *
+   * `options.redirectTo` is the JavaScript SDK's shape. The raw GoTrue endpoint
+   * reads `redirect_to` from the QUERY STRING, ignores an unknown body field
+   * without complaining, and then falls back to the project's Site URL. No
+   * error, no warning — an invitation that points at the wrong origin.
+   *
+   * Source assertions again being the weaker half: the Windows PowerShell 5.1
+   * loopback job parses the real request line. These stop the SDK shape being
+   * reintroduced by an edit.
+   */
+  it('puts redirect_to in the query string, where raw GoTrue reads it', () => {
+    expect(invite).toContain('[uri]::EscapeDataString($RedirectTo)')
+    expect(invite).toMatch(/-Path "\/auth\/v1\/invite\?redirect_to=\$encodedRedirect"/)
+  })
+
+  it('never sends the SDK-shaped options object in the body', () => {
+    // The body is the address and nothing else. Sending the callback in both
+    // places would look right in review while the query string did the work.
+    expect(invite).not.toMatch(/options\s*=\s*@\{\s*redirectTo/)
+    expect(invite).toMatch(/\$payload = @\{ email = \$email \} \| ConvertTo-Json/)
+  })
+
+  it('has no raw recovery request that could repeat the mistake', () => {
+    // The application sends recovery through the SDK, which puts redirectTo on
+    // the URL itself. If a raw /auth/v1/recover call is ever added to an
+    // operator script it must carry redirect_to the same way this one does.
+    for (const [name, text] of operatorScripts) {
+      const rawRecovery = /auth\/v1\/recover(\?[^"'\s]*)?/.exec(text)
+      if (!rawRecovery) continue
+      expect(rawRecovery[0], `${name} calls /auth/v1/recover without redirect_to`).toContain(
+        'redirect_to=',
+      )
+    }
   })
 
   it('posts to the trusted Admin invitation endpoint', () => {
-    expect(invite).toMatch(/-Method POST -Path '\/auth\/v1\/invite'/)
+    expect(invite).toMatch(/-Method POST -Path "\/auth\/v1\/invite\?/)
   })
 
   /**

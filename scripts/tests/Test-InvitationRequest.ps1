@@ -64,6 +64,16 @@ $FAKE_SECRET = 'sb_secret_LOOPBACK_FAKE_0000000000000000'
 $FAKE_EMAIL = 'loopback.tester@openi-analytics.com'
 $EXPECTED_USER_AGENT = 'Openi-Haskell-FB-Radar-Operator/1.0'
 
+<#
+    Written out here rather than read from the script under test.
+
+    A test that derives its expectation from the code it is testing proves only
+    that the code agrees with itself. This is the destination the invitation
+    must reach, stated independently; if someone edits the script's constant,
+    this fails, which is the entire point.
+#>
+$EXPECTED_CALLBACK = 'https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/callback'
+
 $script:Pass = 0
 $script:Fail = 0
 function Ok([string] $What) { $script:Pass++; Write-Host "  PASS  $What" }
@@ -463,6 +473,110 @@ try {
         Check "$label keeps the secret out of the URL" ($r.RawUrl -notlike "*$FAKE_SECRET*") 'secret in the URL'
         Check "$label keeps the secret out of the body" ($r.Body -notlike "*$FAKE_SECRET*") 'secret in the body'
     }
+
+    <#
+        THE REQUEST TARGET.
+
+        The second live invitation reached production because the destination
+        was placed in the JSON body as `options.redirectTo` -- the SDK's shape.
+        The raw GoTrue endpoint reads `redirect_to` from the QUERY STRING and
+        silently falls back to the project's Site URL when it is absent. Nothing
+        errors. The only way to see the difference is to look at the request
+        line, which is what this section does.
+    #>
+    Write-Host "`n== The invitation request target"
+    $inviteRequest = @($real | Where-Object { $_.RawUrl -like '/auth/v1/invite*' }) | Select-Object -First 1
+    if (-not $inviteRequest) {
+        No 'the invitation request reached the listener' 'no request to /auth/v1/invite'
+    } else {
+        $split = $inviteRequest.RawUrl -split '\?', 2
+        $path = $split[0]
+        $queryText = if ($split.Count -gt 1) { $split[1] } else { '' }
+
+        Check 'path is exactly /auth/v1/invite' ($path -ceq '/auth/v1/invite') "path is '$path'"
+
+        # Parsed by hand rather than with HttpUtility: this must count the
+        # parameters, and a parser that collapses duplicates would hide exactly
+        # the mistake worth catching -- two redirect_to values, last one wins.
+        $pairs = @()
+        if ($queryText) { $pairs = @($queryText -split '&' | Where-Object { $_ }) }
+        $redirectPairs = @($pairs | Where-Object { ($_ -split '=', 2)[0] -ceq 'redirect_to' })
+
+        Check 'exactly one redirect_to query parameter' ($redirectPairs.Count -eq 1) "saw $($redirectPairs.Count)"
+
+        if ($redirectPairs.Count -eq 1) {
+            $rawValue = ($redirectPairs[0] -split '=', 2)[1]
+            $decoded = [uri]::UnescapeDataString($rawValue)
+            Check 'redirect_to decodes to the preview callback' ($decoded -ceq $EXPECTED_CALLBACK) "decoded to '$decoded'"
+            # Encoded, not pasted raw: an unencoded ':' or '/' makes a different
+            # URL than the one on Supabase's allowlist, and the fallback to the
+            # Site URL is silent.
+            Check 'redirect_to is URL-encoded on the wire' ($rawValue -notlike '*://*') "raw value was '$rawValue'"
+            Check 'redirect_to names the preview host, never production' (
+                $decoded -like 'https://deploy-preview-9--*'
+            ) "decoded to '$decoded'"
+        }
+
+        # ---- The body carries the address and nothing else. ----------------
+        $body = $inviteRequest.Body
+        Check 'body contains the address' ($body -like "*$FAKE_EMAIL*") 'address missing from the body'
+        Check 'body contains no options object' ($body -notmatch '"options"') 'body carries an options object'
+        Check 'body contains no redirectTo field' ($body -notmatch 'redirectTo') 'body carries redirectTo'
+        Check 'body contains no redirect_to field' ($body -notmatch 'redirect_to') 'body carries redirect_to'
+        Check 'body contains no callback URL' ($body -notlike '*auth/callback*') 'body carries the callback URL'
+        Check 'body contains no netlify origin' ($body -notlike '*netlify.app*') 'body carries an origin'
+        Check 'body contains no secret' ($body -notlike "*$FAKE_SECRET*") 'body carries the secret'
+        Check 'body contains no token' ($body -notmatch 'token') 'body carries a token field'
+    }
+
+    <#
+        THE CALLBACK IS NOT A PARAMETER.
+
+        A destination that can be set on the command line is one that will
+        eventually be set to the wrong thing -- back to production, which is the
+        bug being fixed. Proven against the script's real parameter block rather
+        than by reading its prose.
+    #>
+    Write-Host "`n== The callback cannot be overridden"
+    $scriptText = Get-Content -LiteralPath $ScriptPath -Raw
+    $paramBlock = ''
+    if ($scriptText -match '(?ms)^param\((.*?)^\)') { $paramBlock = $Matches[1] }
+    Check 'the script has a parameter block to inspect' ([bool] $paramBlock) 'could not find param()'
+    Check 'no parameter names a redirect, callback or URL' (
+        $paramBlock -notmatch '(?i)\$(Redirect|Callback|Url|Destination|Site)'
+    ) 'a parameter can set the destination'
+    Check 'the destination is a script constant' (
+        $scriptText -match [regex]::Escape("`$RedirectTo = '$EXPECTED_CALLBACK'")
+    ) 'the destination is not a literal constant'
+
+    <#
+        Asked of the parameter binder itself, not of a test run.
+
+        Get-Command resolves the script's real parameter set the same way the
+        binder does -- including anything a CmdletBinding attribute adds -- so
+        this cannot be fooled by a parameter that exists but is never used.
+    #>
+    $declared = @((Get-Command -Name $ScriptPath -CommandType ExternalScript).Parameters.Keys)
+    $destinationParams = @($declared | Where-Object { $_ -match '(?i)redirect|callback|url|destination|site' })
+    # SupabaseOriginForLoopbackTest is the one URL-shaped parameter, and it
+    # refuses anything that is not loopback, so it cannot aim an invitation.
+    $destinationParams = @($destinationParams | Where-Object { $_ -ne 'SupabaseOriginForLoopbackTest' })
+    Check 'no declared parameter can set the destination' (
+        $destinationParams.Count -eq 0
+    ) "declared: $($destinationParams -join ', ')"
+
+    <#
+        NOT PROVEN BY RUNNING IT WITH -RedirectTo.
+
+        That was tried and it hangs: the parameter binder is reached only after
+        the script begins executing in the CURRENT runspace, which has no host
+        shim, so `Read-Host` blocks on a console nobody is typing at. The
+        parameter metadata above is what the binder itself consults, so asking
+        it directly is both authoritative and terminating.
+    #>
+    Check 'the destination is not settable at all' (
+        $declared -notcontains 'RedirectTo'
+    ) 'RedirectTo is a declared parameter'
 
     Write-Host "`n== One builder, one shape"
     $shapes = @($real | ForEach-Object {

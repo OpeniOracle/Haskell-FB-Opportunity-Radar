@@ -3271,6 +3271,11 @@ a {
   min-width: 0;
 }
 
+.auth-brand__glyph {
+  width: 18px;
+  height: 18px;
+}
+
 .auth-brand__mark {
   display: grid;
   place-items: center;
@@ -3402,40 +3407,68 @@ a {
   color: var(--c-text-secondary);
 }
 
-.auth-form__requirement svg {
-  flex: none;
+.auth-form__requirement-glyph {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
   color: var(--c-text-muted);
 }
 
-.auth-form__error,
-.auth-form__notice {
+/* -------------------------------------------- Authentication status callout */
+/*
+ * A compact row, sized by its text.
+ *
+ * What went wrong before: the icon was an `<svg>` with a viewBox and no
+ * dimensions, which resolves its used width against the available space, and
+ * `flex: none` then refused to shrink it. Measured in Chromium, the icon came
+ * out 252x252 at a 360px viewport and 344x344 at 1440px, leaving an 84px
+ * column for the message. Three rules below prevent that shape from returning,
+ * and `scripts/browser-layout-test.mjs` measures all three at four widths.
+ */
+.auth-status {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-2);
   margin: 0;
+  /* Padding, not height. A fixed height is what turns a one-line message into
+     a colour panel with the text stranded in the middle of it. */
+  padding: var(--sp-2) var(--sp-3);
   font-size: var(--fs-small);
   line-height: 1.45;
-  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-sm);
   border: 1px solid;
 }
 
-.auth-form__error {
+/* 1. The icon is a fixed box. `0 0 auto` plus explicit dimensions means it can
+      neither grow into the line nor be squashed out of legibility. */
+.auth-status__icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  /* Optical alignment with the first line of text, not the top of the box. */
+  margin-top: 1px;
+}
+
+/* 2. The message takes the rest. `min-width: 0` is the half that is easy to
+      forget: without it a flex item refuses to shrink below its longest
+      unbreakable word, which pushes the row wider than the card. */
+.auth-status__message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.auth-status--error {
   color: var(--c-attention);
   background: var(--c-attention-bg);
   border-color: var(--c-attention-border);
 }
 
-.auth-form__notice {
+.auth-status--notice {
   color: var(--c-confirmed);
   background: var(--c-confirmed-bg);
   border-color: var(--c-confirmed-border);
-}
-
-.auth-form__error svg,
-.auth-form__notice svg {
-  flex: none;
-  margin-top: 2px;
 }
 
 .auth-form__error-list {
