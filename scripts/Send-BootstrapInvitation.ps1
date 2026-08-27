@@ -23,9 +23,19 @@
     a transcript, verbose or debug output, script tracing, or a debugger,
     because each of those would capture what the redactor protects.
 
-    WHAT IS NEVER PRINTED. The secret, the invitation link, any token, and any
-    response body. Supabase's reply carries a full user object; this script
-    reads two fields from it and reports a sanitised outcome.
+    HEADERS. `sb_secret_...` is an OPAQUE API KEY, not a JWT. It is sent in the
+    `apikey` header and in no other, because PostgREST tries to parse an
+    Authorization bearer value AS A JWT and answers 401 when it is not one.
+    A constant non-browser User-Agent is set explicitly, because Supabase
+    refuses a secret key from something that looks like a browser and Windows
+    PowerShell 5.1's default User-Agent is browser-shaped. Every request goes
+    through New-SupabaseRequest so there is one construction to get right.
+
+    WHAT IS NEVER PRINTED. The secret, any header, the invitation link, any
+    token, and any response body. Supabase's reply carries a full user object;
+    this script reads two fields from it and reports a sanitised outcome. A
+    refusal is CLASSIFIED rather than reprinted -- see
+    Get-AuthFailureExplanation.
 
 .EXAMPLE
     cd C:\path\to\Haskell-FB-Opportunity-Radar
@@ -38,7 +48,17 @@ param(
     [string] $Branch = 'claude/production-foundation',
     [string] $Repository = 'OpeniOracle/Haskell-FB-Opportunity-Radar',
     # Optional belt-and-braces: the head SHA shown on the PR page.
-    [string] $ExpectedHead
+    [string] $ExpectedHead,
+    <#
+        TEST ONLY, and constrained to LOOPBACK.
+
+        The Windows PowerShell 5.1 CI job points this at an HttpListener on
+        127.0.0.1 so it can capture the request this script actually builds --
+        which is the only way to prove the header construction rather than
+        assert it from source. Anything that is not a loopback host is refused
+        below, so this can never be used to aim a secret at a third party.
+    #>
+    [string] $SupabaseOriginForLoopbackTest
 )
 
 Set-StrictMode -Version Latest
@@ -49,6 +69,25 @@ Import-Module (Join-Path $PSScriptRoot 'OperatorGuards.psm1') -Force
 # --------------------------------------------------------------------------
 # Not secret. Committed in netlify.toml; it grants nothing on its own.
 $SupabaseUrl = 'https://dutmdlbangsthclgtkhy.supabase.co'
+
+if ($SupabaseOriginForLoopbackTest) {
+    $candidate = $null
+    try { $candidate = [uri] $SupabaseOriginForLoopbackTest } catch { $candidate = $null }
+    if (-not $candidate -or $candidate.Host -notin '127.0.0.1', 'localhost', '::1') {
+        throw "-SupabaseOriginForLoopbackTest accepts a loopback origin only. The secret must never be aimed at another host."
+    }
+    $SupabaseUrl = $SupabaseOriginForLoopbackTest.TrimEnd('/')
+}
+
+<#
+    A constant, deliberately NOT a browser.
+
+    Supabase refuses a secret key when the request looks like it came from a
+    browser, and Windows PowerShell 5.1's default User-Agent is
+    "Mozilla/5.0 (Windows NT ...) WindowsPowerShell/5.1.x" -- which is exactly
+    that. Nothing in the script may leave this to the default.
+#>
+$OperatorUserAgent = 'Openi-Haskell-FB-Radar-Operator/1.0'
 
 <#
     The one address this invitation may point at.
@@ -98,10 +137,54 @@ $null = Register-EngineEvent PowerShell.Exiting -SupportEvent -Action { Clear-Se
 
 $script:SupportsSkipError = (Get-Command Invoke-WebRequest).Parameters.ContainsKey('SkipHttpErrorCheck')
 
+function New-SupabaseRequest {
+    <#
+        THE ONE PLACE A SUPABASE REQUEST IS CONSTRUCTED.
+
+        All three operations -- the allowlist lookup, the existing-user lookup
+        and the invitation itself -- go through this, so there is a single thing
+        to get right and a single thing to test.
+
+        `sb_secret_...` IS AN OPAQUE API KEY, NOT A JWT. It belongs in the
+        `apikey` header and nowhere else:
+
+          * Sent as `Authorization: Bearer sb_secret_...`, PostgREST tries to
+            parse it AS A JWT, fails, and answers 401. That is what this script
+            did, and the 401 it produced looked exactly like a bad key.
+          * Supabase also refuses a secret key when the request looks like it
+            came from a browser. PowerShell 5.1's default User-Agent is
+            browser-shaped, so the User-Agent is set explicitly and constantly.
+
+        No Authorization header is built here at all. There is nothing for a
+        future edit to "fix" by adding one back.
+    #>
+    param(
+        [string] $Method = 'GET',
+        [Parameter(Mandatory)] [string] $Path,
+        [string] $Body,
+        [Parameter(Mandatory)] [string] $Key
+    )
+
+    $params = @{
+        Method          = $Method
+        Uri             = "$SupabaseUrl$Path"
+        Headers         = @{ apikey = $Key; Accept = 'application/json' }
+        UserAgent       = $OperatorUserAgent
+        UseBasicParsing = $true
+        ErrorAction     = 'Stop'
+    }
+    if ($Body) {
+        $params['Body'] = $Body
+        $params['ContentType'] = 'application/json'
+    }
+    if ($script:SupportsSkipError) { $params['SkipHttpErrorCheck'] = $true }
+    return $params
+}
+
 function Invoke-Supabase {
     <#
-        One request, with the secret key as both `apikey` and bearer token,
-        built inside Use-Plain so it never reaches the process table.
+        One request, built by New-SupabaseRequest inside Use-Plain so the key
+        never reaches the process table.
 
         Returns Status and Body. THE CALLER MUST NOT PRINT THE BODY -- every
         response here carries user records.
@@ -114,18 +197,7 @@ function Invoke-Supabase {
 
     return Use-Plain -Secure $script:SecretSecure -Body {
         param($key)
-        $params = @{
-            Method          = $Method
-            Uri             = "$SupabaseUrl$Path"
-            Headers         = @{ apikey = $key; Authorization = "Bearer $key" }
-            UseBasicParsing = $true
-            ErrorAction     = 'Stop'
-        }
-        if ($Body) {
-            $params['Body'] = $Body
-            $params['ContentType'] = 'application/json'
-        }
-        if ($script:SupportsSkipError) { $params['SkipHttpErrorCheck'] = $true }
+        $params = New-SupabaseRequest -Method $Method -Path $Path -Body $Body -Key $key
 
         try {
             $response = Invoke-WebRequest @params
@@ -146,6 +218,46 @@ function Invoke-Supabase {
             }
         }
     }
+}
+
+function Get-AuthFailureExplanation {
+    <#
+        Say what a 401 or 403 actually means, WITHOUT blaming the key first.
+
+        "Check the secret key" was the old message and it was the wrong first
+        suggestion: the key was fine, and the request was malformed. Three
+        different faults produce a refusal here and they need different fixes,
+        so the explanation lists them in the order they are worth checking --
+        and the response body is classified rather than reprinted, because it
+        can quote the request.
+    #>
+    param([int] $Status, [string] $Body)
+
+    $text = ("$Body").ToLowerInvariant()
+    $lines = New-Object System.Collections.Generic.List[string]
+
+    if ($text -match 'jws|jwt|jose|pgrst301|invalid claim|invalid signature') {
+        $lines.Add('The service read the key as a JSON Web Token and could not parse it.')
+        $lines.Add('That happens when an opaque sb_secret_... key is placed in the Authorization')
+        $lines.Add('header. This script sends it only as `apikey`; if you see this, something')
+        $lines.Add('is adding an Authorization header -- a proxy, or a modified copy of the script.')
+    } elseif ($text -match 'user agent|user-agent|browser') {
+        $lines.Add('The service rejected the request because it looked like it came from a browser.')
+        $lines.Add("This script sends User-Agent: $OperatorUserAgent, so check for a proxy rewriting it.")
+    } elseif ($text -match 'invalid api key|no api key|api key') {
+        $lines.Add('The service did not accept the key itself.')
+        $lines.Add('Confirm it is the SECRET key (sb_secret_...) for project dutmdlbangsthclgtkhy,')
+        $lines.Add('copied whole, and that it has not been rotated since you copied it.')
+    } else {
+        $lines.Add('The service refused the request without saying which of these it was:')
+        $lines.Add('  1. the key was sent in the wrong header and read as a JWT;')
+        $lines.Add('  2. the request looked like it came from a browser;')
+        $lines.Add('  3. the key itself is wrong, rotated, or for another project.')
+        $lines.Add('This script sends the key only as `apikey` and sets a non-browser User-Agent,')
+        $lines.Add('so 1 and 2 should not be possible from here -- check for a proxy in between')
+        $lines.Add('before assuming the key is at fault.')
+    }
+    return ($lines -join "`n")
 }
 
 # ==========================================================================
@@ -203,7 +315,13 @@ try {
     $encoded = [uri]::EscapeDataString($normalised)
     $allow = Invoke-Supabase -Path "/rest/v1/auth_invite_allowlist?select=email_normalized&email_normalized=eq.$encoded"
     if ($allow.Status -ne 200) {
-        throw "Could not read the invitation allowlist (HTTP $($allow.Status)). Check the secret key."
+        if ($allow.Status -eq 401 -or $allow.Status -eq 403) {
+            throw @"
+The allowlist lookup was refused (HTTP $($allow.Status)).
+$(Get-AuthFailureExplanation -Status $allow.Status -Body $allow.Body)
+"@
+        }
+        throw "Could not read the invitation allowlist (HTTP $($allow.Status))."
     }
     $allowRows = @()
     try { $allowRows = @($allow.Body | ConvertFrom-Json) } catch { $allowRows = @() }
@@ -224,7 +342,13 @@ values (lower(trim('$email')), '$email', '$email', 'Bootstrap Openi administrato
     #     by contrast, is exactly the thing worth resending.
     $users = Invoke-Supabase -Path '/auth/v1/admin/users?page=1&per_page=200'
     if ($users.Status -ne 200) {
-        throw "Could not list existing accounts (HTTP $($users.Status)). The secret key must be an sb_secret_... key with admin rights."
+        if ($users.Status -eq 401 -or $users.Status -eq 403) {
+            throw @"
+The account lookup was refused (HTTP $($users.Status)).
+$(Get-AuthFailureExplanation -Status $users.Status -Body $users.Body)
+"@
+        }
+        throw "Could not list existing accounts (HTTP $($users.Status))."
     }
     $existing = $null
     try {
@@ -283,6 +407,11 @@ If the password is the problem, use Forgot password on the sign-in page instead.
         $reason = Protect-Text $invite.Body
         if ($reason.Length -gt 300) { $reason = $reason.Substring(0, 300) + '...' }
         Fail "Supabase refused the invitation (HTTP $($invite.Status))."
+        if ($invite.Status -eq 401 -or $invite.Status -eq 403) {
+            foreach ($line in (Get-AuthFailureExplanation -Status $invite.Status -Body $invite.Body) -split "`n") {
+                Note $line
+            }
+        }
         if ($invite.Status -eq 422 -or $invite.Status -eq 400) {
             Note 'A 400/422 here usually means the redirect is not on the Redirect URL allowlist,'
             Note 'or the address is already registered. Check section A of the runbook.'

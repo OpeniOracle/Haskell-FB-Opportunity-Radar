@@ -165,10 +165,28 @@ jobs:
       # The publishable key is deliberately NOT in this list: it is not
       # confidential, it is committed in netlify.toml on purpose, and treating it
       # as a secret would train everyone to ignore this check.
+      #
+      # Test-InvitationRequest.ps1 is exempt BY EXACT NAME, not by directory.
+      # It drives the invitation helper against a listener on 127.0.0.1, and the
+      # helper refuses any key that does not begin `sb_secret_` -- so the test
+      # cannot reach a single request without a value of that shape. The value
+      # is the constant checked immediately below, it is not a key on any
+      # project, and it never leaves the loopback interface. A directory-wide
+      # exemption would blind this check to scripts/tests/ for good; naming the
+      # one file keeps every other file in that tree covered.
       - name: No secret is committed anywhere in the repository
         run: |
-          if git grep -nE 'sb_secret_[A-Za-z0-9_-]{8,}' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)app/src/test/*'; then
+          if git grep -nE 'sb_secret_[A-Za-z0-9_-]{8,}' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)app/src/test/*' ':(exclude)scripts/tests/Test-InvitationRequest.ps1'; then
             echo "A Supabase SECRET key is committed."
+            exit 1
+          fi
+          # The exemption is worth exactly one value. Anything else sb_secret_
+          # shaped in that file fails here, so the exemption cannot quietly widen.
+          unexpected=$(git grep -hoE 'sb_secret_[A-Za-z0-9_-]{8,}' -- scripts/tests/Test-InvitationRequest.ps1 \
+                       | sort -u | grep -v '^sb_secret_LOOPBACK_FAKE_0000000000000000$' || true)
+          if [ -n "$unexpected" ]; then
+            echo "scripts/tests/Test-InvitationRequest.ps1 carries a key that is not the documented loopback fake:"
+            echo "$unexpected"
             exit 1
           fi
           if git grep -nE 'postgres(ql)?://[^[:space:]"'"'"']+' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)docs/**'; then
@@ -434,7 +452,8 @@ jobs:
           $files = @(
             'scripts\OperatorGuards.psm1',
             'scripts\Send-BootstrapInvitation.ps1',
-            'scripts\Invoke-HostedValidation.ps1'
+            'scripts\Invoke-HostedValidation.ps1',
+            'scripts\tests\Test-InvitationRequest.ps1'
           )
           $failed = 0
           foreach ($file in $files) {
@@ -610,6 +629,31 @@ jobs:
           # The script exits 1 because refusing IS its success here. GitHub's
           # `shell: powershell` propagates $LASTEXITCODE, so this step states its
           # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Loopback capture - the headers the script really sends
+        shell: powershell
+        run: |
+          # THE ONE STEP THAT CAN SEE A HEADER.
+          #
+          # The 401 that stopped the operator was caused by two things no
+          # source-text assertion can observe: an opaque sb_secret_ key placed in
+          # Authorization, where PostgREST parses it as a JWT and refuses it, and
+          # Invoke-WebRequest's default User-Agent, which on Windows PowerShell
+          # 5.1 is "Mozilla/5.0 (Windows NT ...) WindowsPowerShell/5.1.x" --
+          # browser-shaped, and Supabase refuses a secret key from a browser.
+          # Neither appears in the script's text. Both appear on the wire.
+          #
+          # So this runs the REAL script against an HttpListener on 127.0.0.1,
+          # through a PSHost that answers its prompts the way a human would, and
+          # inspects what arrived. The key is fake and never leaves the loopback
+          # interface. The branch is read from the checkout because the script's
+          # repository guard runs first and must pass.
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\tests\Test-InvitationRequest.ps1 -Branch $branch
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'FAIL: the loopback header capture did not pass'; exit 1
+          }
           exit 0
       - name: The hosted validator refuses on the same guards
         shell: powershell

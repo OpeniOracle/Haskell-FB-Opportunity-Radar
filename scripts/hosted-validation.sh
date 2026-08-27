@@ -134,20 +134,28 @@ http() {
     local method="$1" url="$2" auth="$3" apikey="$4" body="${5:-}" ctype="${6:-application/json}"
     local config="" raw="" authval="" keyval=""
 
+    # A USER's access token is a JWT and belongs in Authorization, paired with
+    # the publishable key as `apikey` -- what a browser sends.
+    #
+    # The SECRET key is an OPAQUE key, not a JWT. It goes in `apikey` and
+    # nowhere else: sent as a bearer value, PostgREST parses it as a JWT, fails,
+    # and answers 401 -- which reads as a bad key and is not. Asking for
+    # `secret` as the auth therefore routes it to `apikey`.
     case "$auth" in
         token)  authval="$TOKEN" ;;
-        secret) authval="$SECRET" ;;
     esac
     case "$apikey" in
         publishable) keyval="$PUBLISHABLE" ;;
         secret)      keyval="$SECRET" ;;
     esac
+    [ "$auth" = "secret" ] && keyval="$SECRET"
 
     config="url = \"$url\"
 request = \"$method\"
 silent
 show-error
 include
+user-agent = "Openi-Haskell-FB-Radar-Operator/1.0"
 max-time = 45
 write-out = \"\\n<<<STATUS>>>%{http_code}\"
 "

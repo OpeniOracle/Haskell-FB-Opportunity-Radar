@@ -57,6 +57,13 @@ $SupabaseUrl  = 'https://dutmdlbangsthclgtkhy.supabase.co'
 $Publishable  = 'sb_publishable_kE97uOb8HCo51uT_e0mxqg_So2Z0dwH'
 $Bucket       = 'evidence-raw'
 
+<#
+    A constant, deliberately NOT a browser. Supabase refuses a secret key when
+    the request looks like it came from a browser, and Windows PowerShell 5.1's
+    default User-Agent is browser-shaped.
+#>
+$OperatorUserAgent = 'Openi-Haskell-FB-Radar-Operator/1.0'
+
 $script:TokenSecure  = $null
 $script:SecretSecure = $null
 
@@ -136,6 +143,12 @@ function Invoke-Http {
         param($plainAuth, $plainKey)
         $h = @{}
         foreach ($k in $Headers.Keys) { $h[$k] = $Headers[$k] }
+        # A USER's access token is a JWT and belongs in Authorization, paired
+        # with the publishable key as `apikey` -- exactly what a browser sends.
+        #
+        # The SECRET key is an OPAQUE key, not a JWT. It goes in `apikey` and
+        # nowhere else: sent as a bearer value, PostgREST tries to parse it as a
+        # JWT, fails, and answers 401 -- which reads as a bad key and is not.
         if ($plainAuth) { $h['Authorization'] = "Bearer $plainAuth" }
         if ($plainKey)  { $h['apikey'] = $plainKey }
 
@@ -143,6 +156,7 @@ function Invoke-Http {
             Method          = $Method
             Uri             = $Uri
             Headers         = $h
+            UserAgent       = $OperatorUserAgent
             UseBasicParsing = $true
             ErrorAction     = 'Stop'
         }
@@ -183,10 +197,11 @@ function Invoke-Http {
         }
     }
 
-    $authSecure = if ($Auth -eq 'token') { $script:TokenSecure }
-                  elseif ($Auth -eq 'secret') { $script:SecretSecure }
-                  else { $null }
-    $keySecure  = if ($ApiKey -eq 'secret') { $script:SecretSecure } else { $null }
+    # `secret` is no longer selectable as a BEARER credential. Asking for it
+    # routes the key to `apikey` and leaves Authorization unset, because an
+    # opaque key in a bearer header is read as a JWT and refused.
+    $authSecure = if ($Auth -eq 'token') { $script:TokenSecure } else { $null }
+    $keySecure  = if ($ApiKey -eq 'secret' -or $Auth -eq 'secret') { $script:SecretSecure } else { $null }
     # The publishable key is not confidential and needs no protection.
     $keyLiteral = if ($ApiKey -eq 'publishable') { $Publishable } else { $null }
 

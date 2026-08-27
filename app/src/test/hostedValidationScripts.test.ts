@@ -30,6 +30,8 @@ const sh = read('scripts/hosted-validation.sh')
 const invite = read('scripts/Send-BootstrapInvitation.ps1')
 const guards = read('scripts/OperatorGuards.psm1')
 const runbook = read('docs/HOSTED_VALIDATION_RUNBOOK.md')
+const loopback = read('scripts/tests/Test-InvitationRequest.ps1')
+const workflow = read('.github/workflows/ci.yml')
 
 /** The two validators, which run the same named checks as each other. */
 const scripts: [string, string][] = [
@@ -401,8 +403,15 @@ describe('the bootstrap invitation helper', () => {
   })
 
   it('never accepts the secret through any channel but the prompt', () => {
-    // Not a parameter…
-    expect(invite).not.toMatch(/param\([\s\S]*?\$(Secret|Key|Token)\b/)
+    // Not a parameter. The SCRIPT's param block is the one that matters: a
+    // value declared there arrives on the command line, where it is visible in
+    // the process table and in PSReadLine history. New-SupabaseRequest takes a
+    // -Key, but that is an internal hand-off inside Use-Plain and never crosses
+    // a process boundary, so the check is scoped to the top-level block rather
+    // than to the whole file.
+    const inviteParams = /^param\(([\s\S]*?)^\)/m.exec(invite)?.[1] ?? ''
+    expect(inviteParams).not.toBe('')
+    expect(inviteParams).not.toMatch(/\$(Secret|Key|Token)\b/)
     // …not an environment variable…
     expect(invite).not.toMatch(/\$env:(SUPABASE_SECRET_KEY|SECRET|SB|TOKEN)/)
     // …and not a file.
@@ -435,8 +444,75 @@ describe('the bootstrap invitation helper', () => {
 
   it('posts to the trusted Admin invitation endpoint', () => {
     expect(invite).toMatch(/-Method POST -Path '\/auth\/v1\/invite'/)
-    expect(invite).toMatch(/Authorization = "Bearer \$key"/)
-    expect(invite).toMatch(/apikey = \$key/)
+  })
+
+  /**
+   * THE 401.
+   *
+   * `sb_secret_...` is an opaque API key, not a JWT. Sent as
+   * `Authorization: Bearer sb_secret_...` PostgREST tries to PARSE it as a JWT,
+   * fails, and answers 401 -- which reads exactly like a wrong key and sent the
+   * operator looking for one. It belongs in `apikey` and nowhere else.
+   *
+   * These are source assertions and they are the weaker half of the evidence:
+   * a header is a property of a request, not of a file. The Windows PowerShell
+   * 5.1 loopback job captures the real thing. What these add is that the
+   * construction cannot come back by editing, and that there is exactly one
+   * place to edit.
+   */
+  it('sends the secret only as apikey, never as an Authorization bearer', () => {
+    expect(invite).toMatch(/apikey\s*=\s*\$Key/)
+    // Not "no Bearer near the key" -- no Authorization header at all.
+    expect(invite).not.toMatch(/Authorization\s*=/)
+    expect(invite).not.toMatch(/Bearer \$/)
+    expect(ps).not.toMatch(/Authorization\s*=\s*"Bearer \$secret/i)
+  })
+
+  it('builds every Supabase request through one builder', () => {
+    expect(invite).toContain('function New-SupabaseRequest')
+    // Three operations, one construction: allowlist, existing-user, invite.
+    const builderCalls = invite.match(/New-SupabaseRequest\s/g) ?? []
+    expect(builderCalls.length).toBeGreaterThanOrEqual(2)
+    // No request may be assembled outside it: the only INVOCATION in the
+    // script splats what the builder returned. (`Get-Command
+    // Invoke-WebRequest` is a capability probe, not a call, so invocations are
+    // matched by the argument that follows.)
+    const invocations = invite.match(/Invoke-WebRequest\s+[-@"'$]\S*/g) ?? []
+    expect(invocations).toEqual(['Invoke-WebRequest @params'])
+  })
+
+  it('sets a constant non-browser User-Agent on every request', () => {
+    // Windows PowerShell 5.1 defaults to
+    // "Mozilla/5.0 (Windows NT ...) WindowsPowerShell/5.1.x", and Supabase
+    // refuses a secret key from something that looks like a browser.
+    expect(invite).toContain("$OperatorUserAgent = 'Openi-Haskell-FB-Radar-Operator/1.0'")
+    expect(invite).toMatch(/UserAgent\s*=\s*\$OperatorUserAgent/)
+    expect(invite).not.toMatch(/UserAgent\s*=\s*'Mozilla/)
+    // The bash and PowerShell validators carry the same agent, because the
+    // same refusal applies to them.
+    expect(ps).toContain('Openi-Haskell-FB-Radar-Operator/1.0')
+    expect(sh).toContain('Openi-Haskell-FB-Radar-Operator/1.0')
+  })
+
+  it('classifies a 401 instead of blaming the key', () => {
+    expect(invite).toContain('function Get-AuthFailureExplanation')
+    // All three causes named, in a message that no longer opens with
+    // "Check the secret key".
+    expect(invite).toMatch(/apikey/)
+    expect(invite).toMatch(/JWT/)
+    expect(invite).toMatch(/User-Agent/)
+    expect(invite).not.toContain('Check the secret key.')
+  })
+
+  it('has a loopback capture test wired into the Windows PowerShell 5.1 job', () => {
+    expect(loopback).toContain('System.Net.HttpListener')
+    expect(loopback).toContain('127.0.0.1')
+    // The real script, not a copy of its logic.
+    expect(loopback).toMatch(/AddCommand\(\$ScriptPath/)
+    // The planted regression: the construction that caused the 401, proven to
+    // reproduce, so "the corrected script emits nothing like it" means something.
+    expect(loopback).toMatch(/Authorization = "Bearer \$FAKE_SECRET"/)
+    expect(workflow).toContain('scripts\\tests\\Test-InvitationRequest.ps1')
   })
 
   it('refuses the reserved SEC mailbox before a secret is even typed', () => {
@@ -552,6 +628,7 @@ describe('the operator scripts are readable by Windows PowerShell 5.1', () => {
     ['scripts/Send-BootstrapInvitation.ps1', invite],
     ['scripts/Invoke-HostedValidation.ps1', ps],
     ['scripts/hosted-validation.sh', sh],
+    ['scripts/tests/Test-InvitationRequest.ps1', loopback],
   ]
 
   it.each(OPERATOR_SOURCES)('%s contains no non-ASCII character', (name, text) => {
