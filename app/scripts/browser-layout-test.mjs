@@ -188,8 +188,8 @@ try {
     // ---- 3. Forgot-password confirmation ---------------------------------
     await page.goto(`${base}/forgot-password?scenario=forgot-sent`)
     await page.getByLabel(/email/i).fill('analyst@openi-analytics.invalid')
-    await page.getByRole('button', { name: /reset link/i }).click()
-    await page.getByText(/password reset link is on its way/i).waitFor()
+    await page.getByRole('button', { name: /email me a link/i }).click()
+    await page.getByText(/is on its way/i).waitFor()
     const notice = await measureCallout(page, '[data-testid="auth-status-notice"]', 'recovery confirmation', viewport)
     check(`recovery confirmation @${viewport.name}: keeps the non-enumerating wording`,
       /if that address has an account/i.test(notice?.textContent ?? ''), notice?.textContent)

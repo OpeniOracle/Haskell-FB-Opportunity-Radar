@@ -303,6 +303,99 @@ Do **not** invite any Haskell user yet.
 
 ---
 
+## B2. Administrator pre-provisioning
+
+**The second approved onboarding method.** It is not an invitation and it is not
+self-registration, and the difference matters:
+
+| | Invitation | **Administrator pre-provisioning** | Self-registration |
+| --- | --- | --- | --- |
+| Script | `Send-BootstrapInvitation.ps1` | `New-PreprovisionedAccounts.ps1` | — |
+| Account exists | only after acceptance | **immediately, silently** | — |
+| Email sent by us | one single-use link | **none, ever** | — |
+| Password at creation | none | **none** | — |
+| How a password is set | `/auth/set-password` from the link | **"Set or reset your password"** | — |
+| Allowlist row required first | yes | **yes** | — |
+| Available on this project | yes | yes | **no, by any route** |
+
+Use pre-provisioning when the accounts are approved in advance and you would
+rather not send anything: nothing is emailed, nothing is generated, and there is
+no link that can expire before somebody gets round to it.
+
+### What it does, and what it deliberately does not
+
+The script creates each account through the **Auth Admin API** with
+`email_confirm: true` and **no password**. It never inserts into `auth.users`
+directly — GoTrue owns that table, and a row placed behind it is a user that
+half-works in ways that surface much later.
+
+**No temporary password is generated, stored, displayed or transmitted.** A
+password the script invented would have to reach the person somehow — an email,
+a chat message, a spreadsheet — and every one of those is a place it then lives.
+It would also be a credential the administrator knows, which makes "only you
+could have done this" untrue for as long as it exists. The only password these
+accounts ever have is the one their owner chooses.
+
+### Before you run it
+
+1. **Allowlist every address first.** Migration 0016's trigger fires
+   `before insert on auth.users`, so it applies to the Admin API exactly as it
+   applies to an invitation — an address that is not on the list cannot be given
+   an account by any path. The script checks first anyway, so a missing row is
+   an explanation rather than a database error halfway down the list.
+2. **Keep the addresses out of this repository.** They are typed in at the
+   prompt, or read from a file you keep elsewhere. The script refuses an address
+   file inside the working tree. Nothing in version control names an individual.
+
+### Running it
+
+```powershell
+cd C:\path\to\Haskell-FB-Opportunity-Radar
+git switch claude/production-foundation
+git pull
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\New-PreprovisionedAccounts.ps1
+```
+
+It refuses, before the key is requested: another repository · a dirty tree · the
+wrong branch · a `HEAD` that is not the freshly fetched remote head · a
+transcript, `-Verbose`, `-Debug`, tracing or a debugger · an address outside
+`haskell.com` or `openi-analytics.com` · a shared mailbox (`info@`, `support@`,
+`admin@`, `oracles@`, …) · a list you do not confirm by typing `CREATE` exactly.
+
+It is **idempotent**: an address that already has an account is reported and left
+untouched. It is never updated — somebody may already have set a password, and
+overwriting that would lock them out silently.
+
+### What to tell each person
+
+There is nothing to send them from here. Through whatever channel you normally
+use:
+
+> 1. Go to the Radar sign-in page.
+> 2. Choose **"Set or reset your password"**.
+> 3. Enter your approved address.
+> 4. Open the emailed link and choose a password.
+> 5. Sign in with it.
+
+For them this is **activation**; for everyone else the same page is ordinary
+recovery. It is one flow on purpose — the page cannot tell you whether an
+address has a password yet, and it must not, because that is a fact about
+somebody's account.
+
+### Authorization is identical either way
+
+A pre-provisioned user gets no privilege from having been created by an
+administrator, and none from their email domain. They must be a non-anonymous
+Supabase user, currently on `auth_invite_allowlist`, holding a live session in
+`auth.sessions` for evidence access — and removing the allowlist row denies
+evidence on their next request, exactly as for an invited user. Before they set
+a password there is no way for them to sign in at all.
+
+**No application rows need creating.** There is no `after insert` trigger on
+`auth.users` and no profile table: the only per-user table, `user_read_state`,
+has no foreign key and is written lazily on first use. An Admin-API-created
+account therefore needs nothing that an invited one does not.
+
 ## C. Netlify variables
 
 Site configuration → Environment variables. **Three values now**, all for every

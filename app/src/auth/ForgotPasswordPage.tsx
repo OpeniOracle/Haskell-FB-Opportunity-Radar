@@ -4,7 +4,7 @@ import { AuthLayout, FormError, FormNotice } from '@/auth/AuthLayout'
 import { useAuth } from '@/auth/authContext'
 
 /**
- * `/forgot-password` — request a recovery email.
+ * `/forgot-password` — request a link, to set a password or to reset one.
  *
  * THE ANSWER IS ALWAYS THE SAME. Whether an address has an account here is not
  * something this page may reveal, so a request for an invited address and a
@@ -22,8 +22,21 @@ import { useAuth } from '@/auth/authContext'
  * doorway for every credential in an email means one place where a token is
  * read, scrubbed from history, and never logged.
  */
+/*
+   ONE SENTENCE FOR THREE DIFFERENT SITUATIONS.
+
+   This page serves an invited user who forgot a password, a PRE-PROVISIONED
+   user who has never had one, and a stranger with no account at all. The
+   answer is identical in all three, because the differences between them are
+   facts about who holds an account here -- and this application's whole access
+   model is that the roster is not public.
+
+   "set or reset" rather than "reset": for a pre-provisioned account this link
+   is initial activation, and someone who has never had a password should not
+   have to guess that a reset is what they need.
+*/
 const SAME_ANSWER =
-  'If that address has an account on the Radar, a password reset link is on its way. It expires shortly and can be used once.'
+  'If that address has an account on the Radar, a link to set or reset your password is on its way. It expires shortly and can be used once.'
 
 export function ForgotPasswordPage() {
   const { port } = useAuth()
@@ -49,7 +62,7 @@ export function ForgotPasswordPage() {
     // The one thing this page will say no to is an empty box, which reveals
     // nothing about anybody.
     if (!trimmed) {
-      setError('Enter the email address your invitation was sent to.')
+      setError('Enter your approved email address.')
       return
     }
 
@@ -79,8 +92,8 @@ export function ForgotPasswordPage() {
       >
         <FormNotice>{SAME_ANSWER}</FormNotice>
         <p className="auth-card__note">
-          Nothing arrived? The Radar is invitation-only, so an address that was never invited will
-          not receive anything. Ask your administrator.
+          Nothing arrived? The Radar is access-controlled, so an address that has not been
+          approved will not receive anything. Ask your administrator.
         </p>
       </AuthLayout>
     )
@@ -88,8 +101,8 @@ export function ForgotPasswordPage() {
 
   return (
     <AuthLayout
-      title="Reset your password"
-      lede="Enter the address your invitation was sent to and we will email a link."
+      title="Set or reset your password"
+      lede="Enter your approved Openi or Haskell address and we will email you a link."
       footer={
         <Link className="auth-shell__link" to="/login">
           Back to sign in
@@ -122,7 +135,7 @@ export function ForgotPasswordPage() {
         {error ? <FormError id={errorId}>{error}</FormError> : null}
 
         <button className="btn btn--primary auth-form__submit" type="submit" disabled={busy}>
-          {busy ? 'Sending…' : 'Email a reset link'}
+          {busy ? 'Sending…' : 'Email me a link'}
         </button>
       </form>
     </AuthLayout>

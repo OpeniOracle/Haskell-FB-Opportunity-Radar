@@ -110,14 +110,14 @@ describe('keyboard navigation', () => {
   it('reaches password recovery from the keyboard', async () => {
     renderPublic('/login')
     await screen.findByRole('heading', { name: 'Sign in' })
-    const link = screen.getByRole('link', { name: /forgot your password/i })
+    const link = screen.getByRole('link', { name: /set or reset your password/i })
     link.focus()
     expect(link).toHaveFocus()
   })
 
   it('puts focus in the first field of the recovery form', async () => {
     renderPublic('/forgot-password')
-    await screen.findByRole('heading', { name: 'Reset your password' })
+    await screen.findByRole('heading', { name: 'Set or reset your password' })
     expect(screen.getByLabelText('Email address')).toHaveFocus()
   })
 

@@ -102,8 +102,21 @@ export function LoginPage() {
           : 'The Opportunity Radar is private to invited Openi and Haskell reviewers.'
       }
       footer={
+        /*
+          "Set OR RESET", because for some people this is activation.
+
+          An account created by administrator pre-provisioning exists with no
+          password at all. Its owner has never had one to forget, and "Forgot
+          your password?" is a door they would not think to try. The route is
+          unchanged and so is the behaviour -- what changes is that the label
+          now describes both errands, which is the honest description of what
+          the page does.
+
+          The page itself cannot tell the two apart, and must not: whether an
+          address has a password yet is a fact about somebody's account.
+        */
         <Link className="auth-shell__link" to="/forgot-password">
-          Forgot your password?
+          Set or reset your password
         </Link>
       }
     >

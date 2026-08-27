@@ -61,6 +61,11 @@ grant usage on schema auth to anon, authenticated, service_role;
 create table if not exists auth.users (
     id                  uuid primary key default gen_random_uuid(),
     email               text,
+    -- NULLABLE, and that is the point. An account created by administrator
+    -- pre-provisioning has no password at all until its owner sets one, so the
+    -- schema-contract tests need to be able to represent that state rather than
+    -- assert about it from a distance. GoTrue's real column is nullable too.
+    encrypted_password  text,
     created_at          timestamptz not null default now()
 );
 

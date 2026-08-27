@@ -213,32 +213,67 @@ jobs:
             *) echo "The last redirect in netlify.toml is not the SPA catch-all: $last_from"; exit 1 ;;
           esac
 
+      # NO REAL PERSON'S ADDRESS IS COMMITTED.
+      #
+      # Administrator pre-provisioning takes its addresses from a prompt or from
+      # a file the operator keeps outside this repository. The people being
+      # provisioned are personal data and have no business in version control,
+      # in fixtures, or in a test.
+      #
+      # Guarded by SHAPE, not by name. A list of the forbidden names would
+      # itself be the thing it forbids -- and it would only ever catch the four
+      # people somebody remembered to add. Every address on an approved domain
+      # is refused instead, with the documented placeholders allowlisted by
+      # exact value. Adding a real colleague fails this step; adding a fictional
+      # example means adding it here, deliberately, in review.
+      - name: No real person is named in the repository
+        run: |
+          allowed='^(first\.person|second\.person|existing\.person|unlisted\.person|firstname\.lastname|loopback\.tester|oracles|you)@'
+          found=$(git grep -hEio '[A-Za-z0-9._%+-]+@(haskell|openi-analytics)\.com' \
+                    -- . ':(exclude).github/workflows/ci.yml' \
+                  | sort -u | grep -Ev "$allowed" || true)
+          if [ -n "$found" ]; then
+            echo "An address on an approved organization domain is committed:"
+            echo "$found"
+            echo
+            echo "Real addresses are supplied to the operator script at provisioning"
+            echo "time and are never committed. If this is a fictional example, add it"
+            echo "to the allowlist in this step."
+            exit 1
+          fi
+          echo "ok    only documented placeholder addresses are committed"
+
       # Secret-leak detection across every tracked file.
       #
       # The publishable key is deliberately NOT in this list: it is not
       # confidential, it is committed in netlify.toml on purpose, and treating it
       # as a secret would train everyone to ignore this check.
       #
-      # Test-InvitationRequest.ps1 is exempt BY EXACT NAME, not by directory.
-      # It drives the invitation helper against a listener on 127.0.0.1, and the
-      # helper refuses any key that does not begin `sb_secret_` -- so the test
-      # cannot reach a single request without a value of that shape. The value
-      # is the constant checked immediately below, it is not a key on any
-      # project, and it never leaves the loopback interface. A directory-wide
-      # exemption would blind this check to scripts/tests/ for good; naming the
-      # one file keeps every other file in that tree covered.
+      # Two loopback tests are exempt BY EXACT NAME, not by directory.
+      # They drive the invitation helper and the pre-provisioning helper against
+      # a listener on 127.0.0.1, and both helpers refuse any key that does not
+      # begin `sb_secret_` -- so neither test can reach a single request without
+      # a value of that shape. The values are the constants checked immediately
+      # below, they are not keys on any project, and they never leave the
+      # loopback interface. A directory-wide exemption would blind this check to
+      # scripts/tests/ for good; naming the files keeps the rest of that tree
+      # covered.
       - name: No secret is committed anywhere in the repository
         run: |
-          if git grep -nE 'sb_secret_[A-Za-z0-9_-]{8,}' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)app/src/test/*' ':(exclude)scripts/tests/Test-InvitationRequest.ps1'; then
+          if git grep -nE 'sb_secret_[A-Za-z0-9_-]{8,}' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)app/src/test/*' ':(exclude)scripts/tests/Test-InvitationRequest.ps1' \
+               ':(exclude)scripts/tests/Test-PreprovisionRequest.ps1'; then
             echo "A Supabase SECRET key is committed."
             exit 1
           fi
           # The exemption is worth exactly one value. Anything else sb_secret_
           # shaped in that file fails here, so the exemption cannot quietly widen.
-          unexpected=$(git grep -hoE 'sb_secret_[A-Za-z0-9_-]{8,}' -- scripts/tests/Test-InvitationRequest.ps1 \
-                       | sort -u | grep -v '^sb_secret_LOOPBACK_FAKE_0000000000000000$' || true)
+          unexpected=$(git grep -hoE 'sb_secret_[A-Za-z0-9_-]{8,}' \
+                         -- scripts/tests/Test-InvitationRequest.ps1 \
+                            scripts/tests/Test-PreprovisionRequest.ps1 \
+                       | sort -u \
+                       | grep -vE '^sb_secret_(LOOPBACK_FAKE_0000000000000000|PROVISION_FAKE_000000000000000)$' || true)
           if [ -n "$unexpected" ]; then
-            echo "scripts/tests/Test-InvitationRequest.ps1 carries a key that is not the documented loopback fake:"
+            echo "A loopback test carries a key that is not its documented fake:"
             echo "$unexpected"
             exit 1
           fi
@@ -512,7 +547,9 @@ jobs:
             'scripts\OperatorGuards.psm1',
             'scripts\Send-BootstrapInvitation.ps1',
             'scripts\Invoke-HostedValidation.ps1',
-            'scripts\tests\Test-InvitationRequest.ps1'
+            'scripts\New-PreprovisionedAccounts.ps1',
+            'scripts\tests\Test-InvitationRequest.ps1',
+            'scripts\tests\Test-PreprovisionRequest.ps1'
           )
           $failed = 0
           foreach ($file in $files) {
@@ -714,6 +751,37 @@ jobs:
             Write-Host 'FAIL: the loopback header capture did not pass'; exit 1
           }
           exit 0
+      - name: Loopback capture - pre-provisioning sends no email and no password
+        run: |
+          # THE CLAIM HERE IS A NEGATIVE, WHICH IS WHY IT IS TESTED ON THE WIRE.
+          #
+          # "This script sends no invitation, confirmation, magic-link or
+          # recovery email" cannot be established by reading the source: the
+          # absence of a call is invisible in a diff. What CAN be established is
+          # that across a complete run the only endpoints touched are the
+          # allowlist lookup, the existing-user lookup and the admin create-user
+          # endpoint, and that no request anywhere carries a password field.
+          #
+          # Four runs: the happy path, a non-allowlisted address, an address
+          # that already has an account, and a refused confirmation.
+          # THE TAIL IS PRINTED, NOT THE WHOLE TRANSCRIPT.
+          #
+          # Four runs of the script under test produce a few hundred lines, and
+          # a truncated job log cut the summary and the failure list off the
+          # end -- so the step said "did not pass" and the reason was not in the
+          # log at all. Capturing and printing the last 60 lines guarantees the
+          # verdict is visible however long the run was.
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\tests\Test-PreprovisionRequest.ps1 -Branch $branch 2>&1
+          $code = $LASTEXITCODE
+          $out | Select-Object -Last 60 | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) {
+            Write-Host 'FAIL: the pre-provisioning capture did not pass'; exit 1
+          }
+          exit 0
+        shell: powershell
+
       - name: The hosted validator refuses on the same guards
         shell: powershell
         run: |

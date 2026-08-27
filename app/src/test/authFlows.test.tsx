@@ -411,9 +411,9 @@ describe('password recovery', () => {
     for (const address of ['analyst@openi-analytics.invalid', 'stranger@example.invalid']) {
       const auth = signedOut()
       const { unmount } = renderAt('/forgot-password', withoutPrefill(auth))
-      await screen.findByRole('heading', { name: 'Reset your password' })
+      await screen.findByRole('heading', { name: 'Set or reset your password' })
       await userEvent.type(screen.getByLabelText('Email address'), address)
-      await userEvent.click(screen.getByRole('button', { name: /email a reset link/i }))
+      await userEvent.click(screen.getByRole('button', { name: /email me a link/i }))
       answers.add((await screen.findByRole('status')).textContent ?? '')
       unmount()
     }
@@ -424,9 +424,9 @@ describe('password recovery', () => {
   it('asks the provider to send the link back through the one callback route', async () => {
     const auth = signedOut()
     renderAt('/forgot-password', withoutPrefill(auth))
-    await screen.findByRole('heading', { name: 'Reset your password' })
+    await screen.findByRole('heading', { name: 'Set or reset your password' })
     await userEvent.type(screen.getByLabelText('Email address'), 'analyst@openi-analytics.invalid')
-    await userEvent.click(screen.getByRole('button', { name: /email a reset link/i }))
+    await userEvent.click(screen.getByRole('button', { name: /email me a link/i }))
 
     await screen.findByRole('status')
     expect(auth.recoveryEmails).toHaveLength(1)
@@ -439,24 +439,24 @@ describe('password recovery', () => {
       throw new Error('provider down')
     }
     renderAt('/forgot-password', withoutPrefill(auth))
-    await screen.findByRole('heading', { name: 'Reset your password' })
+    await screen.findByRole('heading', { name: 'Set or reset your password' })
     await userEvent.type(screen.getByLabelText('Email address'), 'analyst@openi-analytics.invalid')
-    await userEvent.click(screen.getByRole('button', { name: /email a reset link/i }))
+    await userEvent.click(screen.getByRole('button', { name: /email me a link/i }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('If that address has an account')
   })
 
   it('refuses an empty box, which reveals nothing about anybody', async () => {
     renderAt('/forgot-password', withoutPrefill(signedOut()))
-    await screen.findByRole('heading', { name: 'Reset your password' })
-    await userEvent.click(screen.getByRole('button', { name: /email a reset link/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Enter the email address')
+    await screen.findByRole('heading', { name: 'Set or reset your password' })
+    await userEvent.click(screen.getByRole('button', { name: /email me a link/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter your approved email address')
   })
 
   it('is reachable from the sign-in page', async () => {
     renderAt('/login', withoutPrefill(signedOut()))
     await screen.findByRole('heading', { name: 'Sign in' })
-    expect(screen.getByRole('link', { name: /forgot your password/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /set or reset your password/i })).toHaveAttribute(
       'href',
       '/forgot-password',
     )

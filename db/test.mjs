@@ -906,6 +906,94 @@ select count(*) from reserved_service_addresses;`,
   //
   // A helper sets up one signed-in, allowlisted user per case. Cases then remove
   // exactly one of the four preconditions and assert the answer flips.
+  // ---- Administrator pre-provisioning -----------------------------------
+  //
+  // The second approved onboarding method: an account created by an
+  // administrator through the Auth Admin API, with no password, receiving no
+  // email. Its owner activates it later through "Set or reset your password".
+  //
+  // The point of these cases is that pre-provisioning is NOT a privileged
+  // shortcut. Migration 0016's trigger fires `before insert on auth.users`, so
+  // it applies to an Admin API creation exactly as it applies to an invitation,
+  // and every authorization control downstream treats the two identically.
+  {
+    group: 'preprovisioning',
+    name: 'an administrator cannot create an account for a non-allowlisted address',
+    expect: 'Self-registration is disabled',
+    sql: `
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b0', 'never.invited@example.invalid');`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'allowlisting first is what makes the creation possible',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('preprovisioned@example.invalid', 'Preprovisioned@Example.invalid', 'administrator');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b1', 'preprovisioned@example.invalid');`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'the allowlist comparison is case-insensitive on the normalized column',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('mixed.case@example.invalid', 'Mixed.Case@Example.Invalid', 'administrator');
+
+-- GoTrue lowercases the address it stores; the trigger lowercases what it
+-- compares. A row entered in mixed case must still match.
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b2', 'mixed.case@example.invalid');`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'a pre-provisioned account with no password is still refused evidence once de-listed',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('silent@example.invalid', 'silent@example.invalid', 'administrator');
+
+-- Created as the Admin API creates one: confirmed, and with NO password.
+insert into auth.users (id, email, encrypted_password)
+values ('00000000-0000-4000-8000-0000000000b3', 'silent@example.invalid', null);
+
+insert into auth.sessions (id, user_id)
+values ('00000000-0000-4000-8000-0000000000b4', '00000000-0000-4000-8000-0000000000b3');
+
+do $$
+declare v boolean;
+begin
+    -- While allowlisted, the same rule as any other account.
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000b3',
+        '00000000-0000-4000-8000-0000000000b4') into v;
+    if v is not true then
+        raise exception 'a pre-provisioned, allowlisted session should be authorised';
+    end if;
+
+    -- Removing the allowlist row must take effect on the next request, with no
+    -- token expiry involved and no special case for how the account was made.
+    delete from public.auth_invite_allowlist where email_normalized = 'silent@example.invalid';
+
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000b3',
+        '00000000-0000-4000-8000-0000000000b4') into v;
+    if v is not false then
+        raise exception 'evidence access survived removal from the allowlist';
+    end if;
+end $$;`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'an email-less account is refused, however it is created',
+    expect: 'Anonymous and email-less accounts are not permitted',
+    sql: `
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b5', null);`,
+  },
   {
     group: 'session-guard',
     name: 'a live, allowlisted session is authorised',
