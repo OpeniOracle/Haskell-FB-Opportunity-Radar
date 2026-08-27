@@ -120,6 +120,26 @@ If you mistakenly use the SEC mailbox, this step fails with
 `oracles@openi-analytics.com is a reserved service address … and must not hold an
 application account.` That is correct. Use an individual address.
 
+### Step 1b — clear any account already holding the address
+
+**Do this every time before re-inviting.** An invitation to an address that
+already has a *confirmed* account is refused by the helper, deliberately, and an
+account left over from an earlier attempt is the most common reason a fresh
+invitation appears to do nothing.
+
+Supabase → Authentication → Users → find the address → **Delete user**. Then
+confirm it is gone, and confirm the allowlist row survived — the two live in
+different tables and deleting the user does not touch the allowlist:
+
+```sql
+-- Expect zero rows.
+select id, email, confirmed_at from auth.users
+where email = lower(trim('firstname.lastname@openi-analytics.com'));
+
+-- Expect exactly one row. If it is missing, go back to Step 1.
+select email_normalized, invited_at from auth_invite_allowlist;
+```
+
 ### Step 2 — send the invitation with `Send-BootstrapInvitation.ps1`
 
 **Do not use the dashboard's *Invite user* action.** It offers no way to name a
@@ -127,6 +147,20 @@ redirect and always sends to the project's **Site URL** — the production origi
 PR #9 is unmerged, so production does not contain `/auth/callback` or any other
 authentication route. An invitation sent that way lands on an application that
 cannot read it, which is the failure this milestone was opened to fix.
+
+**And do not hand-roll the API call.** The destination is a QUERY PARAMETER on
+the raw endpoint:
+
+```
+POST /auth/v1/invite?redirect_to=<URL-encoded absolute URL>
+```
+
+`options.redirectTo` in the JSON body is the JavaScript **SDK's** shape. The raw
+GoTrue endpoint has no such field, ignores it without complaining, and falls
+back to the Site URL — which is exactly how the second live invitation reached
+production. Nothing errors and nothing warns; the only visible symptom is that
+the link goes to the wrong origin. The helper now sends it correctly, and the
+Windows PowerShell 5.1 loopback test parses the real request line to prove it.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
