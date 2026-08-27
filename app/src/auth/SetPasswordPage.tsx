@@ -10,6 +10,7 @@ import {
   type PasswordProblem,
 } from '@/auth/passwordPolicy'
 import { scrubCredentialFromHistory } from '@/auth/urlCredentials'
+import { RecoveryCodeStep } from '@/auth/RecoveryCodeStep'
 
 /**
  * `/auth/set-password` and `/auth/reset-password` — the same form, two doorways.
@@ -53,8 +54,27 @@ export function SetPasswordPage({ mode }: { mode: 'invitation' | 'recovery' }) {
   }, [mode])
 
   if (status === 'loading') return null
+
   if (status !== 'authenticated' || !session) {
-    // No live session means no link was redeemed, or it has since ended.
+    /*
+      RECOVERY NOW STARTS HERE, WITH A CODE.
+
+      A link in an email is not a secret that survives delivery. Corporate mail
+      security fetches every URL it is sent, and a single-use recovery token is
+      spent by the first fetch — so the person clicking it arrives second and is
+      told their own link is invalid. Confirmed in this project's auth logs: a
+      HEAD request with no user agent, and GETs from different addresses and
+      platforms, reaching /auth/v1/verify within seconds of the email being
+      generated, each time consuming the token before the human clicked.
+
+      A CODE is inert in transit. A scanner that fetches every link in the
+      message consumes nothing, because the code is not in a link — it is six
+      digits the recipient types into a page the scanner never visits.
+
+      An INVITATION reaching this page without a session is still just not a
+      page: that flow redeems at /auth/callback and has its own screens.
+    */
+    if (mode === 'recovery') return <RecoveryCodeStep />
     return <Navigate to="/login" replace />
   }
 

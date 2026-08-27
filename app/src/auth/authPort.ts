@@ -74,6 +74,18 @@ export interface AuthPort {
   signOut(): Promise<void>
   updatePassword(password: string): Promise<{ ok: true } | { ok: false; message: string }>
   sendRecoveryEmail(email: string, redirectTo: string): Promise<void>
+  /**
+   * Exchange an emailed six-digit code for a recovery session.
+   *
+   * This exists because a LINK in an email is not a secret that survives
+   * delivery: corporate mail security fetches every URL it sees, and a
+   * single-use token is spent by the first fetch. A code is inert until a
+   * human types it into a page that a scanner never visits.
+   */
+  verifyRecoveryCode(
+    email: string,
+    code: string,
+  ): Promise<{ ok: true; session: AuthSession } | { ok: false; reason: RedeemFailure }>
   redeem(credential: UrlCredential): Promise<RedeemResult>
   /**
    * Asked of the SERVER, because it cannot be asked of the browser: migration
@@ -199,6 +211,24 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
       await client.auth.resetPasswordForEmail(email, { redirectTo })
     },
 
+    async verifyRecoveryCode(email, code) {
+      try {
+        const { data, error } = await client.auth.verifyOtp({
+          email,
+          token: code,
+          type: 'recovery',
+        })
+        if (error) return { ok: false, reason: classifyFailure(null, error.message) }
+        const session = toAuthSession(data.session as SupabaseSessionShape | null)
+        return session ? { ok: true, session } : { ok: false, reason: 'unknown' }
+      } catch {
+        // Never let a thrown provider error reach an error boundary: the code
+        // and the address are both in scope here and a stack trace is a place
+        // they must not appear.
+        return { ok: false, reason: 'unknown' }
+      }
+    },
+
     async redeem(credential) {
       if (credential.kind === 'none') return { ok: false, reason: 'missing' }
       if (credential.kind === 'error') return { ok: false, reason: credential.reason }
@@ -221,9 +251,21 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
           return session ? { ok: true, session } : { ok: false, reason: 'unknown' }
         }
 
+        /*
+          NO DEFAULT TO 'invite'.
+
+          This used to read `credential.type ?? 'invite'`, which is how a
+          RECOVERY failure came to be announced as an expired invitation: when
+          the type is absent there is nothing to base that guess on, and
+          guessing tells the person a false story about their own account.
+          A credential with no stated type is refused as indeterminate, and the
+          callback renders neutral language for it.
+        */
+        if (!credential.type) return { ok: false, reason: 'unknown' }
+
         const { data, error } = await client.auth.verifyOtp({
           token_hash: credential.tokenHash,
-          type: (credential.type ?? 'invite') as 'invite',
+          type: credential.type as 'invite' | 'recovery' | 'magiclink' | 'signup',
         })
         if (error) return { ok: false, reason: classifyFailure(null, error.message) }
         const session = toAuthSession(data.session as SupabaseSessionShape | null)
@@ -261,6 +303,7 @@ export const unconfiguredAuthPort: AuthPort = {
   signOut: async () => {},
   updatePassword: async () => ({ ok: false, message: 'Authentication is not configured.' }),
   sendRecoveryEmail: async () => {},
+  verifyRecoveryCode: async () => ({ ok: false, reason: 'unknown' }),
   redeem: async () => ({ ok: false, reason: 'unknown' }),
   confirmStanding: async () => 'unknown',
 }
