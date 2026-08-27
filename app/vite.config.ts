@@ -8,27 +8,32 @@ const src = (path: string) => fileURLToPath(new URL(`./src/${path}`, import.meta
 export default defineConfig(({ command }) => ({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      /*
-        THE ILLUSTRATIVE CORPUS IS NOT BUILT INTO PRODUCTION.
+    /*
+      ORDERED, AND THE SPECIFIC ENTRY FIRST.
 
-        `DataSourceContext` reaches the fixtures through a dynamic import
-        guarded by `import.meta.env.DEV`, so the application never executes it
-        in production — but Vite still emitted the real module as its own
-        chunk, and a chunk in `dist/` is deployed whether or not anything asks
-        for it. Aliasing it to a stub for `vite build` means the fabricated
-        records are not in the output at all, which is the difference between
-        "unreachable" and "absent".
+      This was an object, and the `'@'` prefix entry shadowed the specific one:
+      `@/data/fixtureDataSource` matched `'@'` first and resolved to the real
+      module, so the alias below never fired. The production build looked clean
+      only because tree-shaking removed a dynamic import behind a false
+      `import.meta.env.DEV` -- and the moment a build ran with NODE_ENV=test,
+      DEV inlined as true, the import survived, and the entire illustrative
+      corpus was emitted into dist/ as its own chunk.
 
-        `vite dev` and the test run keep the real module, which is where it is
-        genuinely useful. The browser-layout build reads its own config file
-        and is unaffected by this alias.
-      */
+      Vite evaluates the ARRAY form in order and `find` is matched exactly, so
+      the fixture module is replaced before the `@` prefix rule is reached. The
+      guarantee no longer depends on a tree-shaker's judgement.
+    */
+    alias: [
       ...(command === 'build'
-        ? { '@/data/fixtureDataSource': src('data/fixtureDataSource.production-stub.ts') }
-        : {}),
-    },
+        ? [
+            {
+              find: /^@\/data\/fixtureDataSource$/,
+              replacement: src('data/fixtureDataSource.production-stub.ts'),
+            },
+          ]
+        : []),
+      { find: /^@\//, replacement: `${fileURLToPath(new URL('./src', import.meta.url))}/` },
+    ],
   },
   build: {
     outDir: 'dist',

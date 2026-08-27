@@ -90,11 +90,39 @@ export const UNRESOLVED_LOCATION = 'Location not resolved'
  * D9 has not set acceptance targets, so these are presentational bands for
  * reading a list — not a scoring rule and not a promotion threshold.
  */
-export function priorityBand(finalScore: number): PriorityBand {
+/**
+ * An unscored opportunity has NO band, rather than the lowest one.
+ *
+ * Returning 'low' for a null would file a record nobody has assessed alongside
+ * records somebody assessed and judged unimportant. Those are different
+ * statements and the interface has to be able to make both.
+ */
+export function priorityBand(finalScore: number | null): PriorityBand | null {
+  if (finalScore === null) return null
   if (finalScore >= 85) return 'critical'
   if (finalScore >= 70) return 'high'
   if (finalScore >= 50) return 'moderate'
   return 'low'
+}
+
+/**
+ * Highest score first, with the unscored last.
+ *
+ * Sorting a null as zero would bury an unassessed record under everything
+ * anyone has ever rated badly; sorting it as infinity would promote it above
+ * assessed work. Last, as a group, is the only honest position — it says "we
+ * have not looked at these yet" rather than making a claim about them.
+ */
+export function byScoreDescending(
+  a: { scores: { finalScore: number | null } },
+  b: { scores: { finalScore: number | null } },
+): number {
+  const left = a.scores.finalScore
+  const right = b.scores.finalScore
+  if (left === null && right === null) return 0
+  if (left === null) return 1
+  if (right === null) return -1
+  return right - left
 }
 
 export const PRIORITY_LABEL: Record<PriorityBand, string> = {
@@ -159,6 +187,8 @@ export function filterOpportunities(
 
   return opportunities.filter((o) => {
     if (term && !searchCorpus(o).includes(term)) return false
+    // An unscored opportunity matches no priority filter: it has not been
+    // judged, so claiming it is (or is not) high priority would be a guess.
     if (query.priority !== ANY && priorityBand(o.scores.finalScore) !== query.priority) {
       return false
     }
@@ -188,7 +218,7 @@ export function sortOpportunities(
 
   switch (sort) {
     case 'priority':
-      return sorted.sort((a, b) => b.scores.finalScore - a.scores.finalScore)
+      return sorted.sort((a, b) => byScoreDescending(a, b))
 
     case 'newest_evidence':
       return sorted.sort((a, b) =>
@@ -202,7 +232,7 @@ export function sortOpportunities(
         const left = a.horizon.start
         const right = b.horizon.start
         if (left === null && right === null) {
-          return b.scores.finalScore - a.scores.finalScore
+          return byScoreDescending(a, b)
         }
         if (left === null) return 1
         if (right === null) return -1

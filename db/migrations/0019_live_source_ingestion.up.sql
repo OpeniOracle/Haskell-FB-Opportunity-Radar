@@ -38,9 +38,36 @@
 --    is also not re-downloading what has not changed. Storing the validators
 --    is what makes a conditional request possible at all.
 --
--- Additive and backward compatible: every new column is nullable or carries a
--- default, and every new index is partial or on new columns. An existing row
--- remains valid and the pre-0019 application keeps working against it.
+-- IS THIS MIGRATION ADDITIVE? MOSTLY, AND THE EXCEPTION IS NAMED.
+--
+-- Additive: every new column is nullable or carries a default, every new index
+-- is partial or on new columns, and every new constraint admits all existing
+-- rows. An existing row remains valid and the pre-0019 application keeps
+-- working against it.
+--
+-- NOT additive: this migration RELAXES seven NOT NULL constraints on
+-- `opportunities` (the scoring columns and `why_it_matters`). Dropping NOT NULL
+-- is a widening change, which has three consequences worth stating plainly
+-- rather than filing under "additive":
+--
+--   1. FORWARD COMPATIBILITY IS TOTAL. Existing rows are untouched and still
+--      hold their values; nothing is rewritten and no default is backfilled.
+--      Any query that reads them behaves exactly as before.
+--
+--   2. READERS MUST NOW HANDLE NULL. A consumer that assumed a number will
+--      meet one that is absent as soon as a collected opportunity exists. The
+--      application's `ScoreComponents` was updated in the same change to admit
+--      null, and every consumer renders "not scored yet" -- an unscored
+--      opportunity has no priority band and sorts after the scored ones. That
+--      is the whole reason the columns had to be relaxed: the alternative was
+--      the collector inventing a score in the same column an analyst's real one
+--      lives in.
+--
+--   3. ROLLBACK IS CONDITIONAL. Restoring NOT NULL requires every row to hold a
+--      value again. The down migration refuses, loudly and with instructions,
+--      if any unscored row exists -- it will neither invent a score nor delete
+--      collected work. An empty or never-collected database rolls back cleanly,
+--      which is the path CI exercises.
 
 begin;
 
@@ -115,12 +142,22 @@ create index evidence_document_lookup_idx
 
 create index evidence_last_seen_idx on evidence (last_seen_at desc);
 
--- A published timestamp may never be filled in from a retrieval timestamp.
--- Enforced rather than documented, because the two are the same TYPE and a
--- single careless assignment is invisible in review.
-alter table evidence
-    add constraint evidence_published_is_not_retrieved
-        check (published_at is null or published_at <> retrieved_at);
+-- WHY THERE IS NO `published_at <> retrieved_at` CONSTRAINT.
+--
+-- An earlier draft of this migration forbade the two from being equal, on the
+-- theory that a careless assignment of the retrieval time into the publication
+-- field would otherwise be invisible. That rule was wrong, and wrong in the
+-- expensive direction: the two columns record different FACTS, and those facts
+-- can coincide. A feed polled seconds after publication, a source that states
+-- times only to the minute, and historical metadata normalised to the same
+-- precision as retrieval all produce legitimate rows where the values match.
+-- A constraint that rejects them destroys real data to catch a coding error.
+--
+-- The coding error is prevented where it actually occurs: the pipeline reads
+-- `published_at` only from what the SOURCE stated, and leaves it null when the
+-- source states nothing. `retrieved_at` is already NOT NULL, so a retrieved
+-- document always records when it was fetched. Equality is then a coincidence
+-- the database has no business adjudicating.
 
 -- ----------------------------------------------------------------- signals
 

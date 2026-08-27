@@ -84,22 +84,32 @@ function reject(counters: IngestionCounters, reason: string): void {
 /* ------------------------------------------------------------ normalise */
 
 /**
- * A published timestamp may only come from the source.
+ * A published timestamp may only come from the source — and is preserved
+ * exactly as the source gave it.
  *
- * The two timestamps have the same type, so nothing but a deliberate rule
- * stops a careless assignment putting "now" in the publication field — and
- * once it is there, no later inspection can tell it from a real one. The
- * database carries the same check; this is the half that produces a reason.
+ * TWO RULES, AND ONLY TWO.
+ *
+ *   1. If the source states a publication time, keep it, unmodified.
+ *   2. If it does not, the value is NULL. Never the retrieval time, never an
+ *      inference from the URL, never "close enough".
+ *
+ * THERE IS NO THIRD RULE ABOUT EQUALITY. An earlier version of this function
+ * discarded a source-stated timestamp that happened to equal the retrieval
+ * timestamp, on the theory that equality implied a copy. That was wrong, and it
+ * threw away real data: a feed polled moments after publication, a source
+ * stating times to the minute, and historical metadata normalised to the same
+ * precision all produce legitimate equality. Guarding against a copy by
+ * deleting the evidence of a genuine coincidence is a worse bug than the one it
+ * was guarding against.
+ *
+ * `retrievedAt` is deliberately not a parameter any more. It cannot influence
+ * the published value, so it has no business being in scope here.
  */
 export function normalizePublished(
   document: DiscoveredDocument,
-  retrievedAt: string,
 ): { publishedAt: string | null; precision: string | null; basis: string } {
   if (!document.publishedAt) {
     return { publishedAt: null, precision: null, basis: 'source_stated_none' }
-  }
-  if (document.publishedAt === retrievedAt) {
-    return { publishedAt: null, precision: null, basis: 'rejected_equal_to_retrieval' }
   }
   return {
     publishedAt: document.publishedAt,
@@ -141,7 +151,7 @@ export async function upsertEvidence(
   },
 ): Promise<EvidenceWriteResult> {
   const { document, retrieved } = input
-  const published = normalizePublished(document, retrieved.retrievedAt)
+  const published = normalizePublished(document)
 
   const { data: existing, error: readError } = await client
     .from('evidence')

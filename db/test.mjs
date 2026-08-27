@@ -1448,10 +1448,19 @@ values ('00000000-0000-4000-8000-0000000000e2', 'test-source', ${RUN}, 'doc-1',
 update evidence set superseded_by_evidence_id = '00000000-0000-4000-8000-0000000000e2'
  where id = '00000000-0000-4000-8000-0000000000e1';`,
   },
+  // ---- Publication and retrieval are separate facts -----------------------
+  //
+  // They are NOT required to differ. A feed polled seconds after publication, a
+  // source stating times only to the minute, and historical metadata normalised
+  // to the retrieval precision all produce legitimate equality. An earlier
+  // draft of 0019 forbade it and would have rejected real documents.
+  //
+  // What IS required: the publication time comes from the source or is null,
+  // and the retrieval time is always recorded.
   {
     group: 'live ingestion',
-    name: 'a published timestamp may never equal the retrieval timestamp',
-    expect: 'evidence_published_is_not_retrieved',
+    name: 'EQUAL publication and retrieval timestamps are accepted',
+    expect: 'ok',
     sql: `
 insert into evidence (source_id, source_run_id, original_url, resolved_url, title,
                       published_at, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
@@ -1461,13 +1470,82 @@ select 'test-source', ${RUN}, 'https://example.invalid/p', 'https://example.inva
   },
   {
     group: 'live ingestion',
-    name: 'a published timestamp that differs from retrieval is accepted',
+    name: 'a publication timestamp earlier than retrieval is accepted',
     expect: 'ok',
     sql: `
 insert into evidence (source_id, source_run_id, original_url, resolved_url, title,
                       published_at, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
 values ('test-source', ${RUN}, 'https://example.invalid/q', 'https://example.invalid/q', 'Earlier',
         now() - interval '2 days', now(), repeat('f', 64), 'text/html', 'success', 'structured_primary');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'a NULL publication timestamp is accepted and stays null',
+    expect: 'ok',
+    sql: `
+insert into evidence (id, source_id, source_run_id, original_url, resolved_url, title,
+                      retrieved_at, content_hash, mime_type, extraction_status, access_mode)
+values ('00000000-0000-4000-8000-0000000000f1', 'test-source', ${RUN},
+        'https://example.invalid/n', 'https://example.invalid/n', 'No stated date',
+        now(), repeat('7', 64), 'text/html', 'success', 'structured_primary');
+
+select 1 / (case when (select published_at from evidence
+                        where id = '00000000-0000-4000-8000-0000000000f1') is null
+                 then 1 else 0 end);`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'retrieval time is required for a stored document',
+    expect: 'null value in column "retrieved_at"',
+    sql: `
+insert into evidence (source_id, source_run_id, original_url, resolved_url, title,
+                      content_hash, mime_type, extraction_status, access_mode)
+values ('test-source', ${RUN}, 'https://example.invalid/r', 'https://example.invalid/r',
+        'No retrieval time', repeat('8', 64), 'text/html', 'success', 'structured_primary');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'a source-provided publication timestamp is stored exactly',
+    expect: 'ok',
+    sql: `
+insert into evidence (id, source_id, source_run_id, original_url, resolved_url, title,
+                      published_at, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
+values ('00000000-0000-4000-8000-0000000000f2', 'test-source', ${RUN},
+        'https://example.invalid/x', 'https://example.invalid/x', 'Exact',
+        timestamptz '2026-03-04T16:31:00Z', now(), repeat('9', 64),
+        'text/html', 'success', 'structured_primary');
+
+select 1 / (case when (select published_at from evidence
+                        where id = '00000000-0000-4000-8000-0000000000f2')
+                      = timestamptz '2026-03-04T16:31:00Z'
+                 then 1 else 0 end);`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'RE-OBSERVING a document moves last_seen_at and nothing else',
+    expect: 'ok',
+    sql: `
+insert into evidence (id, source_id, source_run_id, source_document_id, original_url, resolved_url,
+                      title, published_at, retrieved_at, first_seen_at, last_seen_at,
+                      content_hash, mime_type, extraction_status, access_mode)
+values ('00000000-0000-4000-8000-0000000000f3', 'test-source', ${RUN}, 'doc-reobserved',
+        'https://example.invalid/y', 'https://example.invalid/y', 'Re-observed',
+        timestamptz '2026-03-04T16:31:00Z', timestamptz '2026-03-04T18:00:00Z',
+        timestamptz '2026-03-04T18:00:00Z', timestamptz '2026-03-04T18:00:00Z',
+        repeat('a', 64), 'text/html', 'success', 'structured_primary');
+
+update evidence set last_seen_at = now()
+ where id = '00000000-0000-4000-8000-0000000000f3';
+
+select 1 / (case when (select published_at  from evidence where id = '00000000-0000-4000-8000-0000000000f3')
+                      = timestamptz '2026-03-04T16:31:00Z'
+                  and (select retrieved_at  from evidence where id = '00000000-0000-4000-8000-0000000000f3')
+                      = timestamptz '2026-03-04T18:00:00Z'
+                  and (select first_seen_at from evidence where id = '00000000-0000-4000-8000-0000000000f3')
+                      = timestamptz '2026-03-04T18:00:00Z'
+                  and (select last_seen_at  from evidence where id = '00000000-0000-4000-8000-0000000000f3')
+                      > timestamptz '2026-03-04T18:00:00Z'
+                 then 1 else 0 end);`,
   },
   {
     group: 'live ingestion',

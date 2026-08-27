@@ -55,11 +55,15 @@ describe('the runtime cannot reach the fixture corpus', () => {
     expect(context).toMatch(/FIXTURES_AVAILABLE/)
     expect(context).toMatch(/import\.meta\.env\.DEV/)
     expect(context).toMatch(/void import\('@\/data\/fixtureDataSource'\)/)
-    // The guard must be checked BEFORE the import, not after it.
-    const guardAt = context.indexOf('if (!FIXTURES_AVAILABLE')
+    // The guard must be CHECKED before the import, not after it. Asserted on
+    // position rather than on an exact condition string, so rewording the
+    // condition cannot silently stop this from testing anything.
     const importAt = context.indexOf("void import('@/data/fixtureDataSource')")
-    expect(guardAt).toBeGreaterThan(-1)
-    expect(guardAt).toBeLessThan(importAt)
+    expect(importAt).toBeGreaterThan(-1)
+    const guardAt = context.slice(0, importAt).lastIndexOf('FIXTURES_AVAILABLE')
+    expect(guardAt, 'FIXTURES_AVAILABLE must be consulted before the import').toBeGreaterThan(-1)
+    // And the early return that the guard controls sits between them.
+    expect(context.slice(guardAt, importAt)).toMatch(/return/)
   })
 
   it('constructs the live provider by default and the fixture one never', () => {
@@ -112,13 +116,35 @@ describe('the live provider never falls back', () => {
 describe('the built bundle carries no illustrative record', () => {
   const distDir = join(APP_ROOT, 'dist', 'assets')
 
-  it('ships no fixture module and no fixture identifier', () => {
+  /*
+    CONTENT, NOT FILENAMES.
+
+    An earlier version of this test asserted that no chunk was NAMED after the
+    fixture module. That passed for the wrong reason: the alias meant to
+    replace the module was shadowed by the `@` prefix alias and never fired, so
+    the clean output came from tree-shaking a dynamic import behind a false
+    `import.meta.env.DEV`. Under NODE_ENV=test the flag inlined as true, the
+    import survived, and the whole corpus shipped as its own chunk.
+
+    A chunk named `fixtureDataSource.production-stub-*.js` is the CORRECT
+    output: it is the stub. What must never appear is a fabricated record.
+  */
+  const PAYLOAD_MARKERS = [
+    'opp-fixture-',
+    'fx-company-',
+    'fx-facility-',
+    'Example Beverage',
+    'mode:"fixture"',
+    'illustrative:!0',
+  ]
+
+  it('ships no fabricated record, under any build mode', () => {
     let files: string[]
     try {
       files = readdirSync(distDir).filter((f) => f.endsWith('.js'))
     } catch {
-      // `npm run build` has not run in this working tree. CI always builds
-      // before testing; locally this is skipped rather than falsely passing.
+      // `npm run build` has not run in this working tree. CI builds and then
+      // scans in a dedicated step, so this is a local convenience only.
       expect(true).toBe(true)
       return
     }
@@ -126,11 +152,24 @@ describe('the built bundle carries no illustrative record', () => {
 
     for (const file of files) {
       const bundle = readFileSync(join(distDir, file), 'utf8')
-      expect(bundle, `${file} ships the fixture provider`).not.toContain('createFixtureDataSource')
-      expect(bundle, `${file} ships fixture identifiers`).not.toMatch(/opp-fixture-|fx-company-|fx-facility-/)
-      // The flag may appear; a TRUE flag may not.
-      expect(bundle, `${file} declares itself illustrative`).not.toMatch(/illustrative:\s*!0/)
-      expect(bundle, `${file} declares fixture mode`).not.toMatch(/mode:\s*"fixture"/)
+      for (const marker of PAYLOAD_MARKERS) {
+        expect(bundle, `${file} ships '${marker}'`).not.toContain(marker)
+      }
+    }
+  })
+
+  it('replaces the fixture module with a stub that refuses, if it is emitted at all', () => {
+    let files: string[]
+    try {
+      files = readdirSync(distDir).filter((f) => /fixture/i.test(f))
+    } catch {
+      expect(true).toBe(true)
+      return
+    }
+    for (const file of files) {
+      const chunk = readFileSync(join(distDir, file), 'utf8')
+      expect(chunk, `${file} must be the stub`).toContain('not part of a production build')
+      expect(chunk).not.toContain('opp-fixture-')
     }
   })
 })

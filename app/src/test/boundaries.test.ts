@@ -85,6 +85,13 @@ const ENV_MODULES = [
  *                         the pilot-cohort rule is that the APPLICATION must not
  *                         hard-code the roster, not that a test may not name the
  *                         companies whose transport it is checking
+ *   liveDataMode.test.ts  asserts that the fixture corpus is reachable only
+ *                         behind `import.meta.env.DEV`, so it must name that
+ *                         expression to check for it
+ *   publicationTimestamps.test.tsx
+ *                         asserts that a source-stated publication time is
+ *                         preserved exactly, which means quoting real archive
+ *                         URLs as the documents those timestamps came from
  *   authAccessibility.test.tsx
  *                         asserts that no key, token or `service_role` string
  *                         reaches the rendered sign-in page, so it must name them
@@ -108,6 +115,8 @@ const SELF_REFERENTIAL = [
   'authAccessibility.test.tsx',
   'apiContract.test.ts',
   'liveConnectors.test.ts',
+  'publicationTimestamps.test.tsx',
+  'liveDataMode.test.ts',
 ]
 
 const files = walk(srcDir)

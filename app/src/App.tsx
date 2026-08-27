@@ -1,4 +1,4 @@
-import { useContext, type ReactNode } from 'react'
+import { useContext, useMemo, type ReactNode } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { AuthProvider } from '@/auth/AuthProvider'
@@ -149,7 +149,15 @@ function ProtectedApplication() {
   const { search } = useLocation()
   const scenario = new URLSearchParams(search).get('state') ?? undefined
   const injected = useContext(DataSourceInputContext)
-  const source = typeof injected === 'function' ? injected(scenario) : injected
+  // MEMOISED, because a factory called during render returns a NEW object every
+  // time. Without this the provider saw a different data source on each render,
+  // re-ran its effect, set state, and re-rendered -- which made every
+  // asynchronous surface assertion race the churn. It surfaced as an
+  // intermittent failure in a browser-history test, three layers away.
+  const source = useMemo(
+    () => (typeof injected === 'function' ? injected(scenario) : injected),
+    [injected, scenario],
+  )
   return (
     <DataSourceProvider scenario={scenario} source={source}>
       <Outlet />

@@ -40,16 +40,21 @@ interface ProviderProps {
 }
 
 export function DataSourceProvider({ children, source, scenario }: ProviderProps) {
-  const live = useMemo(() => source ?? createApiDataSource(), [source])
-  const [resolved, setResolved] = useState<DataSource>(live)
+  const live = useMemo(() => createApiDataSource(), [])
+
+  /*
+    AN INJECTED SOURCE IS USED DIRECTLY, WITH NO STATE IN BETWEEN.
+
+    The first version ran everything through `useState` + `useEffect`, including
+    the injected case, so a test's data source arrived one render late and any
+    change of identity restarted the cycle. Only the DEVELOPMENT fixture path
+    genuinely needs an effect, because only it awaits a dynamic import.
+  */
+  const [devFixtures, setDevFixtures] = useState<DataSource | null>(null)
 
   useEffect(() => {
-    if (source) {
-      setResolved(source)
-      return
-    }
-    if (!FIXTURES_AVAILABLE || !scenario) {
-      setResolved(live)
+    if (source || !FIXTURES_AVAILABLE || !scenario) {
+      setDevFixtures(null)
       return
     }
     let cancelled = false
@@ -58,15 +63,17 @@ export function DataSourceProvider({ children, source, scenario }: ProviderProps
     void import('@/data/fixtureDataSource')
       .then(({ createFixtureDataSource, isFixtureScenario }) => {
         if (cancelled) return
-        setResolved(isFixtureScenario(scenario) ? createFixtureDataSource(scenario) : live)
+        setDevFixtures(isFixtureScenario(scenario) ? createFixtureDataSource(scenario) : null)
       })
       .catch(() => {
-        if (!cancelled) setResolved(live)
+        if (!cancelled) setDevFixtures(null)
       })
     return () => {
       cancelled = true
     }
-  }, [source, scenario, live])
+  }, [source, scenario])
+
+  const resolved = source ?? devFixtures ?? live
 
   return <DataSourceContext.Provider value={resolved}>{children}</DataSourceContext.Provider>
 }

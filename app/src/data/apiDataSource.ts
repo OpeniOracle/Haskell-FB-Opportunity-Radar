@@ -237,22 +237,26 @@ function mapOpportunity(row: OpportunityRow, evidenceCount: number, publishers: 
     },
     whyItMatters: row.why_it_matters ?? row.executive_summary ?? '',
     capabilities: row.capability_alignment ?? [],
+    /*
+      NULL, AND TYPED AS NULL.
+
+      An earlier version built this object with nulls and then cast it through
+      `unknown` to satisfy `ScoreComponents`, which declared plain numbers. The
+      cast compiled, and the detail view would have thrown on
+      `confidenceMultiplier.toFixed(2)` the first time a collected opportunity
+      was opened. `ScoreComponents` now admits null and every consumer renders
+      "not scored yet", so there is nothing left to lie about.
+    */
     scores: {
       haskellFit: null,
       projectMaturity: null,
       potentialScope: null,
       timingMomentum: null,
-      accountStrategy: {
-        available: false,
-        reason: 'Account strategy scoring is gated on the D14-L licence review.',
-        blockedBy: 'D14-L',
-      },
+      accountStrategy: null,
       rawScore: null,
       confidenceMultiplier: null,
       finalScore: null,
-      band: null,
-      explanation: row.why_it_matters ?? '',
-    } as unknown as Opportunity['scores'],
+    },
     evidence: {
       count: evidenceCount,
       independentPublishers: publishers,
