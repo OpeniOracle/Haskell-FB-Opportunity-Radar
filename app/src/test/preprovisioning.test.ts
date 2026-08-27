@@ -194,10 +194,12 @@ describe('administrator pre-provisioning', () => {
     }
     expect(loopback).toMatch(/carries no password field/)
     // All four conditional behaviours are exercised, not just the happy path.
-    // Each scenario is selected by the address it uses, so the addresses are
-    // what prove the coverage.
-    for (const scenario of ['ADDRESS_UNLISTED', 'ADDRESS_EXISTING']) {
-      expect(loopback, `${scenario} scenario is missing`).toContain(scenario)
+    // Each runs in its own process, named in the dispatch list, because the
+    // scenario decides how the loopback double answers.
+    for (const scenario of ['happy', 'unlisted', 'existing', 'unconfirmed']) {
+      expect(loopback, `the ${scenario} scenario is missing`).toMatch(
+        new RegExp(`ValidateSet[^)]*'${scenario}'`, 's'),
+      )
     }
     expect(loopback).toMatch(/-Confirm 'yes'/)
     expect(workflow).toContain('scripts\\tests\\Test-PreprovisionRequest.ps1')
