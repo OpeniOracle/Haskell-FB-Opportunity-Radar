@@ -324,7 +324,7 @@ $(Get-AuthFailureExplanation -Status $allow.Status -Body $allow.Body)
         throw "Could not read the invitation allowlist (HTTP $($allow.Status))."
     }
     $allowRows = @()
-    $allowRows = ConvertFrom-JsonRows $allow.Body
+    $allowRows = @(ConvertFrom-JsonRows $allow.Body)
     if ($allowRows.Count -lt 1) {
         throw @"
 $email is not on auth_invite_allowlist, so the invitation would fail and no email would be sent.

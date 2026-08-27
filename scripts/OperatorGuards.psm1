@@ -219,11 +219,21 @@ function ConvertFrom-JsonRows {
     #>
     param([string] $Body)
 
-    if (-not $Body) { return @() }
+    <#
+        THE LEADING COMMA IS NOT DECORATION.
+
+        `return @($x)` unrolls a one-element array on the way out, so a single
+        row arrives at the caller as a bare object -- and on 5.1 a
+        PSCustomObject has no .Count, which turns `$rows.Count -lt 1` into
+        `$null -lt 1`, which is TRUE. A helper written to fix a miscount for
+        zero rows would then have miscounted one row instead. The comma
+        operator wraps the result so an array leaves as an array, every time.
+    #>
+    if (-not $Body) { return ,@() }
     $parsed = $null
-    try { $parsed = $Body | ConvertFrom-Json } catch { return @() }
-    if ($null -eq $parsed) { return @() }
-    return @($parsed)
+    try { $parsed = $Body | ConvertFrom-Json } catch { return ,@() }
+    if ($null -eq $parsed) { return ,@() }
+    return ,@($parsed)
 }
 
 Export-ModuleMember -Function Assert-NoObservation, Assert-CorrectCheckout,

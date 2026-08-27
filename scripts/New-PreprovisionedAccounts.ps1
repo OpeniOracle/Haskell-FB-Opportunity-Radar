@@ -352,7 +352,7 @@ The key is sent only as ``apikey`` and the User-Agent is not browser-shaped, so
 check for a proxy in between before assuming the key is at fault.
 "@
         }
-        $rows = ConvertFrom-JsonRows $row.Body
+        $rows = @(ConvertFrom-JsonRows $row.Body)
         if ($rows.Count -lt 1) { Fail "$address is not on auth_invite_allowlist"; [void] $missing.Add($address) }
         else { Pass "$address is allowlisted" }
     }

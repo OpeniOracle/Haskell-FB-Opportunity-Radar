@@ -88,6 +88,19 @@ describe('administrator pre-provisioning', () => {
     const guards = read('scripts/OperatorGuards.psm1')
     expect(guards).toMatch(/function ConvertFrom-JsonRows/)
     expect(guards).toMatch(/Export-ModuleMember[\s\S]*ConvertFrom-JsonRows/)
+    // Every return in the helper wraps with the comma operator. Without it a
+    // one-element array unrolls on the way out and 5.1 loses .Count on the
+    // bare object, so a single row would count as none -- the same defect,
+    // mirrored.
+    const helper = guards.slice(guards.indexOf('function ConvertFrom-JsonRows'))
+    const body = helper.slice(0, helper.indexOf('\nExport-ModuleMember'))
+    const returns = body.match(/^\s*return [^\n]*/gm) ?? []
+    expect(returns.length).toBeGreaterThan(0)
+    for (const ret of returns) {
+      expect(ret.trim(), 'a return must wrap the array with the comma operator').toMatch(
+        /^return ,@\(/,
+      )
+    }
   })
 
   it('requires the allowlist row to exist before it creates anything', () => {
