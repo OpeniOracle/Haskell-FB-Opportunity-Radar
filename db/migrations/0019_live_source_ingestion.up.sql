@@ -54,7 +54,11 @@ alter table evidence
     add column first_seen_at         timestamptz not null default now(),
     add column last_seen_at          timestamptz not null default now(),
     add column classification_status text not null default 'unclassified',
-    add column review_status         text not null default 'unreviewed';
+    add column review_status         text not null default 'unreviewed',
+    add column superseded_at         timestamptz;
+
+comment on column evidence.superseded_at is
+    'When this version stopped being current. Set BEFORE the replacement row exists, which is what lets a correction be written without ever having two current rows or a forward reference to a row that has not been inserted yet.';
 
 comment on column evidence.source_document_id is
     'Stable identifier for the document AT THE SOURCE: an SEC accession number, a feed guid, a canonical newsroom path. Distinct from content_hash, which identifies the bytes.';
@@ -83,9 +87,25 @@ alter table evidence
 
 -- ONE CURRENT VERSION PER DOCUMENT. Superseded rows are excluded, so history
 -- accumulates without ever producing two live rows for the same document.
+-- Keyed on `superseded_at`, NOT on `superseded_by_evidence_id`.
+--
+-- The pointer is a foreign key, so it cannot be set until the replacement row
+-- exists — and the replacement row cannot be inserted while the old one still
+-- holds the key. Marking the old version retired first breaks that deadlock:
+--   1. update old  set superseded_at = now()      -- key is now free
+--   2. insert new                                  -- takes the key
+--   3. update old  set superseded_by = new.id      -- links the history
+-- At no point are there two current rows, and at no point is there a forward
+-- reference to a row that does not exist.
 create unique index evidence_current_document_uidx
     on evidence (source_id, source_document_id)
-    where source_document_id is not null and superseded_by_evidence_id is null;
+    where source_document_id is not null and superseded_at is null;
+
+-- A retired row must say what replaced it, and a live row must not claim a
+-- replacement. Without this the two columns could disagree silently.
+alter table evidence
+    add constraint evidence_supersession_is_consistent
+        check (superseded_by_evidence_id is null or superseded_at is not null);
 
 -- The re-observation path reads by document id constantly; without this every
 -- run table-scans evidence once per document discovered.
@@ -111,6 +131,24 @@ create unique index signals_organization_cluster_uidx
     where cluster_key is not null;
 
 -- ----------------------------------------------------------- opportunities
+
+-- AN UNSCORED OPPORTUNITY IS NULL, NOT ZERO.
+--
+-- These columns were NOT NULL, which forced anything creating an opportunity to
+-- supply a number. A signal-derived opportunity has not been scored yet — the
+-- scoring configuration is versioned and one axis is still gated on the D14-L
+-- licence review — and writing a placeholder would put a fabricated score in
+-- the same column an analyst's real one lives in. Existing rows keep their
+-- values; only the requirement is lifted.
+alter table opportunities
+    alter column haskell_fit           drop not null,
+    alter column project_maturity      drop not null,
+    alter column potential_scope       drop not null,
+    alter column timing_momentum       drop not null,
+    alter column raw_score             drop not null,
+    alter column confidence_multiplier drop not null,
+    alter column final_score           drop not null,
+    alter column why_it_matters        drop not null;
 
 alter table opportunities
     add column opportunity_key text,

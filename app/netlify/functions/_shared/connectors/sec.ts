@@ -173,6 +173,12 @@ export interface SubmissionsDocument {
   }
 }
 
+/** '' and undefined both mean "the API did not give us one". */
+function blankToNull(value: string | undefined): string | null {
+  const trimmed = (value ?? '').trim()
+  return trimmed === '' ? null : trimmed
+}
+
 export function accessionNoDashes(accession: string): string {
   return accession.replace(/-/g, '')
 }
@@ -203,11 +209,16 @@ export function filingsFromSubmissions(
     if (!accession || !form) continue
     if (!formSet.has(form.toUpperCase())) continue
 
-    const filingDate = recent.filingDate?.[i] ?? null
+    // EDGAR sends an EMPTY STRING for a value it does not have, not null, so
+    // `??` falls straight through it and yields ''. An empty published
+    // timestamp then skipped the window filter entirely and pulled in filings
+    // from outside the collection window. Absent means absent, whichever way
+    // the API spells it.
+    const filingDate = blankToNull(recent.filingDate?.[i])
     // acceptanceDateTime is the precise instant; filingDate is the day. Prefer
     // the precise one and record which precision we actually got, rather than
     // pretending a date is a timestamp.
-    const acceptance = recent.acceptanceDateTime?.[i] ?? null
+    const acceptance = blankToNull(recent.acceptanceDateTime?.[i])
     const publishedAt = acceptance ?? (filingDate ? `${filingDate}T00:00:00Z` : null)
     const precision = acceptance ? 'minute' : filingDate ? 'day' : null
 

@@ -22,6 +22,17 @@ alter table opportunities
 
 drop index if exists signals_organization_cluster_uidx;
 
+alter table opportunities
+    alter column haskell_fit           set not null,
+    alter column project_maturity      set not null,
+    alter column potential_scope       set not null,
+    alter column timing_momentum       set not null,
+    alter column raw_score             set not null,
+    alter column confidence_multiplier set not null,
+    alter column final_score           set not null,
+    alter column why_it_matters        set not null;
+
+alter table evidence drop constraint if exists evidence_supersession_is_consistent;
 alter table evidence drop constraint if exists evidence_published_is_not_retrieved;
 drop index if exists evidence_last_seen_idx;
 drop index if exists evidence_document_lookup_idx;
@@ -29,6 +40,7 @@ drop index if exists evidence_current_document_uidx;
 alter table evidence drop constraint if exists evidence_review_status_check;
 alter table evidence drop constraint if exists evidence_classification_status_check;
 alter table evidence
+    drop column if exists superseded_at,
     drop column if exists review_status,
     drop column if exists classification_status,
     drop column if exists last_seen_at,

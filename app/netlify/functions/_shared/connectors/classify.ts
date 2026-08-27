@@ -105,7 +105,9 @@ export const SIGNAL_PATTERNS: readonly SignalPattern[] = [
     family: 'closure_consolidation',
     eventType: 'facility_closure_announced',
     negative: true,
-    actions: [/\b(clos(?:e|ing|ure) (?:of )?(?:the |its )?(?:plant|facility|site)|shut(?:ting|s)? down|ceas(?:e|ing) (?:production|operations)|consolidat\w+ (?:its |the )?(?:operations|production|footprint)|exit(?:ing)? the (?:site|facility))\b/i],
+    // "close its Emporia processing plant" — the asset is rarely the very next
+    // word, so up to three qualifiers are allowed between the verb and it.
+    actions: [/\b(clos(?:e|ing|ure) (?:of )?(?:the |its )?(?:\w+ ){0,3}(?:plant|facility|site|operations)|shut(?:ting|s)? down|ceas(?:e|ing) (?:production|operations)|consolidat\w+ (?:its |the )?(?:operations|production|footprint)|exit(?:ing)? the (?:site|facility))\b/i],
   },
 ]
 

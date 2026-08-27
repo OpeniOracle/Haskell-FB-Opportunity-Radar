@@ -198,7 +198,6 @@ interface OpportunityRow {
 }
 
 const STAGE_MAP: Record<string, Opportunity['stage']> = {
-  signal_detected: 'emerging',
   emerging: 'emerging',
   developing: 'developing',
   confirmed: 'confirmed',

@@ -1408,6 +1408,187 @@ $$;`,
 insert into change_events (object_type, object_id, change_type, materiality, dedupe_key)
 values ('organization', ${ORG_A}, 'renamed', 'material', '');`,
   },
+  // ---- Live ingestion (0019) --------------------------------------------
+  //
+  // The contracts that make a repeated run a no-op. Every one of these is a
+  // DATABASE guarantee rather than an application convention, because the
+  // scheduled collector can overlap itself and an application-level "check
+  // then insert" loses that race by construction.
+  {
+    group: 'live ingestion',
+    name: 'a document may not have two current rows for one source',
+    expect: 'evidence_current_document_uidx',
+    sql: `
+insert into evidence (source_id, source_run_id, source_document_id, original_url, resolved_url,
+                      title, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
+values ('test-source', ${RUN}, '0000100493-26-000010', 'https://example.invalid/f1',
+        'https://example.invalid/f1', 'Filing', now(), repeat('a', 64), 'text/html', 'success', 'structured_primary'),
+       ('test-source', ${RUN}, '0000100493-26-000010', 'https://example.invalid/f2',
+        'https://example.invalid/f2', 'Filing again', now(), repeat('b', 64), 'text/html', 'success', 'structured_primary');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'a SUPERSEDED row may coexist with the current one, which is how corrections work',
+    expect: 'ok',
+    sql: `
+insert into evidence (id, source_id, source_run_id, source_document_id, original_url, resolved_url,
+                      title, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
+values ('00000000-0000-4000-8000-0000000000e1', 'test-source', ${RUN}, 'doc-1',
+        'https://example.invalid/v1', 'https://example.invalid/v1', 'Version 1', now(),
+        repeat('c', 64), 'text/html', 'success', 'structured_primary');
+
+update evidence set superseded_at = now() where id = '00000000-0000-4000-8000-0000000000e1';
+
+insert into evidence (id, source_id, source_run_id, source_document_id, original_url, resolved_url,
+                      title, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
+values ('00000000-0000-4000-8000-0000000000e2', 'test-source', ${RUN}, 'doc-1',
+        'https://example.invalid/v2', 'https://example.invalid/v2', 'Version 2', now(),
+        repeat('d', 64), 'text/html', 'success', 'structured_primary');
+
+update evidence set superseded_by_evidence_id = '00000000-0000-4000-8000-0000000000e2'
+ where id = '00000000-0000-4000-8000-0000000000e1';`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'a published timestamp may never equal the retrieval timestamp',
+    expect: 'evidence_published_is_not_retrieved',
+    sql: `
+insert into evidence (source_id, source_run_id, original_url, resolved_url, title,
+                      published_at, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
+select 'test-source', ${RUN}, 'https://example.invalid/p', 'https://example.invalid/p', 'Same instant',
+       t, t, repeat('e', 64), 'text/html', 'success', 'structured_primary'
+  from (select now() as t) s;`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'a published timestamp that differs from retrieval is accepted',
+    expect: 'ok',
+    sql: `
+insert into evidence (source_id, source_run_id, original_url, resolved_url, title,
+                      published_at, retrieved_at, content_hash, mime_type, extraction_status, access_mode)
+values ('test-source', ${RUN}, 'https://example.invalid/q', 'https://example.invalid/q', 'Earlier',
+        now() - interval '2 days', now(), repeat('f', 64), 'text/html', 'success', 'structured_primary');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'classification status is constrained to the four defined states',
+    expect: 'evidence_classification_status_check',
+    sql: `
+update evidence set classification_status = 'probably_relevant' where id = ${EV};`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'review status is constrained, so an analyst verdict cannot be invented',
+    expect: 'evidence_review_status_check',
+    sql: `update evidence set review_status = 'looks_fine' where id = ${EV};`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'two runs may not be active against one source at the same time',
+    expect: 'source_runs_single_active_uidx',
+    sql: `
+insert into source_runs (source_id, status, run_status, collection_window_start)
+values ('test-source', 'running', 'running', now() - interval '1 day'),
+       ('test-source', 'running', 'running', now() - interval '2 days');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'a completed run does not block the next one',
+    expect: 'ok',
+    sql: `
+insert into source_runs (source_id, status, run_status, collection_window_start)
+values ('test-source', 'success', 'success', now() - interval '1 day'),
+       ('test-source', 'running', 'running', now() - interval '2 days');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'one logical run per source and collection window',
+    expect: 'source_runs_logical_key',
+    sql: `
+insert into source_runs (source_id, status, run_status, collection_window_start)
+values ('test-source', 'success', 'success', timestamptz '2026-03-04T00:00:00Z'),
+       ('test-source', 'success', 'success', timestamptz '2026-03-04T00:00:00Z');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'one signal per organization and cluster, so an announcement cannot fan out',
+    expect: 'signals_organization_cluster_uidx',
+    sql: `
+insert into signals (organization_id, title, summary, signal_family, event_type, cluster_key, confidence,
+                     first_observed_at, last_observed_at)
+values (${ORG_A}, 'Expansion', 'x', 'facility_capacity', 'capacity_expansion', 'k1', 'possible', now(), now()),
+       (${ORG_A}, 'Expansion again', 'x', 'facility_capacity', 'capacity_expansion', 'k1', 'possible', now(), now());`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'the same cluster key under a different organization is a different signal',
+    expect: 'ok',
+    sql: `
+insert into signals (organization_id, title, summary, signal_family, event_type, cluster_key, confidence,
+                     first_observed_at, last_observed_at)
+values (${ORG_A}, 'Expansion', 'x', 'facility_capacity', 'capacity_expansion', 'k1', 'possible', now(), now()),
+       (${ORG_B}, 'Expansion', 'x', 'facility_capacity', 'capacity_expansion', 'k1', 'possible', now(), now());`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'one opportunity per organization and derivation key',
+    expect: 'opportunities_organization_key_uidx',
+    sql: `
+insert into opportunities (organization_id, title, stage, confidence, capability_alignment, opportunity_key)
+values (${ORG_A}, 'Plant expansion', 'emerging', 'possible', '{}', 'org-a|facility_expansion|2026-03|plant'),
+       (${ORG_A}, 'Plant expansion (again)', 'emerging', 'possible', '{}', 'org-a|facility_expansion|2026-03|plant');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'an analyst-created opportunity carries no key and is never deduplicated away',
+    expect: 'ok',
+    sql: `
+insert into opportunities (organization_id, title, stage, confidence, capability_alignment)
+values (${ORG_A}, 'Analyst note one', 'emerging', 'possible', '{}');
+insert into opportunities (organization_id, title, stage, confidence, capability_alignment)
+values (${ORG_A}, 'Analyst note two', 'emerging', 'possible', '{}');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'the validator cache holds one row per source and request URL',
+    expect: 'source_document_cache_source_id_request_url_key',
+    sql: `
+insert into source_document_cache (source_id, request_url, etag)
+values ('test-source', 'https://example.invalid/a', 'W/"1"'),
+       ('test-source', 'https://example.invalid/a', 'W/"2"');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'a cache row with no validator at all is refused',
+    expect: 'source_document_cache_has_validator',
+    sql: `
+insert into source_document_cache (source_id, request_url) values ('test-source', 'https://example.invalid/b');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'the validator cache is not readable without bypassing RLS',
+    expect: 'ok',
+    sql: `
+select 1 from pg_class c
+ where c.relname = 'source_document_cache'
+   and c.relrowsecurity
+   and c.relforcerowsecurity
+   and not exists (select 1 from pg_policies p where p.tablename = 'source_document_cache');`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'the two honest connector states are expressible',
+    expect: 'ok',
+    sql: `
+update sources set health_status = 'manual_review_required' where id = 'test-source';
+update sources set health_status = 'source_unavailable' where id = 'test-source';`,
+  },
+  {
+    group: 'live ingestion',
+    name: 'an invented health status is still refused',
+    expect: 'sources_health_status_check',
+    sql: `update sources set health_status = 'probably_fine' where id = 'test-source';`,
+  },
 ]
 
 function runSql(sql) {

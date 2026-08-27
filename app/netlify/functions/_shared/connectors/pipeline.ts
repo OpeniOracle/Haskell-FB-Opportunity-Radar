@@ -148,7 +148,7 @@ export async function upsertEvidence(
     .select('id, content_hash, first_seen_at, evidence_family_id')
     .eq('source_id', input.sourceId)
     .eq('source_document_id', document.sourceDocumentId)
-    .is('superseded_by_evidence_id', null)
+    .is('superseded_at', null)
     .maybeSingle()
 
   if (readError) throw new Error(`evidence lookup failed: ${readError.code ?? readError.message}`)
@@ -195,13 +195,35 @@ export async function upsertEvidence(
     evidence_family_id: existing?.evidence_family_id ?? null,
   }
 
+  // RETIRE FIRST, THEN INSERT, THEN LINK.
+  //
+  // The current-document index is keyed on `superseded_at`, so the old row has
+  // to release the key before the new one can take it — and the pointer is a
+  // foreign key, so it cannot be set until the new row exists. Marking the old
+  // version retired first is what makes both possible without a window in
+  // which two rows are current.
+  if (existing) {
+    const { error } = await client
+      .from('evidence')
+      .update({ superseded_at: input.now })
+      .eq('id', existing.id)
+    if (error) throw new Error(`retiring the prior version failed: ${error.code ?? error.message}`)
+  }
+
   const { data: inserted, error: insertError } = await client
     .from('evidence')
     .insert(row)
     .select('id')
     .single()
 
-  if (insertError) throw new Error(`evidence insert failed: ${insertError.code ?? insertError.message}`)
+  if (insertError) {
+    // Put the old row back the way it was, or a failed insert would leave the
+    // document with NO current version at all.
+    if (existing) {
+      await client.from('evidence').update({ superseded_at: null }).eq('id', existing.id)
+    }
+    throw new Error(`evidence insert failed: ${insertError.code ?? insertError.message}`)
+  }
   const newId = inserted!.id as string
 
   if (existing) {
@@ -211,7 +233,7 @@ export async function upsertEvidence(
       .from('evidence')
       .update({ superseded_by_evidence_id: newId })
       .eq('id', existing.id)
-    if (error) throw new Error(`supersession failed: ${error.code ?? error.message}`)
+    if (error) throw new Error(`supersession link failed: ${error.code ?? error.message}`)
     return { evidenceId: newId, created: true, superseded: true, unchanged: false }
   }
 
@@ -396,8 +418,12 @@ export async function upsertOpportunity(
       opportunity_key: key,
       title: title.slice(0, 300),
       executive_summary: input.match.excerpt.slice(0, 1500),
-      stage: 'signal_detected',
-      status: 'open',
+      capability_alignment: [],
+      // 'emerging' and 'new' are the vocabulary the schema actually defines.
+      // A derived opportunity starts at the earliest stage and the untouched
+      // status; nothing about a machine reading one document justifies more.
+      stage: 'emerging',
+      status: 'new',
       confidence: input.match.confidence,
       why_it_matters: input.match.reasoning,
       derived_by: `pipeline@${PIPELINE_VERSION}`,

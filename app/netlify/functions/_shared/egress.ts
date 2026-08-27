@@ -340,6 +340,10 @@ export async function mapWithLimit<T, R>(
  * guidance is expressed per second, so something has to measure per second.
  */
 export class RequestPacer {
+  // `started` rather than `lastAt === 0`: zero is a legitimate reading from an
+  // injected clock, and using it as a sentinel made the pacer skip its first
+  // real interval under test — the one place it was being measured.
+  private started = false
   private lastAt = 0
   constructor(
     private readonly minIntervalMs: number,
@@ -349,9 +353,10 @@ export class RequestPacer {
 
   async take(): Promise<void> {
     const elapsed = this.now() - this.lastAt
-    if (this.lastAt !== 0 && elapsed < this.minIntervalMs) {
+    if (this.started && elapsed < this.minIntervalMs) {
       await this.waiter(this.minIntervalMs - elapsed)
     }
+    this.started = true
     this.lastAt = this.now()
   }
 }
