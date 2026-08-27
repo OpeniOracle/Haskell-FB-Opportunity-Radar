@@ -68,9 +68,9 @@ export function AuthProvider({
       !peeked.user.isAnonymous &&
       port.peekStanding?.(peeked.accessToken) === 'invited'
     ) {
-      return { status: 'authenticated', session: peeked, message: null, onboarding: false }
+      return { status: 'authenticated', session: peeked, message: null, reason: null, onboarding: false }
     }
-    return { status: 'loading', session: null, message: null, onboarding: false }
+    return { status: 'loading', session: null, message: null, reason: null, onboarding: false }
   })
 
   /** So a sign-out the user asked for is not reported as an expiry. */
@@ -90,21 +90,39 @@ export function AuthProvider({
     async (session: AuthSession, onboarding: boolean): Promise<AuthState> => {
       if (session.user.isAnonymous) {
         await port.signOut()
-        return { status: 'error', session: null, message: NOT_INVITED_MESSAGE, onboarding: false }
+        return {
+          status: 'error',
+          session: null,
+          message: NOT_INVITED_MESSAGE,
+          reason: 'not_invited',
+          onboarding: false,
+        }
       }
       const standing = await port.confirmStanding(session.accessToken)
       if (standing === 'not_invited') {
         deliberateSignOut.current = true
         await port.signOut()
-        return { status: 'error', session: null, message: NOT_INVITED_MESSAGE, onboarding: false }
+        return {
+          status: 'error',
+          session: null,
+          message: NOT_INVITED_MESSAGE,
+          reason: 'not_invited',
+          onboarding: false,
+        }
       }
       if (standing === 'unknown') {
         // Fail closed on the UI, but do NOT destroy the session: the server
         // being unreachable is not evidence about this person's access.
-        return { status: 'error', session: null, message: UNREACHABLE_MESSAGE, onboarding: false }
+        return {
+          status: 'error',
+          session: null,
+          message: UNREACHABLE_MESSAGE,
+          reason: 'service_unavailable',
+          onboarding: false,
+        }
       }
       everHadSession.current = true
-      return { status: 'authenticated', session, message: null, onboarding }
+      return { status: 'authenticated', session, message: null, reason: null, onboarding }
     },
     [port],
   )
@@ -113,7 +131,13 @@ export function AuthProvider({
     mounted.current = true
 
     if (!port.configured) {
-      setState({ status: 'error', session: null, message: UNCONFIGURED_MESSAGE, onboarding: false })
+      setState({
+        status: 'error',
+        session: null,
+        message: UNCONFIGURED_MESSAGE,
+        reason: 'unconfigured',
+        onboarding: false,
+      })
       return () => {
         mounted.current = false
       }
@@ -126,7 +150,13 @@ export function AuthProvider({
         const existing = await port.getSession()
         if (cancelled || !mounted.current) return
         if (!existing) {
-          setState({ status: 'unauthenticated', session: null, message: null, onboarding: false })
+          setState({
+            status: 'unauthenticated',
+            session: null,
+            message: null,
+            reason: null,
+            onboarding: false,
+          })
           return
         }
         const next = await admit(existing, false)
@@ -134,7 +164,13 @@ export function AuthProvider({
         setState(next)
       } catch {
         if (cancelled || !mounted.current) return
-        setState({ status: 'error', session: null, message: UNREACHABLE_MESSAGE, onboarding: false })
+        setState({
+          status: 'error',
+          session: null,
+          message: UNREACHABLE_MESSAGE,
+          reason: 'service_unavailable',
+          onboarding: false,
+        })
       }
     })()
 
@@ -149,6 +185,7 @@ export function AuthProvider({
           status: wasExpiry ? 'expired' : 'unauthenticated',
           session: null,
           message: null,
+          reason: null,
           onboarding: false,
         })
         return
@@ -198,7 +235,13 @@ export function AuthProvider({
     // network round trip later.
     if (mounted.current) {
       everHadSession.current = false
-      setState({ status: 'unauthenticated', session: null, message: null, onboarding: false })
+      setState({
+            status: 'unauthenticated',
+            session: null,
+            message: null,
+            reason: null,
+            onboarding: false,
+          })
     }
   }, [port])
 

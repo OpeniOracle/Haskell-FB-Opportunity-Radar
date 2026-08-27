@@ -46,6 +46,18 @@ const SCENARIOS: Record<string, () => FakeAuth> = {
   'password-mismatch': () => new FakeAuth({ initialSession: makeSession() }),
   // The whole invitation journey, from a realistic Supabase implicit fragment.
   invitation: () => new FakeAuth(),
+  /*
+     THE SCREEN THE ROUTING FAULT PRODUCED.
+
+     `/api/session` returned the SPA instead of JSON, `confirmStanding()` could
+     not parse it, and the gate reported `unknown` -- a service failure. The
+     page then told the operator their allowlist row was missing. It was not.
+     `standing: 'unknown'` reproduces that exactly.
+  */
+  'callback-service-failure': () => new FakeAuth({ standing: 'unknown' }),
+  // The genuinely de-listed account, for contrast: the one case where the
+  // allowlist really is the thing to go and look at.
+  'callback-not-invited': () => new FakeAuth({ standing: 'not_invited' }),
 }
 
 const build = SCENARIOS[scenario]

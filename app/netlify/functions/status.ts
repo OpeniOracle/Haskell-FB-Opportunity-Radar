@@ -23,7 +23,13 @@ import {
   productionGuardDeps,
   requireLiveSession,
 } from './_shared/sessionGuard.js'
-import { MissingEnvError, REQUIRED_SERVER_VARS, serverEnv } from './_shared/env.js'
+import {
+  KeyShapeError,
+  MissingEnvError,
+  REQUIRED_SERVER_VARS,
+  describeServerVariables,
+  serverEnv,
+} from './_shared/env.js'
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'GET') return methodNotAllowed('GET')
@@ -38,6 +44,11 @@ export const handler: Handler = async (event) => {
         'not_configured',
         `Deployment is incomplete. Missing: ${error.names.join(', ')}.`,
       )
+    }
+    // Present but the wrong kind of key. Named, never quoted. Without this an
+    // unhandled throw would answer HTML from a JSON endpoint.
+    if (error instanceof KeyShapeError) {
+      return failure(503, 'not_configured', error.message)
     }
     throw error
   }
@@ -146,6 +157,17 @@ export const handler: Handler = async (event) => {
     },
     // Names only. Never values.
     requiredServerVariables: REQUIRED_SERVER_VARS,
+    /*
+       PRESENCE AND SHAPE, NEVER VALUE.
+
+       "Are the Deploy Preview's function variables actually there?" is a
+       question that previously could only be answered by trusting the Netlify
+       UI. Each entry reports whether the variable is set and whether what it
+       holds looks like the right KIND of thing -- an `sb_secret_` prefix, an
+       https URL -- and nothing else. No value, no prefix beyond the family
+       name, no length that would narrow a secret.
+    */
+    environment: describeServerVariables(),
     egressAllowlistSize: env.egressAllowlist.length,
   })
 }

@@ -253,6 +253,35 @@ try {
   check('invitation journey: Back does not reach the credential',
     !/access_token|refresh_token/.test(afterBack), afterBack)
 
+  // ---- 6b. The four callback outcomes are four different screens --------
+  //
+  // A service failure and a missing allowlist row are different problems with
+  // different fixes, and conflating them cost an operator an hour looking at a
+  // row that was present. These assert the words on the screen, at a phone
+  // width, in a real browser.
+  const fragment2 = '#access_token=eyJhbGciOiJIUzI1NiJ9.fake.sig&refresh_token=r&type=invite'
+
+  await page.goto(`${base}/auth/callback?scenario=callback-service-failure${fragment2}`)
+  await page.getByRole('alert').waitFor()
+  const serviceText = await page.evaluate(() => document.body.innerText)
+  check('service failure: says it is a service problem', /service problem/i.test(serviceText))
+  check('service failure: does NOT blame the allowlist',
+    !/invitation list|allowlist|add the address/i.test(serviceText),
+    serviceText.replace(/\s+/g, ' ').slice(0, 220))
+  check('service failure: says the invitation is not used up',
+    /not been used up|open the link again/i.test(serviceText))
+  await measureCallout(page, '[data-testid="auth-status-error"]', 'callback service failure', { name: '390' })
+  await shoot(page, `${tag}-callback-service-failure-390`)
+
+  await page.goto(`${base}/auth/callback?scenario=callback-not-invited${fragment2}`)
+  await page.getByRole('alert').waitFor()
+  const delistedText = await page.evaluate(() => document.body.innerText)
+  check('removed from allowlist: names the invitation list',
+    /invitation list/i.test(delistedText))
+  check('removed from allowlist: does not call it a service problem',
+    !/service problem/i.test(delistedText))
+  await shoot(page, `${tag}-callback-not-invited-390`)
+
   await context.close()
 
   // ---- 7. Dark theme, because the callouts are colour-carrying ----------

@@ -12,11 +12,30 @@ import type { AuthPort, AuthSession, SignInFailure } from '@/auth/authPort'
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'expired' | 'error'
 
+/**
+ * WHY the `error` state was reached. Present only in that state.
+ *
+ * These are not interchangeable and must never be presented as if they were.
+ * `not_invited` is a fact about the account and the fix is an administrator
+ * adding a row; `service_unavailable` is a fact about the deployment and the
+ * fix is waiting or repairing it. Telling somebody their allowlist row is
+ * missing when the real problem was that `/api/session` returned HTML sends
+ * them to an administrator who will look at a row that is already there and
+ * find nothing wrong -- which is exactly what happened.
+ *
+ * The distinction already existed in `AuthProvider`'s messages. What was
+ * missing was carrying it far enough for the callback page to render a
+ * different SCREEN, rather than one screen with a different sentence in it.
+ */
+export type AuthErrorReason = 'not_invited' | 'service_unavailable' | 'unconfigured'
+
 export interface AuthState {
   readonly status: AuthStatus
   readonly session: AuthSession | null
   /** Present only in the `error` state. Safe to render; never a credential. */
   readonly message: string | null
+  /** Present only in the `error` state. Decides which screen is shown. */
+  readonly reason: AuthErrorReason | null
   /** True between the invitation being redeemed and a password being set. */
   readonly onboarding: boolean
 }

@@ -311,6 +311,71 @@ export const REQUIRED_SERVER_VARS = [
   'INGEST_SHARED_SECRET',
 ] as const
 
+/**
+ * Presence and shape for every required variable. NEVER a value.
+ *
+ * The Deploy Preview context is a separate set of variables from production,
+ * and "I set it in the UI" is not evidence that a function can see it. This
+ * gives an operator a way to check from the outside without anybody pasting a
+ * key into a terminal to compare it.
+ *
+ * What each entry may say is deliberately narrow. `present` is a boolean.
+ * `shape` is one of a fixed set of verdicts derived from the FAMILY the value
+ * belongs to -- an `sb_secret_` prefix, an `sb_publishable_` prefix, an https
+ * URL. No value, no fragment of one, and no length: a length narrows a secret,
+ * and a prefix beyond the family name would identify a project.
+ */
+export type VariableShape =
+  | 'ok'
+  | 'missing'
+  | 'empty'
+  | 'not_a_url'
+  | 'expected_sb_secret'
+  | 'expected_sb_publishable'
+  | 'legacy_jwt'
+  | 'wrong_key_family'
+
+export interface VariableReport {
+  readonly name: string
+  readonly present: boolean
+  readonly shape: VariableShape
+}
+
+function shapeOf(name: string, raw: string | undefined): VariableShape {
+  if (raw === undefined) return 'missing'
+  const value = raw.trim()
+  if (!value) return 'empty'
+
+  if (name === 'SUPABASE_URL') {
+    try {
+      return new URL(value).protocol === 'https:' ? 'ok' : 'not_a_url'
+    } catch {
+      return 'not_a_url'
+    }
+  }
+  if (name === 'SUPABASE_SECRET_KEY') {
+    if (value.startsWith('sb_secret_')) return 'ok'
+    if (value.startsWith('sb_publishable_')) return 'wrong_key_family'
+    if (value.startsWith('eyJ')) return 'legacy_jwt'
+    return 'expected_sb_secret'
+  }
+  if (name === 'SUPABASE_PUBLISHABLE_KEY') {
+    if (value.startsWith('sb_publishable_')) return 'ok'
+    if (value.startsWith('sb_secret_')) return 'wrong_key_family'
+    if (value.startsWith('eyJ')) return 'legacy_jwt'
+    return 'expected_sb_publishable'
+  }
+  // Everything else is free text; being set and non-empty is the whole contract.
+  return 'ok'
+}
+
+export function describeServerVariables(): VariableReport[] {
+  return REQUIRED_SERVER_VARS.map((name) => {
+    const raw = process.env[name]
+    return { name, present: raw !== undefined && raw.trim() !== '', shape: shapeOf(name, raw) }
+  })
+}
+
 export const OPTIONAL_SERVER_VARS = [
   'SUPABASE_DB_URL',
   'SUPABASE_JWT_SECRET',

@@ -23,7 +23,7 @@
  */
 import type { Handler } from '@netlify/functions'
 import { UnauthorizedError, requireUser } from './_shared/auth.js'
-import { MissingEnvError, serverEnv } from './_shared/env.js'
+import { KeyShapeError, MissingEnvError, serverEnv } from './_shared/env.js'
 import { failure, json, methodNotAllowed } from './_shared/http.js'
 
 export const handler: Handler = async (event) => {
@@ -34,6 +34,18 @@ export const handler: Handler = async (event) => {
   } catch (error) {
     if (error instanceof MissingEnvError) {
       return failure(503, 'not_configured', 'Authentication is not configured.')
+    }
+    /*
+       A variable that is PRESENT but holds the wrong kind of key used to fall
+       through to `throw`, and an unhandled throw in a Netlify function is an
+       HTML error page. The caller then gets HTML from an endpoint that
+       promises JSON -- the same class of failure as the routing bug, arriving
+       by a different door. It is an answer, so it is answered in JSON.
+
+       The message names the VARIABLE and the problem, never the value.
+    */
+    if (error instanceof KeyShapeError) {
+      return failure(503, 'not_configured', error.message)
     }
     throw error
   }

@@ -179,6 +179,40 @@ jobs:
           fi
           echo "ok    harness and fake are confined to the harness build"
 
+      # ROUTING IS DECLARED IN ONE PLACE, AND THE CATCH-ALL IS LAST.
+      #
+      # `app/public/_redirects` once carried a copy of the SPA catch-all, added
+      # so the behaviour would survive netlify.toml being replaced. Netlify
+      # processes a `_redirects` FILE BEFORE the rules in `netlify.toml`, so a
+      # copy of the LAST rule, in the file read FIRST, became the first rule:
+      # `/*  /index.html  200` matched /api/session and every API route
+      # returned the application with a 200. Both files read correctly on their
+      # own; the fault was in the relationship between them.
+      #
+      # `app/src/test/netlifyRouting.test.ts` resolves real paths through the
+      # real precedence. This step is the cheap structural half.
+      - name: The SPA catch-all cannot outrank the API routes
+        run: |
+          if [ -f app/public/_redirects ]; then
+            if ! grep -q '^/api/' app/public/_redirects; then
+              echo "app/public/_redirects exists and is evaluated BEFORE netlify.toml,"
+              echo "but declares no /api rules. Its catch-all will swallow every API route."
+              exit 1
+            fi
+            catch_all=$(grep -n '^/\*' app/public/_redirects | head -1 | cut -d: -f1)
+            last_api=$(grep -n '^/api/' app/public/_redirects | tail -1 | cut -d: -f1)
+            if [ -n "$catch_all" ] && [ "$catch_all" -lt "$last_api" ]; then
+              echo "The /* catch-all precedes the /api rules in app/public/_redirects."
+              exit 1
+            fi
+          fi
+          # And in netlify.toml the catch-all must be the final redirect block.
+          last_from=$(grep -n '^  from = ' netlify.toml | tail -1)
+          case "$last_from" in
+            *'"/*"'*) echo "ok    the SPA catch-all is the last rule" ;;
+            *) echo "The last redirect in netlify.toml is not the SPA catch-all: $last_from"; exit 1 ;;
+          esac
+
       # Secret-leak detection across every tracked file.
       #
       # The publishable key is deliberately NOT in this list: it is not

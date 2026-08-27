@@ -49,7 +49,7 @@ const FAILURE_MESSAGE =
 
 export function CallbackPage() {
   const navigate = useNavigate()
-  const { adoptSession, port, status, message } = useAuth()
+  const { adoptSession, port, status, message, reason } = useAuth()
   const started = useRef(false)
   const [failure, setFailure] = useState<RedeemFailure | null>(null)
 
@@ -119,8 +119,64 @@ export function CallbackPage() {
     })()
   }, [adoptSession, navigate, port])
 
-  // The link was good and the account was not: say which, because this person
-  // demonstrably holds a valid invitation and being told nothing is useless.
+  /*
+    FOUR OUTCOMES, FOUR SCREENS.
+
+    These used to be one screen -- "This account cannot be used", followed
+    unconditionally by "ask your administrator to add the address to the
+    invitation list". That advice is right for exactly one of them and actively
+    misleading for the rest. When `/api/session` returned HTML because of a
+    routing fault, an operator whose allowlist row was demonstrably present was
+    sent to look for a missing row. The account was fine, the invitation was
+    fine, and the deployment was broken.
+
+    So a service failure now says so and says nothing about the allowlist.
+  */
+  if (status === 'error' && reason === 'service_unavailable') {
+    return (
+      <AuthLayout
+        title="We could not verify your session"
+        footer={
+          <Link className="auth-shell__link" to="/login">
+            Back to sign in
+          </Link>
+        }
+      >
+        <FormError id="callback-service-error">
+          {message ??
+            'The Radar could not reach the service that verifies sessions. This is a service problem, not a sign-in problem.'}
+        </FormError>
+        <p className="auth-card__note">
+          Your invitation has not been used up by this. Wait a moment and open the link again, or
+          reload this page. If it keeps happening, tell your administrator that{' '}
+          <code>/api/session</code> is not responding — there is nothing wrong with your account.
+        </p>
+      </AuthLayout>
+    )
+  }
+
+  if (status === 'error' && reason === 'unconfigured') {
+    return (
+      <AuthLayout
+        title="This deployment is not finished"
+        footer={
+          <Link className="auth-shell__link" to="/login">
+            Back to sign in
+          </Link>
+        }
+      >
+        <FormError id="callback-unconfigured-error">
+          {message ?? 'This deployment was built without a Supabase project, so nobody can sign in.'}
+        </FormError>
+        <p className="auth-card__note">
+          Nothing is wrong with your invitation. This is for whoever deployed the site to fix.
+        </p>
+      </AuthLayout>
+    )
+  }
+
+  // The link was good and the ACCOUNT was not. This is the one case where the
+  // allowlist is genuinely the thing to go and look at.
   if (status === 'error') {
     return (
       <AuthLayout

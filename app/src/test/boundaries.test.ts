@@ -64,6 +64,12 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  *   authAccessibility.test.tsx
  *                         asserts that no key, token or `service_role` string
  *                         reaches the rendered sign-in page, so it must name them
+ *   apiContract.test.ts   RUNS the Netlify handlers to prove they answer JSON
+ *                         rather than HTML, which means setting the server
+ *                         variables they read and giving each one a value of the
+ *                         right shape. Every value in it is fabricated — the URL
+ *                         resolves to nothing and the keys are zeroes — and the
+ *                         file asserts that none of them reaches the output
  *
  * Excluded by exact name so the exemption stays auditable. Excluding all of
  * `test/` would hide a real leak in any future test file.
@@ -76,6 +82,7 @@ const SELF_REFERENTIAL = [
   'hostedValidationScripts.test.ts',
   'authGate.test.tsx',
   'authAccessibility.test.tsx',
+  'apiContract.test.ts',
 ]
 
 const files = walk(srcDir)

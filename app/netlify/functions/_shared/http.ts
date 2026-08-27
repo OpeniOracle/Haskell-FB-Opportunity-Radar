@@ -7,8 +7,19 @@ export interface JsonResponse {
 
 const BASE_HEADERS: Record<string, string> = {
   'content-type': 'application/json; charset=utf-8',
-  // An API response is never a document and never cacheable by an intermediary.
-  'cache-control': 'no-store',
+  /*
+     `private` as well as `no-store`.
+
+     `no-store` alone already forbids storing the response, but `private` states
+     the intent that no SHARED cache -- a CDN node, a corporate proxy -- may
+     hold it under any interpretation. These bodies are per-caller by
+     construction: `/api/session` answers about the bearer of one token and
+     `/api/status` reports that caller's own access. A shared cache serving one
+     analyst's answer to another is the failure worth being explicit about,
+     including on the error paths, which is why it lives in the base headers
+     rather than on the success path only.
+  */
+  'cache-control': 'private, no-store',
   'x-content-type-options': 'nosniff',
 }
 

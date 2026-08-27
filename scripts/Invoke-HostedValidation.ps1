@@ -296,6 +296,29 @@ try {
     Write-Host "  canary run id: $($canary.RunId)"
 
     # ---------------------------------------------------------------------
+    <#
+        BEFORE ANYTHING ELSE, AND BEFORE ANY CREDENTIAL IS USED.
+
+        The API was once entirely unrouted -- a `_redirects` catch-all shadowed
+        every /api rule, so Netlify answered 200 with index.html. The checks
+        below would all have failed, but they would have failed in ways that
+        read like authentication problems, which is how an hour went into
+        looking at an allowlist row that was present the whole time.
+
+        This asks the cheap question first: is the API wired up at all? A
+        content type is the decisive signal, because the SPA fallback answers
+        200 and a 200 looks like success.
+    #>
+    Write-Section '0. The API reaches its functions at all'
+    foreach ($apiPath in '/api/session', '/api/status') {
+        $probe = Invoke-Http -Uri "$Preview$apiPath"
+        $probeType = ''
+        try { $probeType = [string] $probe.Headers['Content-Type'] } catch { $probeType = '' }
+        Check "$apiPath is not the single-page application" (
+            $probeType -notlike '*text/html*'
+        ) "content-type '$probeType' -- the SPA fallback is shadowing this route, so it never reaches its function"
+    }
+
     Write-Section '1-2. /api/status as the invited administrator'
 
     $status = Invoke-Http -Uri "$Preview/api/status" -Auth token

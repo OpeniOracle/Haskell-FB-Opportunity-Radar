@@ -98,6 +98,27 @@ yet allowlisted fails at the moment Supabase tries to create the row — the
 invitation email is never sent, and Supabase reports the database error. That is
 the intended behaviour, not a bug to work around.
 
+### Step 0 — prove the API is routed, before anything else
+
+**Run this before every invitation.** It takes seconds, uses no credentials, and
+answers the one question that is impossible to read off the symptom:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-DeployedRoutes.ps1
+```
+
+```bash
+bash scripts/test-deployed-routes.sh   # Linux / macOS
+```
+
+If `/api/session` returns the application instead of JSON, the invitation
+callback **will** fail — with *"We could not verify your session"*, which reads
+like an account problem and is not one. Fix the deployment before sending
+anything, or you will spend the invitation for nothing.
+
+The decisive signal is the **content type**, not the status: a SPA fallback
+answers `200 text/html`, and a 200 looks like success everywhere else.
+
 ### Step 1 — allowlist the address FIRST
 
 Supabase → SQL Editor. Replace `firstname.lastname@openi-analytics.com` with the
