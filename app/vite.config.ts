@@ -22,7 +22,8 @@ export default defineConfig(({ command }) => ({
         "unreachable" and "absent".
 
         `vite dev` and the test run keep the real module, which is where it is
-        genuinely useful. The harness build has its own config.
+        genuinely useful. The browser-layout build reads its own config file
+        and is unaffected by this alias.
       */
       ...(command === 'build'
         ? { '@/data/fixtureDataSource': src('data/fixtureDataSource.production-stub.ts') }
