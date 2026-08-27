@@ -79,7 +79,7 @@ describe('narrow-screen filters', () => {
 
     // Search stays out in the open; the rest starts folded away so an
     // opportunity is visible without scrolling past the controls.
-    expect(screen.getByRole('searchbox', { name: 'Search opportunities' })).toBeVisible()
+    expect(await screen.findByRole('searchbox', { name: 'Search opportunities' })).toBeVisible()
     const summary = screen.getByText('Filters and sort')
     expect((summary.closest('details') as HTMLDetailsElement).open).toBe(false)
   })

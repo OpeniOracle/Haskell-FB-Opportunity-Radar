@@ -31,6 +31,7 @@ acceptance selects a vendor.
 | [0011](0011-external-research-enters-staging-only.md) | External research enters staging, never canonical tables | **Accepted** (D23) | — |
 | [0012](0012-corrections-supersede-they-do-not-overwrite.md) | Corrections supersede; they do not overwrite | **Accepted** (D24) | — |
 | [0013](0013-external-hosting-and-tenancy-boundary.md) | The Radar is externally hosted, with no Haskell-side runtime dependency | **Accepted** (D1, D2b — corrected) | — |
+| [0014](0014-d19-pilot-evidence-access-rule.md) | The pilot evidence-access rule: government material archived, corporate material by reference | **Accepted for the pilot** (D19, pilot scope only) | — |
 
 Records marked **revised** were changed by a later reconciliation pass.
 
@@ -41,10 +42,17 @@ Records marked **revised** were changed by a later reconciliation pass.
   outbound-alert circuit breaker; added `season` to 0004's precision enum; and recorded in
   0005 why a proposed 95%-automatic-conflict-resolution target was rejected.
 
-**Seven records are now Accepted** — 0001 via D1 and D2a, 0003 via D2a, 0004 via D15,
-0011 via D23, 0012 via D24, **0013 via the corrected D1 and D2b**, and 0005 in part via
-D18 (its time-bounded-ownership corollary; the conservative-resolution ladder still awaits
-Gate G-4). The remaining records are Proposed.
+**Eight records are now Accepted** — 0001 via D1 and D2a, 0003 via D2a, 0004 via D15,
+0011 via D23, 0012 via D24, **0013 via the corrected D1 and D2b**, **0014 for the pilot
+only**, and 0005 in part via D18 (its time-bounded-ownership corollary; the
+conservative-resolution ladder still awaits Gate G-4). The remaining records are Proposed.
+
+**ADR 0014 settles D19 for the pilot without settling ADR 0006.** The general
+access-mode question stays Proposed; what is decided is which mode applies to the three
+source families the pilot actually collects — U.S. government material archived in full,
+corporate newsroom and investor-relations material retained by reference. D16 and D17
+remain Open: the confidence axes and the coverage expectations are **recorded**, and no
+threshold, promotion rule or automated confidence decision is derived from them.
 
 **ADR 0013 corrects the hosting and ownership context of 0001 and 0003.** Those two
 records previously described the Radar as sharing identity and infrastructure with the

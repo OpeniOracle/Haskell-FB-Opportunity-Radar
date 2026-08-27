@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Icon } from '@/components/Icon'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { SignOutButton } from '@/auth/SignOutButton'
 import { PRIMARY_SURFACES, RESERVED_DESTINATIONS, reservedAccessibleName } from '@/routes'
 import { useDataSource } from '@/data/DataSourceContext'
 
@@ -129,6 +130,8 @@ export function NavRail() {
 
         <ThemeToggle />
 
+        <SignOutButton />
+
         <p className="env-note">
           Fixture build — no connectors, no database, no model calls. Design tokens are
           provisional.
@@ -218,6 +221,7 @@ export function MobileHeader() {
       </nav>
 
       <ThemeToggle compact />
+      <SignOutButton compact />
     </header>
   )
 }

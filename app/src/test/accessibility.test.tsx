@@ -98,7 +98,7 @@ describe('accessibility contract', () => {
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument()
     }
-    expect(screen.getByRole('searchbox', { name: 'Search opportunities' })).toBeInTheDocument()
+    expect(await screen.findByRole('searchbox', { name: 'Search opportunities' })).toBeInTheDocument()
   })
 })
 

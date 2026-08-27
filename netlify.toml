@@ -1,22 +1,158 @@
 # Netlify configuration — Haskell F&B Opportunity Radar
 #
-# Phase 1 PR 1 is a fixture-backed frontend. There is no API, no database, and no
-# outbound network call from the browser, which is why the CSP below can forbid
-# connections entirely. When PR 9 introduces the API-backed DataSource, `connect-src`
-# is the line that must change, deliberately and in review.
+# The Production Foundation gives the application a backend, so `connect-src`
+# changes from `'none'` to a narrow, project-specific allowlist. It is generated
+# at build time by `app/scripts/generate-headers.mjs` into `dist/_headers`,
+# because the one external origin the browser may address is THIS deployment's
+# Supabase project, and that differs between development, preview and
+# production. A policy written statically here could only be permissive enough
+# to cover all three, which is the opposite of a narrow allowlist.
+#
+# With no VITE_SUPABASE_URL configured the generated policy is
+# `connect-src 'self'` — same-origin functions only. Fail closed, not open.
 
 [build]
   base = "app"
   command = "npm ci && npm run build"
   publish = "dist"
 
+# Non-secret configuration, committed deliberately.
+#
+# Everything here is either already public — the project URL appears in every
+# request the browser makes — or operational configuration that is safer
+# reviewed in a pull request than typed into a dashboard. Nothing below is a
+# credential.
+#
+# The two Supabase KEYS and MODEL_API_KEY are NOT here and must be entered in
+# the Netlify UI. docs/ENVIRONMENT.md gives the exact location and scope.
 [build.environment]
   NODE_VERSION = "22"
   # Chromium is only needed for the local screenshot script, never for the build.
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
 
-# SPA fallback. Duplicated in app/public/_redirects so the behaviour survives if
-# this file is ever replaced by UI-configured settings.
+  # Client-safe. Read at BUILD time by Vite, and by scripts/generate-headers.mjs
+  # which turns it into the CSP connect-src allowlist.
+  VITE_SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
+  VITE_RADAR_ENV = "development"
+
+  # Server-side, non-secret. The functions runtime inherits these.
+  #
+  # The publishable key appears here deliberately. It is not confidential — it
+  # identifies the project and grants nothing on its own — and the server needs
+  # it to read AS A CALLER: under the current key system a user-scoped request
+  # sends the publishable key as `apikey` and the user's token as
+  # `Authorization`. Without it, every server read would have to use the SECRET
+  # key, which bypasses row-level security. Same value as the VITE_ one, under a
+  # different name, because the two have different scopes.
+  SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
+  SUPABASE_PUBLISHABLE_KEY = "sb_publishable_kE97uOb8HCo51uT_e0mxqg_So2Z0dwH"
+  SUPABASE_EVIDENCE_BUCKET = "evidence-raw"
+  RADAR_ENV = "development"
+
+  # The single egress gateway's allowlist. An entry permits the host and its
+  # subdomains and nothing else. Corporate newsroom hosts are added as each
+  # connector is verified — the coverage matrix records them as Unverified, and
+  # allowlisting a host we have never successfully fetched would assert a
+  # verification that has not happened.
+  EGRESS_ALLOWLIST = "sec.gov,data.sec.gov,www.sec.gov,fsis.usda.gov,www.fsis.usda.gov"
+
+  # SEC requires a declared User-Agent carrying an address a human monitors.
+  #
+  # CONFIRMED 2026-08-26: oracles@openi-analytics.com is an active, monitored
+  # Openi mailbox. `SEC_CONTACT_CONFIRMED` records that attestation and is NOT a
+  # secret — it is a boolean stating that a person checked something, which is
+  # exactly the kind of fact that belongs in reviewable configuration rather than
+  # in a dashboard where nobody can see when it changed.
+  #
+  # The mailbox is for automated-source identification and operational notices
+  # only. It must never hold an application account: `reserved_service_addresses`
+  # (migration 0017) refuses to allowlist it.
+  SEC_EDGAR_USER_AGENT = "Openi Analytics Haskell F&B Radar oracles@openi-analytics.com"
+  SEC_CONTACT_CONFIRMED = "true"
+
+  # Anthropic Direct, through the provider-neutral gateway. MODEL_ID stays
+  # configurable; claude-sonnet-5 is the current stable Sonnet.
+  MODEL_PROVIDER = "anthropic"
+  MODEL_ID = "claude-sonnet-5"
+  MODEL_PROMPT_VERSION = "v0"
+
+[context.production.environment]
+  VITE_RADAR_ENV = "production"
+  RADAR_ENV = "production"
+
+[context.deploy-preview.environment]
+  VITE_RADAR_ENV = "preview"
+  RADAR_ENV = "preview"
+
+[context.branch-deploy.environment]
+  VITE_RADAR_ENV = "preview"
+  RADAR_ENV = "preview"
+
+# The API. Same-origin by construction: the browser only ever addresses this
+# origin, so `connect-src` needs to permit exactly two things — 'self' and the
+# Supabase project.
+#
+# `scheduled-ingest` is deliberately absent. A scheduled function has no HTTP
+# route; giving it one would create the public invocation path the design
+# forbids, and the authenticated `admin-run` exists precisely so nobody needs to.
+[[redirects]]
+  from = "/api/status"
+  to = "/.netlify/functions/status"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin-run"
+  to = "/.netlify/functions/admin-run"
+  status = 200
+
+# "Is this session still allowed to be here?" — the one bit the browser cannot
+# answer for itself, because `auth_invite_allowlist` is unreadable by a signed-in
+# session on purpose. Called whenever a session is established, so removing
+# someone takes effect on their next page load rather than at token expiry.
+[[redirects]]
+  from = "/api/session"
+  to = "/.netlify/functions/session"
+  status = 200
+
+# The authenticated evidence proxy. Confidential evidence is never served by a
+# signed Storage URL: a signed URL is a bearer credential that survives removal
+# from the allowlist until it expires, and an already-cached response survives
+# even that. This endpoint re-authorises every request instead.
+[[redirects]]
+  from = "/api/evidence/*"
+  to = "/.netlify/functions/evidence/:splat"
+  status = 200
+
+# Anything else under /api is not a route. Without this, an unmatched /api path
+# falls through to the SPA rule below and returns index.html with a 200, so a
+# typo in a client call looks like a successful request that returned HTML.
+[[redirects]]
+  from = "/api/*"
+  to = "/404.html"
+  status = 404
+
+# SPA fallback, LAST, and this file is the ONLY place redirects are declared.
+#
+# THIS RULE ONCE EXISTED IN TWO PLACES AND THAT WAS AN OUTAGE.
+#
+# `app/public/_redirects` used to carry a copy of this catch-all, "so the
+# behaviour survives if this file is ever replaced by UI-configured settings".
+# The reasoning inverted the thing it was trying to protect: Netlify processes
+# a `_redirects` FILE BEFORE the rules in `netlify.toml`. A copy of the LAST
+# rule, placed in the file that is read FIRST, becomes the first rule.
+#
+# So `/*  /index.html  200` matched `/api/session` before any of the API rules
+# above were consulted. Netlify answered 200 with index.html, the SPA booted at
+# `/api/session`, `confirmStanding()` got HTML where it expected JSON, and the
+# gate reported a service failure. Every `/api/*` route was dead in every
+# deployment, and nothing in this file was wrong -- which is why reading it
+# found nothing.
+#
+# There is now one source of truth. `app/src/test/netlifyRouting.test.ts`
+# resolves every API path the client actually calls through Netlify's real
+# precedence rules and fails the build if any of them reaches index.html, and a
+# boundary step fails the build if a `_redirects` file reappears without the
+# API rules ordered ahead of a catch-all.
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -29,11 +165,17 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
-    # This preview contains fabricated example content and must not be indexed.
-    X-Robots-Tag = "noindex, nofollow"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+    # An authenticated pilot dashboard must never be indexed.
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    # Content-Security-Policy is NOT set here. It is generated per-deployment
+    # into dist/_headers so it can name the exact Supabase origin.
 
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+[functions]
+  # Relative to `base = "app"`.
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

@@ -46,6 +46,23 @@ insert into research_claims (
 values ('claim-1', ${BATCH}, 'f.jsonl', 'line 1', 'entity',
         'example-alpha', 'has_name', '"Example Alpha Foods"'::jsonb, current_date${extra.vals});`
 
+/**
+ * One signed-in, allowlisted user, for the 0018 guard cases.
+ *
+ * Fixed ids so a case can name the session it is about to delete. The `auth`
+ * tables are the compatibility shim's on a test target and GoTrue's on Supabase;
+ * only `id`, `email` and `user_id` are touched, which both have.
+ */
+const guardFixture = () => `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('live@example.invalid', 'live@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000a0', 'live@example.invalid');
+
+insert into auth.sessions (id, user_id)
+values ('00000000-0000-4000-8000-0000000000aa', '00000000-0000-4000-8000-0000000000a0');`
+
 /** @type {{group: string, name: string, expect: string, sql: string}[]} */
 const CASES = [
   // ---- 1. A date without its precision. ---------------------------------
@@ -707,6 +724,681 @@ with o as (
 )
 insert into opportunity_status_history (opportunity_id, to_status, actor_type, actor_id)
 select o.id, 'dismissed', 'user', 'tester' from o;`,
+  },
+  // ---- Invite-only authentication (0016). --------------------------------
+  // Supabase's signup toggles are platform configuration with no table behind
+  // them, so they cannot be tested. This half can be, and it is the half that
+  // catches the day someone turns the toggles back on.
+  {
+    group: 'invite-only',
+    name: 'the invite allowlist ships EMPTY',
+    expect: 'ok',
+    sql: `
+do $$
+declare n int;
+begin
+    select count(*) into n from auth_invite_allowlist;
+    if n <> 0 then
+        raise exception 'auth_invite_allowlist must ship empty, found % row(s)', n;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'invite-only',
+    name: 'an uninvited address cannot create an account',
+    expect: 'Self-registration is disabled',
+    sql: `insert into auth.users (email) values ('stranger@example.invalid');`,
+  },
+  {
+    // Anonymous sign-in creates a user with no email, so refusing a null email
+    // refuses anonymous authentication at the database layer too.
+    group: 'invite-only',
+    name: 'an anonymous (email-less) account cannot be created',
+    expect: 'Anonymous and email-less accounts are not permitted',
+    sql: `insert into auth.users (email) values (null);`,
+  },
+  {
+    group: 'invite-only',
+    name: 'a blank email cannot create an account',
+    expect: 'Anonymous and email-less accounts are not permitted',
+    sql: `insert into auth.users (email) values ('   ');`,
+  },
+  {
+    group: 'invite-only',
+    name: 'an INVITED address can create an account, case-insensitively',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('invited@example.invalid', 'Invited@Example.invalid', 'tester');
+
+insert into auth.users (email) values ('INVITED@EXAMPLE.INVALID');
+
+do $$
+declare n int;
+begin
+    select count(*) into n from auth.users where lower(email) = 'invited@example.invalid';
+    if n <> 1 then
+        raise exception 'expected exactly one invited account, found %', n;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'invite-only',
+    name: 'the allowlist rejects a non-normalized entry',
+    expect: 'auth_invite_allowlist_is_normalized',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('Mixed@Case.invalid', 'Mixed@Case.invalid', 'tester');`,
+  },
+  {
+    group: 'invite-only',
+    name: 'the allowlist rejects an entry with no inviter',
+    expect: 'auth_invite_allowlist_inviter_present',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('someone@example.invalid', 'someone@example.invalid', '  ');`,
+  },
+  {
+    group: 'invite-only',
+    name: 'authenticated cannot read the invite allowlist',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from auth_invite_allowlist;`,
+  },
+
+  // ---- Reserved service addresses (0017). --------------------------------
+  {
+    group: 'reserved-addresses',
+    name: 'the reserved-address table ships EMPTY',
+    expect: 'ok',
+    sql: `
+do $$
+declare n int;
+begin
+    select count(*) into n from reserved_service_addresses;
+    if n <> 0 then
+        raise exception 'reserved_service_addresses must ship empty, found %', n;
+    end if;
+end
+$$;`,
+  },
+  {
+    // A shared role mailbox has readers who change without anyone revoking
+    // anything, and every action it takes is attributed to a mailbox rather
+    // than a person.
+    group: 'reserved-addresses',
+    name: 'a reserved service mailbox cannot be allowlisted',
+    expect: 'reserved service address',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('ops@example.invalid', 'ops@example.invalid', 'tester');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'a reserved mailbox cannot be allowlisted under different casing',
+    expect: 'reserved service address',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values (lower('OPS@Example.invalid'), 'OPS@Example.invalid', 'tester');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'an existing allowlist row cannot be UPDATED onto a reserved address',
+    expect: 'reserved service address',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('person@example.invalid', 'person@example.invalid', 'tester');
+
+update auth_invite_allowlist
+   set email_normalized = 'ops@example.invalid',
+       email_as_entered = 'ops@example.invalid'
+ where email_normalized = 'person@example.invalid';`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'a reserved mailbox therefore cannot become an account at all',
+    expect: 'Self-registration is disabled',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth.users (email) values ('ops@example.invalid');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'an ordinary address is still allowlistable',
+    expect: 'ok',
+    sql: `
+insert into reserved_service_addresses (email_normalized, purpose, reserved_by)
+values ('ops@example.invalid', 'automated source identification', 'tester');
+
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('person@example.invalid', 'person@example.invalid', 'tester');
+
+insert into auth.users (email) values ('person@example.invalid');`,
+  },
+  {
+    group: 'reserved-addresses',
+    name: 'authenticated cannot read the reserved-address table',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from reserved_service_addresses;`,
+  },
+
+  // ---- Evidence session guard (0018). ------------------------------------
+  // The evidence proxy's immediate revocation depends entirely on this
+  // function. `app/src/test/sessionRevocation.test.ts` models it in memory and
+  // proves the TypeScript side; these cases hold the SQL to the same statements
+  // against real PostgreSQL.
+  //
+  // A helper sets up one signed-in, allowlisted user per case. Cases then remove
+  // exactly one of the four preconditions and assert the answer flips.
+  // ---- Administrator pre-provisioning -----------------------------------
+  //
+  // The second approved onboarding method: an account created by an
+  // administrator through the Auth Admin API, with no password, receiving no
+  // email. Its owner activates it later through "Set or reset your password".
+  //
+  // The point of these cases is that pre-provisioning is NOT a privileged
+  // shortcut. Migration 0016's trigger fires `before insert on auth.users`, so
+  // it applies to an Admin API creation exactly as it applies to an invitation,
+  // and every authorization control downstream treats the two identically.
+  {
+    group: 'preprovisioning',
+    name: 'an administrator cannot create an account for a non-allowlisted address',
+    expect: 'Self-registration is disabled',
+    sql: `
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b0', 'never.invited@example.invalid');`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'allowlisting first is what makes the creation possible',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('preprovisioned@example.invalid', 'Preprovisioned@Example.invalid', 'administrator');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b1', 'preprovisioned@example.invalid');`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'the allowlist comparison is case-insensitive on the normalized column',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('mixed.case@example.invalid', 'Mixed.Case@Example.Invalid', 'administrator');
+
+-- GoTrue lowercases the address it stores; the trigger lowercases what it
+-- compares. A row entered in mixed case must still match.
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b2', 'mixed.case@example.invalid');`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'a pre-provisioned account with no password is still refused evidence once de-listed',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('silent@example.invalid', 'silent@example.invalid', 'administrator');
+
+-- Created as the Admin API creates one: confirmed, and with NO password.
+insert into auth.users (id, email, encrypted_password)
+values ('00000000-0000-4000-8000-0000000000b3', 'silent@example.invalid', null);
+
+insert into auth.sessions (id, user_id)
+values ('00000000-0000-4000-8000-0000000000b4', '00000000-0000-4000-8000-0000000000b3');
+
+do $$
+declare v boolean;
+begin
+    -- While allowlisted, the same rule as any other account.
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000b3',
+        '00000000-0000-4000-8000-0000000000b4') into v;
+    if v is not true then
+        raise exception 'a pre-provisioned, allowlisted session should be authorised';
+    end if;
+
+    -- Removing the allowlist row must take effect on the next request, with no
+    -- token expiry involved and no special case for how the account was made.
+    delete from public.auth_invite_allowlist where email_normalized = 'silent@example.invalid';
+
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000b3',
+        '00000000-0000-4000-8000-0000000000b4') into v;
+    if v is not false then
+        raise exception 'evidence access survived removal from the allowlist';
+    end if;
+end $$;`,
+  },
+  {
+    group: 'preprovisioning',
+    name: 'an email-less account is refused, however it is created',
+    expect: 'Anonymous and email-less accounts are not permitted',
+    sql: `
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b5', null);`,
+  },
+  {
+    group: 'session-guard',
+    name: 'a live, allowlisted session is authorised',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        (select id from auth.users where email = 'live@example.invalid'),
+        (select s.id from auth.sessions s
+          join auth.users u on u.id = s.user_id
+         where u.email = 'live@example.invalid')) into v;
+    if v is not true then
+        raise exception 'a live allowlisted session must be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    // This is the whole point of the migration: the access token is unchanged
+    // and unexpired, and the answer still flips to false the moment GoTrue
+    // deletes the session row.
+    group: 'session-guard',
+    name: 'deleting the session revokes access immediately',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+delete from auth.sessions
+ where user_id = (select id from auth.users where email = 'live@example.invalid');
+
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        (select id from auth.users where email = 'live@example.invalid'),
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a deleted session must not be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'a session belonging to a DIFFERENT user is refused',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('other@example.invalid', 'other@example.invalid', 'tester');
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000bb', 'other@example.invalid');
+
+do $$
+declare v boolean;
+begin
+    -- Other user's id paired with the first user's session id. Both halves
+    -- exist; the pairing does not.
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000bb',
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a mismatched session/user pair must be refused, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'removing the allowlist entry revokes access immediately',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+delete from auth_invite_allowlist where email_normalized = 'live@example.invalid';
+
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        (select id from auth.users where email = 'live@example.invalid'),
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a de-listed user must not be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'a deleted user is refused',
+    expect: 'ok',
+    sql: `
+${guardFixture()}
+delete from auth.users where email = 'live@example.invalid';
+
+do $$
+declare v boolean;
+begin
+    select public.authorize_evidence_access(
+        '00000000-0000-4000-8000-0000000000a0',
+        '00000000-0000-4000-8000-0000000000aa') into v;
+    if v is not false then
+        raise exception 'a deleted user must not be authorised, got %', v;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'null arguments are refused rather than treated as a wildcard',
+    expect: 'ok',
+    sql: `
+do $$
+declare v boolean;
+begin
+    if public.authorize_evidence_access(null, null) is not false
+       or public.authorize_evidence_access('00000000-0000-4000-8000-0000000000a0', null) is not false
+       or public.authorize_evidence_access(null, '00000000-0000-4000-8000-0000000000aa') is not false
+    then
+        raise exception 'null arguments must be refused';
+    end if;
+end
+$$;`,
+  },
+  {
+    // A browser session must not be able to call this even to probe. Learning
+    // that a given session id exists is itself information about another user.
+    group: 'session-guard',
+    name: 'authenticated cannot execute the guard function',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select public.authorize_evidence_access(
+    '00000000-0000-4000-8000-0000000000a0',
+    '00000000-0000-4000-8000-0000000000aa');`,
+  },
+  {
+    group: 'session-guard',
+    name: 'anon cannot execute the guard function',
+    expect: 'permission denied',
+    sql: `
+set local role anon;
+select public.authorize_evidence_access(
+    '00000000-0000-4000-8000-0000000000a0',
+    '00000000-0000-4000-8000-0000000000aa');`,
+  },
+  {
+    group: 'session-guard',
+    name: 'the guard returns a boolean and nothing else',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    rettype text;
+    definer boolean;
+    cfg     text[];
+begin
+    select pg_catalog.format_type(p.prorettype, null), p.prosecdef, p.proconfig
+      into rettype, definer, cfg
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'authorize_evidence_access';
+
+    if rettype is null then
+        raise exception 'authorize_evidence_access is not installed';
+    end if;
+    -- A set-returning or composite result would hand back session rows.
+    if rettype <> 'boolean' then
+        raise exception 'guard must return boolean, returns %', rettype;
+    end if;
+    if not definer then
+        raise exception 'guard must be security definer, or the caller needs auth rights';
+    end if;
+    -- Without a pinned search_path a caller could shadow auth.sessions.
+    if cfg is null or not (cfg::text like '%search_path%') then
+        raise exception 'guard must pin search_path';
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'session-guard',
+    name: 'execute is granted to service_role only',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    granted text;
+begin
+    select string_agg(g, ', ' order by g) into granted
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace,
+           lateral unnest(array['anon', 'authenticated', 'public']) as g
+     where n.nspname = 'public'
+       and p.proname = 'authorize_evidence_access'
+       and has_function_privilege(g, p.oid, 'execute');
+
+    if granted is not null then
+        raise exception 'guard is executable by: %', granted;
+    end if;
+
+    if not exists (
+        select 1 from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = 'authorize_evidence_access'
+          and has_function_privilege('service_role', p.oid, 'execute')
+    ) then
+        raise exception 'service_role cannot execute the guard; the proxy would fail closed forever';
+    end if;
+end
+$$;`,
+  },
+
+  // ---- Row-level security (0015). ---------------------------------------
+  // These run as the `authenticated` role rather than inspecting catalogues,
+  // because what matters is what a browser session can actually read.
+  {
+    group: 'rls',
+    name: 'EVERY table in public has row-level security enabled',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    unprotected text;
+begin
+    select string_agg(c.relname, ', ' order by c.relname) into unprotected
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
+
+    if unprotected is not null then
+        raise exception 'RLS is not enabled on: %', unprotected;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'rls',
+    name: 'anon can read nothing at all',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    leaked text;
+begin
+    select string_agg(distinct table_name, ', ') into leaked
+    from information_schema.role_table_grants
+    where table_schema = 'public' and grantee = 'anon';
+
+    if leaked is not null then
+        raise exception 'anon holds table privileges on: %', leaked;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'rls',
+    name: 'authenticated holds no write privilege anywhere',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    writable text;
+begin
+    select string_agg(distinct table_name || ':' || privilege_type, ', ')
+      into writable
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and grantee = 'authenticated'
+      and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+
+    if writable is not null then
+        raise exception 'authenticated can write: %', writable;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CAN read the dashboard tables',
+    expect: 'ok',
+    sql: `
+set local role authenticated;
+select count(*) from opportunities;
+select count(*) from signals;
+select count(*) from evidence;
+select count(*) from sources;
+select count(*) from source_runs;
+select count(*) from organizations;
+select count(*) from facilities;
+select count(*) from account_source_expectations;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the licence gate',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from licence_authorizations;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read engagement observations',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from engagement_observations;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the audit trail',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from audit_events;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read research staging',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from research_claims;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the model replay cache',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from model_replay_cache;`,
+  },
+  {
+    // Preserved content lives in a private bucket. Handing the browser the path
+    // and relying on it not to ask is not a control.
+    group: 'rls',
+    name: 'an authenticated session CANNOT read preserved evidence body text',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select body_text from evidence limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the evidence storage path',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select raw_storage_uri from evidence limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the D14-L account-strategy score',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select account_strategy from opportunities limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT read the D14-L segment tier',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select target_tier from organizations limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CAN read cohort membership',
+    expect: 'ok',
+    sql: `
+set local role authenticated;
+select highest_value, canonical_name, scope_class from organizations limit 1;`,
+  },
+  {
+    group: 'rls',
+    name: 'an authenticated session CANNOT write, even to a table it can read',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+insert into organizations (canonical_name, organization_role)
+values ('Example Injected', 'manufacturer_brand');`,
+  },
+  {
+    // auth.uid() is null in the test shim, which is what an unauthenticated
+    // request looks like. The per-user policies must match nothing.
+    group: 'rls',
+    name: 'per-user rows are invisible when there is no authenticated subject',
+    expect: 'ok',
+    sql: `
+insert into user_read_state (user_id, surface, last_seen_at)
+values ('someone-else', 'pulse', now());
+
+set local role authenticated;
+do $$
+declare n int;
+begin
+    select count(*) into n from user_read_state;
+    if n <> 0 then
+        raise exception 'a null subject matched % per-user row(s)', n;
+    end if;
+end
+$$;`,
   },
   {
     group: 'structure',

@@ -37,9 +37,32 @@ export default tseslint.config(
           ],
         },
       ],
+      // The network boundary is NARROWED here, not removed. Before the
+      // production foundation, `fetch` was banned outright because the app was
+      // fixture-backed. It is now permitted in exactly two modules — the API
+      // client and the Supabase client — and still an error everywhere else.
+      // "The app may talk to the network" and "any component may talk to
+      // anywhere" are different postures, and the second is how a surface ends
+      // up quietly calling a third party.
       'no-restricted-globals': [
         'error',
-        { name: 'fetch', message: 'PR 1 is fixture-backed. No network access is permitted.' },
+        {
+          name: 'fetch',
+          message:
+            'Network access belongs in src/lib/apiClient.ts. Surfaces and components must not fetch.',
+        },
+        {
+          name: 'XMLHttpRequest',
+          message: 'Network access belongs in src/lib/apiClient.ts.',
+        },
+        {
+          name: 'WebSocket',
+          message: 'Realtime access belongs in src/lib/supabaseClient.ts.',
+        },
+        {
+          name: 'EventSource',
+          message: 'Network access belongs in src/lib/apiClient.ts.',
+        },
       ],
     },
   },
@@ -47,6 +70,23 @@ export default tseslint.config(
     // The fixture adapter is the one place allowed to read fixture modules.
     files: ['src/data/fixtureDataSource.ts', 'src/data/fixtures/**', 'src/test/**'],
     rules: { 'no-restricted-imports': 'off' },
+  },
+  {
+    // The two approved network modules, and nothing else in src/.
+    files: ['src/lib/apiClient.ts', 'src/lib/supabaseClient.ts'],
+    rules: { 'no-restricted-globals': 'off' },
+  },
+  {
+    // Server-side code. It is not in the browser bundle, it holds the
+    // service-role key, and it is the side of the boundary that is SUPPOSED to
+    // reach the internet — but only through the egress gateway, which is where
+    // its own allowlist lives.
+    files: ['netlify/functions/**'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-globals': 'off',
+      'no-restricted-imports': 'off',
+    },
   },
   {
     files: ['scripts/**'],

@@ -20,7 +20,10 @@ describe('search and filters', () => {
     renderApp('/opportunities')
     await screen.findAllByRole('article')
 
-    await user.type(screen.getByRole('searchbox', { name: 'Search opportunities' }), 'dairy')
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Search opportunities' }),
+      'dairy',
+    )
 
     expect(await titles()).toEqual([
       'Line modernization placed on hold after an announced deferral',
@@ -78,7 +81,7 @@ describe('search and filters', () => {
     await screen.findAllByRole('article')
 
     await user.type(
-      screen.getByRole('searchbox', { name: 'Search opportunities' }),
+      await screen.findByRole('searchbox', { name: 'Search opportunities' }),
       'zzzznomatch',
     )
     expect(
@@ -97,7 +100,10 @@ describe('search and filters', () => {
     expect(clear).toBeDisabled()
 
     await user.selectOptions(screen.getByLabelText('Stage'), 'confirmed')
-    await user.type(screen.getByRole('searchbox', { name: 'Search opportunities' }), 'beverage')
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Search opportunities' }),
+      'beverage',
+    )
     expect(clear).toBeEnabled()
 
     await user.click(clear)

@@ -1,0 +1,315 @@
+import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { App, PUBLIC_AUTH_ROUTES } from '@/App'
+import { RESERVED_DESTINATIONS, SURFACES } from '@/routes'
+import { renderApp } from '@/test/render'
+import { setViewport } from '@/test/setup'
+import {
+  FakeAuth,
+  neverResolves,
+  signedIn,
+  signedOut,
+  withoutPrefill,
+} from '@/test/authFake'
+import { isSafeReturnPath, loginPathFor, safeReturnPath } from '@/auth/returnPath'
+import type { AuthPort } from '@/auth/authPort'
+
+/**
+ * The gate.
+ *
+ * Every case here renders through a port with NO synchronous pre-fill, so the
+ * application behaves exactly as it does against a real provider: nobody can
+ * answer "is this person signed in" without a round trip, and the first paint is
+ * therefore always the state where the answer is unknown. Proving the gate
+ * against the shortcut that surface tests use would prove nothing.
+ */
+
+/** Concrete addresses for every route the application registers. */
+const PROTECTED_ROUTES: string[] = [
+  ...SURFACES.flatMap((surface) =>
+    surface.routes.map((route) =>
+      route
+        .replace(':opportunityId', 'opp-fixture-1')
+        .replace(':accountId', 'org-fixture-1')
+        .replace(':facilityId', 'fac-fixture-1')
+        .replace(':evidenceId', 'ev-fixture-1'),
+    ),
+  ),
+  ...RESERVED_DESTINATIONS.map((destination) => destination.path),
+  // The catch-all. A signed-out stranger typing a wrong address must not get a
+  // 404 page wearing the application's navigation.
+  '/no-such-page',
+  // The preview surface-state controls live behind `?state=`, on the surfaces.
+  '/?state=degraded',
+  '/opportunities?state=unavailable',
+]
+
+function renderGated(entry: string, port: AuthPort) {
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <App authPort={port} />
+    </MemoryRouter>,
+  )
+}
+
+/**
+ * Nothing from the application may be on the page.
+ *
+ * Checked by landmark AND by content, because either alone is escapable: a
+ * navigation with no links still names the surfaces, and a surface with no
+ * navigation still lists accounts.
+ */
+function expectNoApplicationContent() {
+  expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
+  expect(screen.queryByRole('link', { name: /skip to main content/i })).toBeNull()
+  for (const surface of SURFACES) {
+    expect(screen.queryByText(surface.label)).toBeNull()
+  }
+  // Every fixture organisation is named `Example …`.
+  expect(screen.queryByText(/Example/)).toBeNull()
+  expect(document.body.textContent ?? '').not.toMatch(/Example/)
+}
+
+describe('every application route is behind the gate', () => {
+  it.each(PROTECTED_ROUTES)('sends a signed-out visitor from %s to sign in', async (route) => {
+    renderGated(route, withoutPrefill(signedOut()))
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expectNoApplicationContent()
+  })
+
+  it('registers exactly the five public routes and no others', () => {
+    // The list is exported so `returnPath.ts` and this test cannot drift from
+    // the route table. A sixth public route would have to be added here.
+    expect([...PUBLIC_AUTH_ROUTES]).toEqual([
+      '/login',
+      '/auth/callback',
+      '/auth/set-password',
+      '/forgot-password',
+      '/auth/reset-password',
+    ])
+  })
+
+  it.each(['/login', '/forgot-password'])('renders %s without a session', async (route) => {
+    renderGated(route, withoutPrefill(signedOut()))
+    await screen.findByRole('heading')
+    expectNoApplicationContent()
+  })
+
+  it('lets an authenticated user through to the surface', async () => {
+    renderGated('/', withoutPrefill(signedIn()))
+    expect(await screen.findByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
+  })
+})
+
+describe('no unauthenticated content flash', () => {
+  it('renders nothing from the application on the very first paint', () => {
+    renderGated('/', withoutPrefill(signedOut()))
+    // Synchronously, before any promise settles. React renders the branch it is
+    // given, so this is not a race that is usually won — the children of the
+    // gate are never constructed.
+    expectNoApplicationContent()
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
+  })
+
+  it('renders nothing while the provider is still deciding', async () => {
+    renderGated('/', neverResolves())
+    expectNoApplicationContent()
+    expect(screen.getByText('Checking your session…')).toBeInTheDocument()
+    // Still nothing, after everything that could settle has settled.
+    await Promise.resolve()
+    expectNoApplicationContent()
+  })
+
+  it('renders nothing from the application even for a signed-in user mid-check', () => {
+    renderGated('/', withoutPrefill(signedIn()))
+    expectNoApplicationContent()
+  })
+
+  it('announces the waiting state instead of leaving it silent', () => {
+    renderGated('/', neverResolves())
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(status).toHaveTextContent('Checking your session')
+  })
+})
+
+describe('return paths', () => {
+  it('preserves the address a signed-out visitor was trying to reach', async () => {
+    renderGated('/accounts/org-fixture-1', withoutPrefill(signedOut()))
+    await screen.findByRole('heading', { name: 'Sign in' })
+
+    // Signing in from here must land back on the requested record.
+    await userEvent.type(screen.getByLabelText('Email address'), 'analyst@openi-analytics.invalid')
+    await userEvent.type(screen.getByLabelText('Password'), 'a-correct-password')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['//evil.example/phish', 'protocol-relative'],
+    ['https://evil.example/phish', 'absolute https'],
+    ['http://evil.example', 'absolute http'],
+    ['javascript:alert(1)', 'javascript scheme'],
+    ['/\\evil.example', 'backslash protocol-relative'],
+    ['data:text/html,<script>', 'data URI'],
+    ['//' + 'evil.example', 'double slash'],
+    ['\\\\evil.example', 'UNC path'],
+    ['/accounts\\@evil.example', 'embedded backslash'],
+  ])('rejects %s as a return path (%s)', (candidate) => {
+    expect(isSafeReturnPath(candidate)).toBe(false)
+    expect(safeReturnPath(candidate)).toBe('/')
+  })
+
+  it('rejects a return path carrying a control character', () => {
+    expect(isSafeReturnPath('/accounts\n//evil.example')).toBe(false)
+    expect(isSafeReturnPath('/accounts\t')).toBe(false)
+    // Written as an escape, not as a literal byte: a raw NUL in the source
+    // makes git treat the whole file as binary and stop showing its diff.
+    expect(isSafeReturnPath('/\u0000')).toBe(false)
+    // A trailing space is NOT a control character and is deliberately allowed
+    // through to the router, which resolves it like any other path.
+    expect(isSafeReturnPath('/accounts ')).toBe(true)
+  })
+
+  it.each(['/accounts', '/opportunities?state=degraded', '/evidence/ev-fixture-1'])(
+    'accepts the internal path %s',
+    (candidate) => {
+      expect(isSafeReturnPath(candidate)).toBe(true)
+      expect(safeReturnPath(candidate)).toBe(candidate)
+    },
+  )
+
+  it('never returns anyone to an authentication route', () => {
+    for (const route of PUBLIC_AUTH_ROUTES) {
+      expect(isSafeReturnPath(route)).toBe(false)
+    }
+  })
+
+  it('does not build a return parameter for the home page', () => {
+    expect(loginPathFor({ pathname: '/', search: '' })).toBe('/login')
+    expect(loginPathFor({ pathname: '/accounts', search: '?q=1' })).toBe(
+      '/login?next=%2Faccounts%3Fq%3D1',
+    )
+  })
+
+  it('ignores an attacker-supplied next parameter on the login page itself', async () => {
+    renderGated('/login?next=https://evil.example/phish', withoutPrefill(signedOut()))
+    await screen.findByRole('heading', { name: 'Sign in' })
+
+    await userEvent.type(screen.getByLabelText('Email address'), 'analyst@openi-analytics.invalid')
+    await userEvent.type(screen.getByLabelText('Password'), 'a-correct-password')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    // Landed inside the application, not at the supplied address.
+    expect(await screen.findByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
+    expect(window.location.href).not.toContain('evil.example')
+  })
+})
+
+describe('losing access mid-visit', () => {
+  it('shows the application, then removes it when the session expires', async () => {
+    const auth = signedIn()
+    const { auth: port } = renderApp('/', { auth })
+    expect(await screen.findByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
+
+    port.expireSession()
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expectNoApplicationContent()
+  })
+
+  it('says the session ended rather than appearing silently over the work', async () => {
+    const auth = signedIn()
+    renderApp('/opportunities', { auth })
+    await screen.findByRole('navigation', { name: 'Primary' })
+
+    auth.expireSession()
+
+    expect(await screen.findByText(/Your session ended/i)).toBeInTheDocument()
+  })
+
+  it('refuses an account that has been removed from the allowlist', async () => {
+    const auth = new FakeAuth({ initialSession: null, standing: 'not_invited' })
+    renderGated('/', withoutPrefill(auth))
+
+    // Sign-in succeeds at the provider and is then refused by the application,
+    // because membership is asked of the server on every establishment.
+    await screen.findByRole('heading', { name: 'Sign in' })
+    await userEvent.type(screen.getByLabelText('Email address'), 'removed@openi-analytics.invalid')
+    await userEvent.type(screen.getByLabelText('Password'), 'a-correct-password')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    // Told the truth: the password was fine, the access was withdrawn. Saying
+    // "wrong password" here would send a removed colleague round a reset loop.
+    expect(
+      await screen.findByText(/no longer on the invitation list/i),
+    ).toBeInTheDocument()
+    expectNoApplicationContent()
+    // The half-live session is disposed of rather than left in the browser.
+    expect(auth.calls).toContain('signOut')
+  })
+
+  it('does not report an unreachable provider as being signed out', async () => {
+    const auth = new FakeAuth({ initialSession: null, getSessionThrows: true })
+    renderGated('/', withoutPrefill(auth))
+
+    expect(await screen.findByRole('heading', { name: 'Sign-in is unavailable' })).toBeInTheDocument()
+    // Deliberately NOT the login form: sending someone to type a password at a
+    // page that cannot check it turns an outage into a password-reset request.
+    expect(screen.queryByLabelText('Password')).toBeNull()
+    expectNoApplicationContent()
+  })
+
+  it('says so plainly when the build was never pointed at a project', async () => {
+    const auth = new FakeAuth({ configured: false })
+    renderGated('/', withoutPrefill(auth))
+    expect(await screen.findByText(/built without a Supabase project/i)).toBeInTheDocument()
+    expectNoApplicationContent()
+  })
+})
+
+describe('signing out', () => {
+  it('offers a visible control in the wide shell and removes the application at once', async () => {
+    const auth = signedIn()
+    renderApp('/', { auth })
+    await screen.findByRole('navigation', { name: 'Primary' })
+
+    expect(screen.getByText('analyst@openi-analytics.invalid')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /sign out/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expectNoApplicationContent()
+    expect(auth.calls).toContain('signOut')
+    expect(auth.currentSession).toBeNull()
+  })
+
+  it('offers the control on a narrow viewport too', async () => {
+    setViewport('narrow')
+    renderApp('/', { auth: signedIn() })
+    await screen.findByRole('navigation', { name: 'Later phases' })
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+  })
+
+  it('does not describe itself as revoking the token everywhere', async () => {
+    renderApp('/', { auth: signedIn() })
+    await screen.findByRole('navigation', { name: 'Primary' })
+    const text = document.body.textContent ?? ''
+    expect(text).not.toMatch(/revok/i)
+    expect(text).not.toMatch(/all (your )?(devices|sessions)/i)
+  })
+
+  it('reports being signed out rather than expired after a deliberate sign-out', async () => {
+    renderApp('/', { auth: signedIn() })
+    await screen.findByRole('navigation', { name: 'Primary' })
+    await userEvent.click(screen.getByRole('button', { name: /sign out/i }))
+
+    await screen.findByRole('heading', { name: 'Sign in' })
+    await waitFor(() => {
+      expect(screen.queryByText(/Your session ended/i)).toBeNull()
+    })
+  })
+})

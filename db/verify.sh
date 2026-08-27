@@ -19,8 +19,12 @@ trap 'rm -rf "$WORK"' EXIT
 step() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31mFAILED: %s\033[0m\n' "$1"; exit 1; }
 
+# Every test database gets the Supabase compatibility shim before any migration
+# runs, because 0015 grants to roles a bare PostgreSQL container does not have.
+# The shim is never applied to a Supabase project.
 recreate() {
     psql -d postgres -q -c "drop database if exists $1;" -c "create database $1;" >/dev/null
+    PGDATABASE="$1" psql -q -v ON_ERROR_STOP=1 -f "$ROOT/db/supabase_compat.sql" >/dev/null
 }
 
 step "PostgreSQL target"
@@ -44,7 +48,9 @@ echo "rollback left nothing behind"
 
 # --------------------------------------------------------------------------
 step "2. v0.1.0 baseline: forward, then rollback TO the baseline"
-recreate radar_ref
+# radar_ref is the comparison target and must be exactly what
+# schemas/database.sql produces, so it gets no shim and no migrations.
+psql -d postgres -q -c "drop database if exists radar_ref;" -c "create database radar_ref;" >/dev/null
 recreate radar_v01
 PGDATABASE=radar_ref psql -q -v ON_ERROR_STOP=1 -f "$ROOT/schemas/database.sql"
 PGDATABASE=radar_v01 psql -q -v ON_ERROR_STOP=1 -f "$ROOT/schemas/database.sql"
@@ -55,8 +61,11 @@ node "$ROOT/db/migrate.mjs" status
 node "$ROOT/db/migrate.mjs" down --to 0001
 
 # `\restrict` carries a per-dump nonce, so it is stripped before comparison.
+# --no-privileges drops the shim's GRANTs; --exclude-schema drops its auth
+# schema. What remains is the schema the migrations are responsible for.
 dump() {
     pg_dump --schema-only --no-owner --no-privileges \
+            --exclude-schema=auth \
             --exclude-table=schema_migrations -d "$1" \
         | grep -v '^--' | grep -v '^$' | grep -v '^\\\(un\)\?restrict '
 }
@@ -74,6 +83,14 @@ recreate radar_tests
 export PGDATABASE=radar_tests
 node "$ROOT/db/migrate.mjs" up > /dev/null
 node "$ROOT/db/test.mjs"
+
+# --------------------------------------------------------------------------
+step "3b. Seeds apply, are idempotent, and respect the D14-L gate"
+# Applied twice on purpose. A seed that fails the second time is not a seed, it
+# is a one-shot script, and the difference only shows up on the day someone
+# needs to re-apply a correction.
+node "$ROOT/db/seed.mjs" > /dev/null
+node "$ROOT/db/seed.mjs"
 
 # --------------------------------------------------------------------------
 step "4. Checksum drift must FAIL the build"

@@ -1,0 +1,461 @@
+/**
+ * The server-side environment contract.
+ *
+ * Every secret the Radar holds is read here and nowhere else, so "what does this
+ * application need, and which of it is confidential" has one answer you can read
+ * in one file.
+ *
+ * NOTHING in this module may be imported from `app/src`. These values live only
+ * in the Netlify Functions runtime. A `VITE_`-prefixed variable is compiled into
+ * the browser bundle by Vite and is therefore public by construction.
+ *
+ * ---------------------------------------------------------------------------
+ * KEY SYSTEM
+ *
+ * This project uses Supabase's CURRENT API keys, not the legacy JWT pair:
+ *
+ *   sb_publishable_…   browser. Not confidential. Identifies the project and
+ *                      nothing else; RLS is what protects the data.
+ *   sb_secret_…        server only. Confidential. BYPASSES RLS entirely, and is
+ *                      independently rotatable without invalidating sessions.
+ *
+ * The legacy `anon` / `service_role` JWTs are deliberately NOT configured. They
+ * are a single rotation unit — rotating the service key invalidates the anon key
+ * and signs every user out — and they are indistinguishable from each other by
+ * shape, so a paste error puts a full-database key in the browser bundle and
+ * nothing complains. `assertKeyShapes` below rejects both mistakes by name.
+ * ---------------------------------------------------------------------------
+ */
+
+export type ModelProvider = 'anthropic' | 'bedrock' | 'vertex'
+
+export interface ServerEnv {
+  readonly supabaseUrl: string
+  /**
+   * The publishable key, server-side.
+   *
+   * Not a secret, and not a duplicate by accident: under the current key system
+   * a user-scoped request needs the publishable key as `apikey` AND the user's
+   * token as `Authorization`. Without it there is no way to read as the caller,
+   * and every read would have to go through the secret key — which is exactly
+   * the RLS bypass this contract exists to prevent.
+   */
+  readonly supabasePublishableKey: string
+  readonly supabaseSecretKey: string
+  /**
+   * The legacy shared JWT secret, OPTIONAL and normally absent.
+   *
+   * Only needed when the project still signs access tokens with HS256 and
+   * publishes no JWKS. With asymmetric JWT signing keys the public half is
+   * fetched from `/auth/v1/.well-known/jwks.json` and there is no secret to
+   * hold at all, which is the posture to be in. See `_shared/jwt.ts`.
+   */
+  readonly supabaseJwtSecret: string | undefined
+  readonly evidenceBucket: string
+  readonly egressAllowlist: readonly string[]
+  /**
+   * OPTIONAL on the type, because most functions do not collect from SEC.
+   * Present when the scope that was asked for requires it; see `serverEnv`.
+   */
+  readonly secEdgarUserAgent: string | undefined
+  readonly secContactConfirmed: boolean
+  /** OPTIONAL on the type, for the same reason as `secEdgarUserAgent`. */
+  readonly ingestSharedSecret: string | undefined
+  readonly radarEnv: 'development' | 'preview' | 'production'
+}
+
+export interface ModelEnv {
+  readonly provider: ModelProvider
+  readonly apiKey: string
+  readonly modelId: string
+  readonly promptVersion: string
+}
+
+export class MissingEnvError extends Error {
+  constructor(readonly names: readonly string[]) {
+    super(
+      `Missing required environment variable(s): ${names.join(', ')}. ` +
+        'See docs/ENVIRONMENT.md.',
+    )
+    this.name = 'MissingEnvError'
+  }
+}
+
+export class KeyShapeError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'KeyShapeError'
+  }
+}
+
+function read(name: string): string | undefined {
+  const value = process.env[name]
+  return value && value.trim() !== '' ? value.trim() : undefined
+}
+
+/**
+ * `SEC_CONTACT_CONFIRMED` is an ATTESTATION, not a feature flag: a person
+ * asserting that a mailbox is read. Only the exact string `true` counts.
+ *
+ * Loose truthiness is refused deliberately. If `1`, `yes` or `TRUE ` were
+ * accepted, a typo elsewhere in the environment could switch a regulatory
+ * declaration on by accident, and the failure would be silent — SEC serves the
+ * request either way. An unrecognised value is a configuration error, not a
+ * quiet `false`, because a `false` that was meant to be `true` blocks
+ * collection with no explanation.
+ */
+export function parseSecConfirmation(raw: string | undefined): boolean {
+  if (raw === undefined) return false
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  throw new Error(
+    `SEC_CONTACT_CONFIRMED must be exactly "true" or "false"; got "${raw}". ` +
+      'It records that a human has verified the SEC contact mailbox is monitored.',
+  )
+}
+
+function require_(names: string[]): Record<string, string> {
+  const found: Record<string, string> = {}
+  const missing: string[] = []
+  for (const name of names) {
+    const value = read(name)
+    if (value === undefined) missing.push(name)
+    else found[name] = value
+  }
+  if (missing.length) throw new MissingEnvError(missing)
+  return found
+}
+
+/** A JWT-shaped value: three base64url segments. The legacy key format. */
+export function looksLikeLegacyJwtKey(value: string): boolean {
+  return /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)
+}
+
+export function looksLikeSecretKey(value: string): boolean {
+  return value.startsWith('sb_secret_')
+}
+
+export function looksLikePublishableKey(value: string): boolean {
+  return value.startsWith('sb_publishable_')
+}
+
+/**
+ * Reject the two mistakes that are otherwise silent.
+ *
+ * A secret key in the browser bundle is a full read AND write of every table,
+ * published to every visitor. A publishable key on the server produces a
+ * function that mysteriously reads nothing, because RLS applies to it. Both are
+ * one paste away, and neither raises an error on its own.
+ */
+export function assertKeyShapes(): void {
+  const leaked = Object.keys(process.env).filter((k) => {
+    if (!k.startsWith('VITE_')) return false
+    const value = process.env[k] ?? ''
+    return looksLikeSecretKey(value) || /SECRET|SERVICE_ROLE|PASSWORD|DB_URL/i.test(k)
+  })
+  if (leaked.length) {
+    throw new KeyShapeError(
+      `Secret-shaped values are exposed to the browser bundle: ${leaked.join(', ')}. ` +
+        'Only the publishable key belongs behind a VITE_ prefix.',
+    )
+  }
+
+  const secret = read('SUPABASE_SECRET_KEY')
+  if (secret !== undefined) {
+    if (looksLikePublishableKey(secret)) {
+      throw new KeyShapeError(
+        'SUPABASE_SECRET_KEY holds a publishable key. Server writes would silently ' +
+          'read nothing, because row-level security applies to a publishable key.',
+      )
+    }
+    if (looksLikeLegacyJwtKey(secret)) {
+      throw new KeyShapeError(
+        'SUPABASE_SECRET_KEY holds a legacy JWT service_role key. This project uses ' +
+          'the current sb_secret_… keys, which rotate independently of the ' +
+          'publishable key and of user sessions. See docs/ENVIRONMENT.md.',
+      )
+    }
+    if (!looksLikeSecretKey(secret)) {
+      throw new KeyShapeError('SUPABASE_SECRET_KEY must be an sb_secret_… key.')
+    }
+  }
+
+  const publishable = read('SUPABASE_PUBLISHABLE_KEY')
+  if (publishable !== undefined) {
+    if (looksLikeSecretKey(publishable)) {
+      throw new KeyShapeError(
+        'SUPABASE_PUBLISHABLE_KEY holds a SECRET key. User-scoped reads would run ' +
+          'with row-level security bypassed — the exact failure this split prevents.',
+      )
+    }
+    if (looksLikeLegacyJwtKey(publishable)) {
+      throw new KeyShapeError(
+        'SUPABASE_PUBLISHABLE_KEY holds a legacy JWT key. This project uses the ' +
+          'current sb_publishable_… keys. See docs/ENVIRONMENT.md.',
+      )
+    }
+    if (!looksLikePublishableKey(publishable)) {
+      throw new KeyShapeError('SUPABASE_PUBLISHABLE_KEY must be an sb_publishable_… key.')
+    }
+  }
+
+  // The legacy names must not be configured at all. Their presence means someone
+  // reintroduced the old pair, and the old pair is what this contract replaced.
+  for (const legacy of [
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_ANON_KEY',
+    'VITE_SUPABASE_ANON_KEY',
+  ]) {
+    if (read(legacy) !== undefined) {
+      throw new KeyShapeError(
+        `${legacy} is set. This project uses sb_publishable_… and sb_secret_… keys; ` +
+          'the legacy pair is deliberately not configured. See docs/ENVIRONMENT.md.',
+      )
+    }
+  }
+}
+
+/**
+ * WHAT EACH ENTRY POINT ACTUALLY DEPENDS ON.
+ *
+ * THIS MAP EXISTS BECAUSE A MISSING SEC CONTACT STRING SWITCHED OFF
+ * AUTHENTICATION.
+ *
+ * `serverEnv()` used to require every variable in the project, so any function
+ * that called it inherited every other function's dependencies. On a Deploy
+ * Preview with `SEC_EDGAR_USER_AGENT` unset, `/api/session`, `/api/status` and
+ * `/api/evidence/*` all answered 503 -- not because anything they do was
+ * unavailable, but because a variable belonging to the SEC collector was
+ * absent. Sign-in and evidence authorization have nothing to do with the SEC
+ * collector, and an unconfigured optional integration must not be able to
+ * disable them.
+ *
+ * So a scope is named at every call site and only that scope is required.
+ * Anything outside it stays readable but is never a precondition. `status`
+ * reports SEC as a component instead, which is the honest place for it: a
+ * diagnostic should tell you a collector is unconfigured, not refuse to answer.
+ *
+ * `core` is the floor: a Supabase URL and the secret key. Nothing in this
+ * project works without those, and no scope may be smaller.
+ */
+export const ENV_SCOPES = {
+  /** The shared helpers: an admin client, and token verification. */
+  core: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY'],
+  /** `/api/session`. Answers one boolean about the caller. */
+  session: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY'],
+  /** `/api/evidence/*`. Verifies a token, checks the session, streams bytes. */
+  evidence: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY'],
+  /** `/api/status`. Also reads AS THE CALLER, which needs the publishable key. */
+  status: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'SUPABASE_PUBLISHABLE_KEY'],
+  /** `/api/admin-run`. Authenticated by the operator secret. */
+  'admin-run': ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'INGEST_SHARED_SECRET'],
+  /** The scheduled collector. The only thing that genuinely talks to SEC. */
+  ingest: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'SEC_EDGAR_USER_AGENT', 'INGEST_SHARED_SECRET'],
+} as const
+
+export type EnvScope = keyof typeof ENV_SCOPES
+
+/**
+ * Demand one variable at the point it is actually used.
+ *
+ * The counterpart to scoping: a value only one code path needs is required by
+ * THAT path, so its absence fails that path and nothing else.
+ */
+export function demand(value: string | undefined, name: string): string {
+  if (value === undefined || value.trim() === '') throw new MissingEnvError([name])
+  return value
+}
+
+/**
+ * Read the environment, requiring ONLY what the named scope depends on.
+ *
+ * The default is `core` deliberately. A shared helper that does not say what it
+ * needs gets the floor, not everything -- the previous default was "all of it",
+ * and that is how the coupling spread without anyone choosing it.
+ */
+export function serverEnv(scope: EnvScope = 'core'): ServerEnv {
+  assertKeyShapes()
+  const v = require_([...ENV_SCOPES[scope]])
+  const radarEnv = read('RADAR_ENV') ?? 'development'
+  if (radarEnv !== 'development' && radarEnv !== 'preview' && radarEnv !== 'production') {
+    throw new Error(`RADAR_ENV must be development, preview or production; got "${radarEnv}".`)
+  }
+  return {
+    supabaseUrl: v.SUPABASE_URL!,
+    // Read, not required, unless the scope named it. `userClient()` demands it
+    // at the point of use, which is the only place it is actually needed.
+    supabasePublishableKey: v.SUPABASE_PUBLISHABLE_KEY ?? read('SUPABASE_PUBLISHABLE_KEY') ?? '',
+    supabaseSecretKey: v.SUPABASE_SECRET_KEY!,
+    supabaseJwtSecret: read('SUPABASE_JWT_SECRET'),
+    evidenceBucket: read('SUPABASE_EVIDENCE_BUCKET') ?? 'evidence-raw',
+    egressAllowlist: (read('EGRESS_ALLOWLIST') ?? '')
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+    secEdgarUserAgent: v.SEC_EDGAR_USER_AGENT ?? read('SEC_EDGAR_USER_AGENT'),
+    secContactConfirmed: parseSecConfirmation(read('SEC_CONTACT_CONFIRMED')),
+    ingestSharedSecret: v.INGEST_SHARED_SECRET ?? read('INGEST_SHARED_SECRET'),
+    radarEnv,
+  }
+}
+
+/**
+ * The model gateway's configuration, separately obtainable because the rest of
+ * the foundation must work without it.
+ *
+ * Returns null rather than throwing when the credential is absent. The pilot is
+ * explicitly permitted to run every non-model stage without it, and the one
+ * thing it must never do is invent a classification to fill the gap.
+ */
+export function modelEnv(): ModelEnv | null {
+  const apiKey = read('MODEL_API_KEY')
+  if (!apiKey) return null
+
+  const provider = (read('MODEL_PROVIDER') ?? 'anthropic') as ModelProvider
+  if (provider !== 'anthropic' && provider !== 'bedrock' && provider !== 'vertex') {
+    throw new Error(`MODEL_PROVIDER must be anthropic, bedrock or vertex; got "${provider}".`)
+  }
+  const modelId = read('MODEL_ID')
+  if (!modelId) throw new MissingEnvError(['MODEL_ID'])
+
+  return {
+    provider,
+    apiKey,
+    modelId,
+    promptVersion: read('MODEL_PROMPT_VERSION') ?? 'v0',
+  }
+}
+
+/**
+ * SEC requires a declared User-Agent carrying an address a human actually
+ * monitors, and rate-limits to 10 requests per second.
+ *
+ * A syntactically valid address is NOT the requirement. The requirement is that
+ * someone reads what arrives there, and that is a fact about a mailbox rather
+ * than about a string — no amount of parsing can establish it. So the address
+ * counts as unresolved until an operator explicitly sets
+ * `SEC_CONTACT_CONFIRMED=confirmed`, and the connector refuses to run until then.
+ *
+ * The failure mode without this is silent: SEC serves the request either way,
+ * and nobody discovers the mailbox is unread until they needed to be reachable.
+ */
+export function assertSecUserAgentUsable(env: ServerEnv): void {
+  // Demanded here: this is the SEC collector's own precondition, and only the
+  // collector calls it. An absent value stops collection and nothing else.
+  const userAgent = demand(env.secEdgarUserAgent, 'SEC_EDGAR_USER_AGENT')
+  if (/<[^>]+>/.test(userAgent)) {
+    throw new Error(
+      `SEC_EDGAR_USER_AGENT still contains an unresolved placeholder: "${userAgent}". ` +
+        'Sending it would be a false contact declaration to a federal regulator.',
+    )
+  }
+  if (!/[^\s@]+@[^\s@]+\.[^\s@]+/.test(userAgent)) {
+    throw new Error(
+      'SEC_EDGAR_USER_AGENT must contain a contact email address. See docs/ENVIRONMENT.md.',
+    )
+  }
+  if (!env.secContactConfirmed) {
+    throw new Error(
+      'The SEC contact address is not confirmed as an actively monitored mailbox. ' +
+        'Set SEC_CONTACT_CONFIRMED=true only once an operator has verified that ' +
+        'someone reads it. No SEC request may be sent before then.',
+    )
+  }
+}
+
+/** The names a deployment must set, for documentation and for the health check. */
+export const REQUIRED_SERVER_VARS = [
+  'SUPABASE_URL',
+  'SUPABASE_PUBLISHABLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'SEC_EDGAR_USER_AGENT',
+  'INGEST_SHARED_SECRET',
+] as const
+
+/**
+ * Presence and shape for every required variable. NEVER a value.
+ *
+ * The Deploy Preview context is a separate set of variables from production,
+ * and "I set it in the UI" is not evidence that a function can see it. This
+ * gives an operator a way to check from the outside without anybody pasting a
+ * key into a terminal to compare it.
+ *
+ * What each entry may say is deliberately narrow. `present` is a boolean.
+ * `shape` is one of a fixed set of verdicts derived from the FAMILY the value
+ * belongs to -- an `sb_secret_` prefix, an `sb_publishable_` prefix, an https
+ * URL. No value, no fragment of one, and no length: a length narrows a secret,
+ * and a prefix beyond the family name would identify a project.
+ */
+export type VariableShape =
+  | 'ok'
+  | 'missing'
+  | 'empty'
+  | 'not_a_url'
+  | 'expected_sb_secret'
+  | 'expected_sb_publishable'
+  | 'legacy_jwt'
+  | 'wrong_key_family'
+
+export interface VariableReport {
+  readonly name: string
+  readonly present: boolean
+  readonly shape: VariableShape
+}
+
+function shapeOf(name: string, raw: string | undefined): VariableShape {
+  if (raw === undefined) return 'missing'
+  const value = raw.trim()
+  if (!value) return 'empty'
+
+  if (name === 'SUPABASE_URL') {
+    try {
+      return new URL(value).protocol === 'https:' ? 'ok' : 'not_a_url'
+    } catch {
+      return 'not_a_url'
+    }
+  }
+  if (name === 'SUPABASE_SECRET_KEY') {
+    if (value.startsWith('sb_secret_')) return 'ok'
+    if (value.startsWith('sb_publishable_')) return 'wrong_key_family'
+    if (value.startsWith('eyJ')) return 'legacy_jwt'
+    return 'expected_sb_secret'
+  }
+  if (name === 'SUPABASE_PUBLISHABLE_KEY') {
+    if (value.startsWith('sb_publishable_')) return 'ok'
+    if (value.startsWith('sb_secret_')) return 'wrong_key_family'
+    if (value.startsWith('eyJ')) return 'legacy_jwt'
+    return 'expected_sb_publishable'
+  }
+  // Everything else is free text; being set and non-empty is the whole contract.
+  return 'ok'
+}
+
+export function describeServerVariables(): VariableReport[] {
+  return REQUIRED_SERVER_VARS.map((name) => {
+    const raw = process.env[name]
+    return { name, present: raw !== undefined && raw.trim() !== '', shape: shapeOf(name, raw) }
+  })
+}
+
+export const OPTIONAL_SERVER_VARS = [
+  'SUPABASE_DB_URL',
+  'SUPABASE_JWT_SECRET',
+  'SUPABASE_EVIDENCE_BUCKET',
+  'EGRESS_ALLOWLIST',
+  'SEC_CONTACT_CONFIRMED',
+  'MODEL_PROVIDER',
+  'MODEL_API_KEY',
+  'MODEL_ID',
+  'MODEL_PROMPT_VERSION',
+  'RADAR_ENV',
+] as const
+
+/** Names that must never be configured. Asserted by CI and by `assertKeyShapes`. */
+export const FORBIDDEN_VARS = [
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_ANON_KEY',
+  'VITE_SUPABASE_ANON_KEY',
+  'VITE_SUPABASE_SECRET_KEY',
+  'VITE_SUPABASE_SERVICE_ROLE_KEY',
+  'VITE_SUPABASE_JWT_SECRET',
+] as const

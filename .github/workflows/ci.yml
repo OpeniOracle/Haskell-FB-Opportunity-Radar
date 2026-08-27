@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Lets a run be re-triggered without an empty commit — useful when a delivery
+  # is delayed, or when re-running against an unchanged tree is the point.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -105,17 +108,48 @@ jobs:
             exit 1
           fi
 
-      # The same real-name boundary the application test enforces, applied to the
-      # database tree. Structural fixtures are all "Example ...".
+      # The D14-L trade show must never be named in anything that RUNS —
+      # application source, server functions, migrations or seeds. The design
+      # documentation names it constantly and correctly: D14-L is a decision the
+      # package exists to explain, and scrubbing the explanation would hide the
+      # constraint rather than enforce it. So this checks executable trees only.
       #
-      # Case-SENSITIVE, matching the application test. Case-insensitively,
-      # "Nestl" matches inside the ordinary English word "honestly".
-      - name: The database tree names no real pilot account or event
+      # Case-SENSITIVE throughout these checks. Case-insensitively, "Nestl"
+      # matches inside the ordinary English word "honestly", which is how an
+      # earlier version of the account check failed on its own prose.
+      - name: The blocked trade show is never named in executable code
+        run: |
+          if grep -rn 'PACK EXPO' app/src app/netlify db \
+               --exclude=boundaries.test.ts; then
+            echo "The D14-L trade show is named in code that runs."
+            exit 1
+          fi
+
+      # Real pilot accounts are legitimate in db/seed — that is the whole point
+      # of seeding the cohort through the database layer rather than as
+      # application fixtures. They are NOT legitimate in a migration (schema is
+      # not data) or in a structural test fixture (which uses "Example ..."),
+      # and `app/src/test/boundaries.test.ts` keeps them out of the bundle.
+      - name: Migrations and test fixtures name no real pilot account
         run: |
           names='Nestl|PepsiCo|Coca-Cola|Anheuser|Tyson|Kraft|Conagra|General Mills'
-          names="$names|Unilever|Danone|Niagara|Sherwin|Mondelez|Keurig|Hormel|Smithfield|PACK EXPO"
-          if grep -rnE "$names" db/; then
-            echo "A real pilot account or event name appears in the database tree."
+          names="$names|Unilever|Danone|Niagara|Sherwin|Mondelez|Keurig|Hormel|Smithfield"
+          if grep -rnE "$names" db/migrations/ db/tests/; then
+            echo "A real pilot account appears in a migration or a test fixture."
+            echo "Seed data belongs in db/seed/."
+            exit 1
+          fi
+
+      # The cohort is seeded through the database layer, never compiled into the
+      # browser bundle as a fixture.
+      - name: The pilot cohort is seeded, not hard-coded in the application
+        run: |
+          if [ ! -f db/seed/0003_pilot_cohort.sql ]; then
+            echo "The pilot cohort seed is missing."
+            exit 1
+          fi
+          if grep -rn 'highest_value' app/src/data/fixtures/ 2>/dev/null; then
+            echo "Cohort data appears in application fixtures."
             exit 1
           fi
 
@@ -126,23 +160,747 @@ jobs:
             exit 1
           fi
 
+      # The browser-layout harness mounts the real pages against the TEST
+      # authentication port -- a port that answers yes. It has its own Vite
+      # config and its own gitignored output directory so `npm run build`
+      # cannot reach it, and this is what holds that apart. A harness that
+      # leaked into a shipped chunk would be an authentication bypass sitting
+      # in the bundle.
+      - name: The test authentication fake is not reachable from the application
+        run: |
+          if grep -rn "test/browser/harness\|test/authFake" app/src/main.tsx app/src/App.tsx \
+               app/src/auth app/src/components app/src/surfaces app/index.html 2>/dev/null; then
+            echo "The application imports the test authentication harness or fake."
+            exit 1
+          fi
+          if grep -rn "harness" app/vite.config.ts; then
+            echo "The production Vite config references the harness."
+            exit 1
+          fi
+          echo "ok    harness and fake are confined to the harness build"
+
+      # ROUTING IS DECLARED IN ONE PLACE, AND THE CATCH-ALL IS LAST.
+      #
+      # `app/public/_redirects` once carried a copy of the SPA catch-all, added
+      # so the behaviour would survive netlify.toml being replaced. Netlify
+      # processes a `_redirects` FILE BEFORE the rules in `netlify.toml`, so a
+      # copy of the LAST rule, in the file read FIRST, became the first rule:
+      # `/*  /index.html  200` matched /api/session and every API route
+      # returned the application with a 200. Both files read correctly on their
+      # own; the fault was in the relationship between them.
+      #
+      # `app/src/test/netlifyRouting.test.ts` resolves real paths through the
+      # real precedence. This step is the cheap structural half.
+      - name: The SPA catch-all cannot outrank the API routes
+        run: |
+          if [ -f app/public/_redirects ]; then
+            if ! grep -q '^/api/' app/public/_redirects; then
+              echo "app/public/_redirects exists and is evaluated BEFORE netlify.toml,"
+              echo "but declares no /api rules. Its catch-all will swallow every API route."
+              exit 1
+            fi
+            catch_all=$(grep -n '^/\*' app/public/_redirects | head -1 | cut -d: -f1)
+            last_api=$(grep -n '^/api/' app/public/_redirects | tail -1 | cut -d: -f1)
+            if [ -n "$catch_all" ] && [ "$catch_all" -lt "$last_api" ]; then
+              echo "The /* catch-all precedes the /api rules in app/public/_redirects."
+              exit 1
+            fi
+          fi
+          # And in netlify.toml the catch-all must be the final redirect block.
+          last_from=$(grep -n '^  from = ' netlify.toml | tail -1)
+          case "$last_from" in
+            *'"/*"'*) echo "ok    the SPA catch-all is the last rule" ;;
+            *) echo "The last redirect in netlify.toml is not the SPA catch-all: $last_from"; exit 1 ;;
+          esac
+
+      # NO REAL PERSON'S ADDRESS IS COMMITTED.
+      #
+      # Administrator pre-provisioning takes its addresses from a prompt or from
+      # a file the operator keeps outside this repository. The people being
+      # provisioned are personal data and have no business in version control,
+      # in fixtures, or in a test.
+      #
+      # Guarded by SHAPE, not by name. A list of the forbidden names would
+      # itself be the thing it forbids -- and it would only ever catch the four
+      # people somebody remembered to add. Every address on an approved domain
+      # is refused instead, with the documented placeholders allowlisted by
+      # exact value. Adding a real colleague fails this step; adding a fictional
+      # example means adding it here, deliberately, in review.
+      - name: No real person is named in the repository
+        run: |
+          allowed='^(first\.person|second\.person|existing\.person|unlisted\.person|firstname\.lastname|loopback\.tester|oracles|you)@'
+          found=$(git grep -hEio '[A-Za-z0-9._%+-]+@(haskell|openi-analytics)\.com' \
+                    -- . ':(exclude).github/workflows/ci.yml' \
+                  | sort -u | grep -Ev "$allowed" || true)
+          if [ -n "$found" ]; then
+            echo "An address on an approved organization domain is committed:"
+            echo "$found"
+            echo
+            echo "Real addresses are supplied to the operator script at provisioning"
+            echo "time and are never committed. If this is a fictional example, add it"
+            echo "to the allowlist in this step."
+            exit 1
+          fi
+          echo "ok    only documented placeholder addresses are committed"
+
+      # Secret-leak detection across every tracked file.
+      #
+      # The publishable key is deliberately NOT in this list: it is not
+      # confidential, it is committed in netlify.toml on purpose, and treating it
+      # as a secret would train everyone to ignore this check.
+      #
+      # Two loopback tests are exempt BY EXACT NAME, not by directory.
+      # They drive the invitation helper and the pre-provisioning helper against
+      # a listener on 127.0.0.1, and both helpers refuse any key that does not
+      # begin `sb_secret_` -- so neither test can reach a single request without
+      # a value of that shape. The values are the constants checked immediately
+      # below, they are not keys on any project, and they never leave the
+      # loopback interface. A directory-wide exemption would blind this check to
+      # scripts/tests/ for good; naming the files keeps the rest of that tree
+      # covered.
+      - name: No secret is committed anywhere in the repository
+        run: |
+          if git grep -nE 'sb_secret_[A-Za-z0-9_-]{8,}' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)app/src/test/*' ':(exclude)scripts/tests/Test-InvitationRequest.ps1' \
+               ':(exclude)scripts/tests/Test-PreprovisionRequest.ps1'; then
+            echo "A Supabase SECRET key is committed."
+            exit 1
+          fi
+          # The exemption is worth exactly one value. Anything else sb_secret_
+          # shaped in that file fails here, so the exemption cannot quietly widen.
+          unexpected=$(git grep -hoE 'sb_secret_[A-Za-z0-9_-]{8,}' \
+                         -- scripts/tests/Test-InvitationRequest.ps1 \
+                            scripts/tests/Test-PreprovisionRequest.ps1 \
+                       | sort -u \
+                       | grep -vE '^sb_secret_(LOOPBACK_FAKE_0000000000000000|PROVISION_FAKE_000000000000000)$' || true)
+          if [ -n "$unexpected" ]; then
+            echo "A loopback test carries a key that is not its documented fake:"
+            echo "$unexpected"
+            exit 1
+          fi
+          if git grep -nE 'postgres(ql)?://[^[:space:]"'"'"']+' -- . ':(exclude).github/workflows/ci.yml' ':(exclude)docs/**'; then
+            echo "A database connection string is committed."
+            exit 1
+          fi
+          if git grep -nE -- '-----BEGIN [A-Z ]*PRIVATE KEY-----' -- .; then
+            echo "A private key is committed."
+            exit 1
+          fi
+          if git grep -nE 'sk-ant-[A-Za-z0-9_-]{16,}' -- .; then
+            echo "An Anthropic API key is committed."
+            exit 1
+          fi
+
+      # The legacy Supabase key pair must not come back. It rotates as one unit
+      # — rotating the service key invalidates the anon key and signs everyone
+      # out — and the two are indistinguishable by shape, so a paste error puts a
+      # full-database key in the browser bundle with nothing to catch it.
+      - name: The legacy anon / service_role key pair is not configured
+        run: |
+          if git grep -nE '(VITE_)?SUPABASE_(ANON|SERVICE_ROLE)_KEY' \
+               -- . ':(exclude).github/workflows/ci.yml' \
+                    ':(exclude)app/netlify/functions/_shared/env.ts' \
+                    ':(exclude)app/src/test/boundaries.test.ts' \
+                    ':(exclude)docs/ENVIRONMENT.md'; then
+            echo "The legacy Supabase key names are referenced outside the code that forbids them."
+            exit 1
+          fi
+          # The secret key must never acquire a VITE_ prefix. This file is
+          # excluded for the same reason the others are: it necessarily contains
+          # the string it forbids.
+          if git grep -nE 'VITE_SUPABASE_SECRET_KEY' \
+               -- . ':(exclude).github/workflows/ci.yml' \
+                    ':(exclude)app/netlify/functions/_shared/env.ts' \
+                    ':(exclude)app/src/test/boundaries.test.ts'; then
+            echo "The Supabase secret key is exposed to the browser bundle."
+            exit 1
+          fi
+
+      # Confidential evidence is served by an authenticated same-origin proxy,
+      # never by a signed Storage URL. A signed URL is a bearer credential that
+      # outlives removal from the allowlist, and a cached response outlives even
+      # the token.
+      - name: Evidence is not served by signed Storage URLs
+        run: |
+          if git grep -nE 'createSignedUrl|getPublicUrl' -- app/ ':(exclude)app/src/test/*'; then
+            echo "A signed or public Storage URL is generated. Use /api/evidence/:id."
+            exit 1
+          fi
+          test -f app/netlify/functions/evidence.ts
+          grep -q "private, no-store" app/netlify/functions/evidence.ts
+
+      # A valid Supabase access token outlives sign-out: it stays
+      # cryptographically valid until its own `exp` even after the session is
+      # revoked. The evidence proxy therefore checks `auth.sessions` on every
+      # request, which is the only reason its refusal is immediate. Losing that
+      # would restore the exact property the proxy exists to remove, silently.
+      - name: The evidence proxy checks the session table, not just the token
+        run: |
+          test -f db/migrations/0018_evidence_session_guard.up.sql
+          grep -q 'requireLiveSession' app/netlify/functions/evidence.ts
+          grep -q 'authorize_evidence_access' app/netlify/functions/_shared/sessionGuard.ts
+          # Boolean only, service_role only. A function that returned rows, or
+          # that anyone could execute, would leak other users' sessions.
+          grep -qE 'returns[[:space:]]+boolean' db/migrations/0018_evidence_session_guard.up.sql
+          for role in public anon authenticated; do
+            grep -qE "revoke all on function[^;]*from $role" \
+              db/migrations/0018_evidence_session_guard.up.sql \
+              || { echo "execute is not revoked from $role"; exit 1; }
+          done
+          grep -qE 'grant execute on function[^;]*to service_role' \
+            db/migrations/0018_evidence_session_guard.up.sql
+
+      # The immediacy above belongs to ONE endpoint. Describing it as a property
+      # of Supabase tokens generally would be false everywhere else.
+      - name: Immediate revocation is never claimed beyond the evidence proxy
+        run: |
+          if grep -rn 'requireLiveSession\|authorize_evidence_access' \
+               app/netlify/functions/_shared/auth.ts; then
+            echo "The dashboard auth path acquired the session check without a decision."
+            exit 1
+          fi
+          grep -q 'dashboardTokenLifetime' app/netlify/functions/status.ts
+          test -f docs/adr/0015-evidence-proxy-immediate-revocation.md
+
+      # The operator handles the two confidential values by hand. No document
+      # may tell them to put either on a command line, where it lands in shell
+      # history and in the process table.
+      - name: No document instructs the operator to export a credential
+        run: |
+          if grep -rnE '^[[:space:]]*(export|set|\$env:)[[:space:]]*(TOKEN|SECRET)[[:space:]]*=' \
+               docs/ scripts/ README.md 2>/dev/null; then
+            echo "A document or script assigns a credential on a command line."
+            exit 1
+          fi
+          test -f scripts/Invoke-HostedValidation.ps1
+          test -f scripts/Send-BootstrapInvitation.ps1
+          # PowerShell's hidden prompt lives in the shared guard module, which is
+          # the only place either script marshals a SecureString.
+          grep -q 'AsSecureString' scripts/OperatorGuards.psm1
+          grep -qE 'read[[:space:]]+-rs[[:space:]]+TOKEN' scripts/hosted-validation.sh
+
+      # The application is private. Every surface sits behind the gate, and the
+      # only routes a signed-out visitor may reach are the five authentication
+      # ones. An invited reviewer arriving at a public dashboard is the failure
+      # this milestone exists to fix.
+      - name: Every surface is behind the authentication gate
+        run: |
+          grep -q 'RequireAuth' app/src/App.tsx
+          grep -q 'PUBLIC_AUTH_ROUTES' app/src/App.tsx
+          # Exactly five public routes, counted inside the exported list itself
+          # rather than anywhere a quoted path happens to appear. A sixth has to
+          # be argued for here.
+          count=$(awk '/^export const PUBLIC_AUTH_ROUTES = \[/{f=1;next} /^\] as const/{f=0} f' \
+                    app/src/App.tsx | grep -c "^  '/")
+          test "$count" -eq 5 || { echo "Expected 5 public auth routes, found $count."; exit 1; }
+          for route in "/login" "/auth/callback" "/auth/set-password" \
+                       "/forgot-password" "/auth/reset-password"; do
+            grep -q "path=\"$route\"" app/src/App.tsx \
+              || { echo "Public route $route is not registered."; exit 1; }
+          done
+          test -f app/src/auth/RequireAuth.tsx
+          test -f app/src/auth/AuthProvider.tsx
+
+      # Invite-only, in the interface as well as in the database. Migration 0016
+      # refuses an uninvited account and the project has signups disabled; a
+      # registration form would still be a door with a sign on it.
+      - name: The application offers no way to create an account
+        run: |
+          # Actual CALLS only. Both files excluded below necessarily name the
+          # thing they forbid: one is the rule, the other is the comment that
+          # explains why there is no such call.
+          if grep -rnE '\.(signUp|signInWithOAuth|signInWithOtp|signInAnonymously)[[:space:]]*\(' \
+               app/src app/netlify \
+               --exclude=boundaries.test.ts --exclude=supabaseClient.ts; then
+            echo "A self-registration or alternative sign-in path exists."
+            exit 1
+          fi
+
+      # A credential in the URL is a credential in browser history, in the
+      # referrer of the next request, and in anything the user copies out of the
+      # address bar. The callback reads it once and removes it.
+      - name: The invitation callback removes the credential from history
+        run: |
+          grep -q 'scrubCredentialFromHistory' app/src/auth/CallbackPage.tsx
+          grep -q 'replaceState' app/src/auth/urlCredentials.ts
+          # Nothing in the auth tree may log, and nothing may render a token.
+          if grep -rn 'console\.\(log\|info\|warn\|error\|debug\)' app/src/auth; then
+            echo "The authentication code logs. A token in a log line is still a disclosure."
+            exit 1
+          fi
+
+      # The bootstrap invitation must reach the PREVIEW. PR #9 is unmerged, so
+      # production carries none of the authentication routes, and the
+      # dashboard's Invite user button can only send to the Site URL.
+      - name: The bootstrap invitation names the preview callback
+        run: |
+          test -f scripts/Send-BootstrapInvitation.ps1
+          test -f scripts/OperatorGuards.psm1
+          preview='https://deploy-preview-9--haskell-fb-opportunity-radar.netlify.app/auth/callback'
+          grep -qF "$preview" scripts/Send-BootstrapInvitation.ps1
+          # A constant, not a parameter: a redirect that can be overridden on a
+          # command line is one that will eventually be overridden back to
+          # production.
+          if awk '/^param\(/{f=1} f{print} /^\)/{f=0}' scripts/Send-BootstrapInvitation.ps1 \
+               | grep -qiE 'redirect|callback'; then
+            echo "The redirect is settable from the command line."
+            exit 1
+          fi
+          # Both PowerShell scripts must run the SAME guards, not copies.
+          for script in scripts/Invoke-HostedValidation.ps1 scripts/Send-BootstrapInvitation.ps1; do
+            grep -q "OperatorGuards.psm1" "$script" \
+              || { echo "$script does not import the shared guards"; exit 1; }
+            if grep -qE '^function (Assert-NoObservation|Assert-CorrectCheckout|Use-Plain|Read-SecretValue)' "$script"; then
+              echo "$script redefines a shared guard; it would drift from the other."
+              exit 1
+            fi
+          done
+
+      # Windows PowerShell 5.1 reads a BOM-less .ps1/.psm1 as Windows-1252, so a
+      # single em dash ends a string the parser never sees closed and the whole
+      # file stops parsing. Checked here as well as on the Windows runner
+      # because it is cheap, runs on every push, and names the offending byte.
+      - name: Operator scripts are ASCII only
+        run: |
+          bad=0
+          for f in scripts/*.ps1 scripts/*.psm1 scripts/*.sh; do
+            if LC_ALL=C grep -nP '[\x80-\xFF]' "$f"; then
+              echo "$f contains a byte above 0x7F; Windows PowerShell 5.1 would misread it."
+              bad=1
+            fi
+          done
+          test "$bad" -eq 0
+          # A BOM would also make 5.1 read UTF-8, but ASCII needs none and a BOM
+          # is one stripped byte away from being useless.
+          for f in scripts/*.ps1 scripts/*.psm1; do
+            head -c 3 "$f" | LC_ALL=C grep -q $'\xef\xbb\xbf' && { echo "$f has a BOM"; exit 1; }
+          done
+          echo "all operator scripts are pure ASCII"
+
       - name: Netlify configuration is present and points at the app
         run: |
           grep -q 'base = "app"' netlify.toml
           grep -q 'publish = "dist"' netlify.toml
           grep -q 'status = 200' netlify.toml
-          test -f app/public/_redirects
+          # The SPA fallback must exist -- a deep link that 404s on refresh is a
+          # broken application. It is asserted HERE, in netlify.toml, and not as
+          # `test -f app/public/_redirects`, which is what this line used to be.
+          # That assertion required the duplicate catch-all that shadowed every
+          # /api route: a check that made the outage mandatory.
+          grep -q 'from = "/\*"' netlify.toml
+          grep -q 'to = "/index.html"' netlify.toml
 
-  database:
-    name: Migration checks (PostgreSQL 16)
+  windows-operator-scripts:
+    name: Operator scripts (Windows PowerShell 5.1)
+    runs-on: windows-latest
+
+    # WHY THIS JOB EXISTS.
+    #
+    # The operator runs these on Windows, and Windows PowerShell 5.1 reads a
+    # BOM-less .ps1 or .psm1 as Windows-1252, NOT UTF-8. An em dash is E2 80 94
+    # in UTF-8, which cp1252 decodes as three characters ending in a curly
+    # double quote -- and that quote opens a string the parser never sees
+    # closed. The result is `a-euro-quote` on screen followed by
+    # unexpected-token, unterminated-string and missing-brace errors dozens of
+    # lines from the actual character.
+    #
+    # Parsing with PowerShell 7 on Linux CANNOT catch this: 7 assumes UTF-8, so
+    # the file parses perfectly there and fails on the operator's machine. The
+    # claim "works on Windows PowerShell 5.1" is only true if 5.1 says so, which
+    # is what this job is for.
+    #
+    # `shell: powershell` is Windows PowerShell 5.1. `shell: pwsh` would be
+    # PowerShell 7 and would defeat the point.
+
+    steps:
+      # LF in the working tree. Git for Windows would otherwise rewrite line
+      # endings on checkout, which shows up as a dirty tree and would make the
+      # refusal tests below pass or fail for the wrong reason.
+      - name: Keep line endings as committed
+        shell: bash
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        with:
+          # A named branch, not a detached merge commit: the scripts check the
+          # branch and compare HEAD against the freshly fetched remote head, so
+          # they need a real one to check.
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Report the interpreter, so the evidence names itself
+        shell: powershell
+        run: |
+          $PSVersionTable | Format-List | Out-String | Write-Host
+          if ($PSVersionTable.PSEdition -ne 'Desktop') {
+            Write-Host "This job must run on Windows PowerShell (Desktop edition), not PowerShell 7."
+            exit 1
+          }
+          if ($PSVersionTable.PSVersion.Major -ne 5) {
+            Write-Host "Expected PowerShell 5.x, got $($PSVersionTable.PSVersion)."
+            exit 1
+          }
+
+      - name: Every operator PowerShell file parses under 5.1
+        shell: powershell
+        run: |
+          $files = @(
+            'scripts\OperatorGuards.psm1',
+            'scripts\Send-BootstrapInvitation.ps1',
+            'scripts\Invoke-HostedValidation.ps1',
+            'scripts\New-PreprovisionedAccounts.ps1',
+            'scripts\tests\Test-InvitationRequest.ps1',
+            'scripts\tests\Test-PreprovisionRequest.ps1'
+          )
+          $failed = 0
+          foreach ($file in $files) {
+            $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file), [ref] $null, [ref] $errors)
+            if ($errors) {
+              $failed++
+              Write-Host "FAIL  $file"
+              foreach ($e in $errors) {
+                Write-Host ("        line {0}: {1}" -f $e.Extent.StartLineNumber, $e.Message)
+              }
+            } else {
+              Write-Host "ok    $file"
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
+
+      - name: The module actually imports, and exports what the scripts call
+        shell: powershell
+        run: |
+          Import-Module .\scripts\OperatorGuards.psm1 -Force
+          $expected = 'Assert-NoObservation','Assert-CorrectCheckout',
+                      'Invoke-OperatorGit','Read-SecretValue','Use-Plain',
+                      'ConvertFrom-JsonRows'
+          foreach ($name in $expected) {
+            if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
+              Write-Host "FAIL  $name is not exported"
+              exit 1
+            }
+            Write-Host "ok    $name"
+          }
+
+      # AN EMPTY JSON ARRAY IS ZERO ROWS, INCLUDING ON 5.1.
+      #
+      # `@($body | ConvertFrom-Json)` is not a row count here: 5.1 emits $null
+      # for `[]`, and `@($null)` has one element -- so "did this query return a
+      # row?" answered YES to an empty result, and an address that was not on
+      # the allowlist was reported as allowlisted. Asserted on the interpreter
+      # where it actually differs.
+      - name: An empty JSON array counts as no rows
+        shell: powershell
+        run: |
+          Import-Module .\scripts\OperatorGuards.psm1 -Force
+          $cases = @(
+            @{ Body = '[]';                       Expected = 0 },
+            @{ Body = '';                         Expected = 0 },
+            @{ Body = 'not json';                 Expected = 0 },
+            @{ Body = '[{"a":1}]';                Expected = 1 },
+            @{ Body = '{"a":1}';                  Expected = 1 },
+            @{ Body = '[{"a":1},{"a":2}]';        Expected = 2 }
+          )
+          $failed = 0
+          foreach ($case in $cases) {
+            $count = (ConvertFrom-JsonRows $case.Body).Count
+            if ($count -ne $case.Expected) {
+              Write-Host ("FAIL  '{0}' gave {1} rows, expected {2}" -f $case.Body, $count, $case.Expected)
+              $failed++
+            } else {
+              Write-Host ("ok    '{0}' -> {1}" -f $case.Body, $count)
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
+
+      - name: Operator PowerShell sources are ASCII only
+        shell: powershell
+        run: |
+          $failed = 0
+          foreach ($file in Get-ChildItem scripts -Include *.ps1,*.psm1 -Recurse) {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            $bad = @($bytes | Where-Object { $_ -gt 127 })
+            if ($bad.Count -gt 0) {
+              $failed++
+              Write-Host "FAIL  $($file.Name) has $($bad.Count) byte(s) above 0x7F"
+            } else {
+              Write-Host "ok    $($file.Name) ($($bytes.Length) bytes, all ASCII)"
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
+
+      # The guards, exercised as refusals rather than asserted from source. Each
+      # case must abort with its OWN message: a script that refused everything
+      # for one reason would pass a weaker version of this test.
+      - name: Refusal - a repository that is not this one
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\Send-BootstrapInvitation.ps1 -Repository 'someone/else' 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'must not run against another repository') {
+            Write-Host 'FAIL: wrong-repository refusal did not fire'; exit 1
+          }
+          if ($out -match 'email address to invite') {
+            Write-Host 'FAIL: it prompted before refusing'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Refusal - the wrong branch
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\Send-BootstrapInvitation.ps1 -Branch 'not-the-pr-branch' 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch "expected 'not-the-pr-branch'") {
+            Write-Host 'FAIL: wrong-branch refusal did not fire'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Refusal - a dirty working tree
+        shell: powershell
+        run: |
+          Set-Content -Path .\ci-dirty-tree-probe.txt -Value 'untracked' -Encoding Ascii
+          try {
+            $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+              -File .\scripts\Send-BootstrapInvitation.ps1 2>&1 | Out-String
+          } finally {
+            Remove-Item .\ci-dirty-tree-probe.txt -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host $out
+          if ($out -notmatch 'working tree is not clean') {
+            Write-Host 'FAIL: dirty-tree refusal did not fire'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Refusal - verbose output, before anything else
+        shell: powershell
+        run: |
+          # Verbose is refused by Assert-NoObservation, which runs BEFORE the
+          # repository guard -- so this must abort without a single PASS line.
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -Command `
+            "`$VerbosePreference='Continue'; & .\scripts\Send-BootstrapInvitation.ps1" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'Refusing to run with verbose output enabled') {
+            Write-Host 'FAIL: verbose refusal did not fire'; exit 1
+          }
+          if ($out -match 'PASS  origin is') {
+            Write-Host 'FAIL: it reached the repository guard before refusing'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Refusal - debug output
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -Command `
+            "`$DebugPreference='Continue'; & .\scripts\Send-BootstrapInvitation.ps1" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'Refusing to run with debug output enabled') {
+            Write-Host 'FAIL: debug refusal did not fire'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Refusal - script tracing
+        shell: powershell
+        run: |
+          # Set-PSDebug -Trace expands and prints every line as it runs, headers
+          # included. The guard cannot read the trace level, so it switches
+          # tracing off before anything sensitive happens; this proves the
+          # script still completes its refusal rather than dying under a trace.
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -Command `
+            "Set-PSDebug -Trace 2; & .\scripts\Send-BootstrapInvitation.ps1 -Repository 'someone/else'" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'must not run against another repository') {
+            Write-Host 'FAIL: the script did not survive tracing to reach its refusal'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Refusal - the reserved SEC mailbox
+        shell: powershell
+        run: |
+          # This one runs the FULL repository guard first, so it also proves the
+          # guards pass on a correct checkout. The address is refused before the
+          # secret is requested, so nothing is sent and no key is involved.
+          # The branch is read from the checkout rather than assumed, so this
+          # step is about the ADDRESS. The wrong-branch refusal has its own step
+          # above; here the repository guard is expected to pass.
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          # `cmd /c` to feed stdin: PowerShell has no input-redirection operator,
+          # and this is the reliable way to give powershell.exe a line to read.
+          $out = cmd /c "echo oracles@openi-analytics.com | powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Send-BootstrapInvitation.ps1 -Branch $branch 2>&1" | Out-String
+          Write-Host $out
+          if ($out -notmatch 'PASS  working tree is clean') {
+            Write-Host 'FAIL: the repository guard did not pass on a correct checkout'; exit 1
+          }
+          if ($out -notmatch 'reserved for SEC') {
+            Write-Host 'FAIL: reserved-address refusal did not fire'; exit 1
+          }
+          if ($out -match 'Supabase secret key') {
+            Write-Host 'FAIL: it asked for the key before refusing the address'; exit 1
+          }
+          if ($out -notmatch 'No invitation was sent') {
+            Write-Host 'FAIL: it did not report that nothing was sent'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+      - name: Loopback capture - the headers the script really sends
+        shell: powershell
+        run: |
+          # THE ONE STEP THAT CAN SEE A HEADER.
+          #
+          # The 401 that stopped the operator was caused by two things no
+          # source-text assertion can observe: an opaque sb_secret_ key placed in
+          # Authorization, where PostgREST parses it as a JWT and refuses it, and
+          # Invoke-WebRequest's default User-Agent, which on Windows PowerShell
+          # 5.1 is "Mozilla/5.0 (Windows NT ...) WindowsPowerShell/5.1.x" --
+          # browser-shaped, and Supabase refuses a secret key from a browser.
+          # Neither appears in the script's text. Both appear on the wire.
+          #
+          # So this runs the REAL script against an HttpListener on 127.0.0.1,
+          # through a PSHost that answers its prompts the way a human would, and
+          # inspects what arrived. The key is fake and never leaves the loopback
+          # interface. The branch is read from the checkout because the script's
+          # repository guard runs first and must pass.
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\tests\Test-InvitationRequest.ps1 -Branch $branch
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'FAIL: the loopback header capture did not pass'; exit 1
+          }
+          exit 0
+      - name: Loopback capture - pre-provisioning sends no email and no password
+        run: |
+          # THE CLAIM HERE IS A NEGATIVE, WHICH IS WHY IT IS TESTED ON THE WIRE.
+          #
+          # "This script sends no invitation, confirmation, magic-link or
+          # recovery email" cannot be established by reading the source: the
+          # absence of a call is invisible in a diff. What CAN be established is
+          # that across a complete run the only endpoints touched are the
+          # allowlist lookup, the existing-user lookup and the admin create-user
+          # endpoint, and that no request anywhere carries a password field.
+          #
+          # Four runs: the happy path, a non-allowlisted address, an address
+          # that already has an account, and a refused confirmation.
+          # THE TAIL IS PRINTED, NOT THE WHOLE TRANSCRIPT.
+          #
+          # Four runs of the script under test produce a few hundred lines, and
+          # a truncated job log cut the summary and the failure list off the
+          # end -- so the step said "did not pass" and the reason was not in the
+          # log at all. Capturing and printing the last 60 lines guarantees the
+          # verdict is visible however long the run was.
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\tests\Test-PreprovisionRequest.ps1 -Branch $branch 2>&1
+          $code = $LASTEXITCODE
+          $out | Select-Object -Last 60 | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) {
+            Write-Host 'FAIL: the pre-provisioning capture did not pass'; exit 1
+          }
+          exit 0
+        shell: powershell
+
+      - name: The hosted validator refuses on the same guards
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass `
+            -File .\scripts\Invoke-HostedValidation.ps1 -Repository 'someone/else' 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'must not run against another repository') {
+            Write-Host 'FAIL: the validator did not refuse'; exit 1
+          }
+          # The script exits 1 because refusing IS its success here. GitHub's
+          # `shell: powershell` propagates $LASTEXITCODE, so this step states its
+          # own verdict explicitly instead of inheriting the child's.
+          exit 0
+
+  browser-layout:
+    name: Rendered browser layout (Chromium)
     runs-on: ubuntu-latest
 
-    # The authorized migration-validation target for roadmap PR 3. No Supabase
-    # project is contacted and no production credential is required: the service
-    # container is created, migrated, tested and destroyed inside the job.
+    # WHY A REAL BROWSER, AND WHY THIS JOB IS NOT OPTIONAL.
+    #
+    # The authentication status panels shipped visually broken: an `<svg>` with
+    # a viewBox and no dimensions resolves its used width against the available
+    # space, so the icon measured 252x252 at a 360px viewport and 344x344 at
+    # 1440px, and `flex: none` refused to shrink it back. The message was left
+    # an 84px column and the card overflowed its own viewport.
+    #
+    # Every DOM test passed, honestly: jsdom has no layout engine, so
+    # `getBoundingClientRect()` returns zeroes there and "the icon is 252px
+    # wide" is not a fact jsdom can hold. The accessibility suite asserted roles
+    # and text, which were correct throughout. Only a real engine can measure a
+    # real box, which is what this job does -- at 360, 390, 768 and 1440.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      # Chromium only. The other engines would triple the install for no
+      # additional signal: this measures CSS box geometry, not engine quirks.
+      - name: Install Chromium
+        working-directory: app
+        run: npx playwright install --with-deps chromium
+
+      - name: Measure the authentication screens at four viewports
+        working-directory: app
+        run: npm run test:browser
+
+      # The screenshots are the reviewable half. They are worth keeping whether
+      # the job passed or failed -- on a failure they are the diagnosis.
+      - name: Upload the rendered screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-screens
+          path: app/browser-screenshots/
+          if-no-files-found: error
+
+  database:
+    name: Migration checks (PostgreSQL ${{ matrix.pg }})
+    runs-on: ubuntu-latest
+
+    # 16 AND 17. Supabase provisions 17 for new projects, so 17 is the version
+    # the migrations will actually meet; 16 stays in the matrix because the
+    # schema was authored and reviewed against it and a silent divergence
+    # between the two is exactly what this leg is here to catch.
+    #
+    # fail-fast is off: when one version breaks, the other version's result is
+    # the most useful diagnostic available, and cancelling it throws that away.
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ['16', '17']
+
+    # No Supabase project is contacted and no production credential is required:
+    # the service container is created, migrated, tested and destroyed inside
+    # the job.
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.pg }}
         env:
           POSTGRES_USER: radar
           POSTGRES_PASSWORD: radar
@@ -170,7 +928,7 @@ jobs:
 
       # The migration harness shells out to psql, so the client has to match the
       # server major version. The runner image ships an older client by default.
-      - name: Install the PostgreSQL 16 client
+      - name: Install the PostgreSQL ${{ matrix.pg }} client
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
@@ -179,15 +937,29 @@ jobs:
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-16
-          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y postgresql-client-${{ matrix.pg }}
+          echo "/usr/lib/postgresql/${{ matrix.pg }}/bin" >> "$GITHUB_PATH"
 
       # Verified, not assumed. The design package explicitly refuses to assume a
       # PostgreSQL major version, and pgcrypto is a hard dependency of the
       # baseline schema's `gen_random_uuid()` defaults.
+      #
+      # The server major is asserted against the matrix leg. Without this, a
+      # mis-tagged image would let one version's result be reported under the
+      # other version's name — the matrix would look green and prove nothing.
       - name: Verify the server version and pgcrypto availability
         run: |
           psql -d postgres -tAc 'select version();'
+          server_major=$(psql -d postgres -tAc 'show server_version;' | cut -d. -f1)
+          if [ "$server_major" != "${{ matrix.pg }}" ]; then
+            echo "Expected PostgreSQL ${{ matrix.pg }}, the server reports $server_major."
+            exit 1
+          fi
+          client_major=$(psql --version | grep -oE '[0-9]+' | head -1)
+          if [ "$client_major" != "${{ matrix.pg }}" ]; then
+            echo "psql client is $client_major, expected ${{ matrix.pg }}."
+            exit 1
+          fi
           psql -d postgres -tAc "select 1 from pg_available_extensions where name = 'pgcrypto';" \
             | grep -q 1 || { echo 'pgcrypto is not available on this server.'; exit 1; }
 
