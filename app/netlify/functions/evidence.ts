@@ -83,7 +83,8 @@ export const handler: Handler = async (event) => {
 
   let env
   try {
-    env = serverEnv()
+    // Token verification, the session check and a byte stream. Nothing else.
+    env = serverEnv('evidence')
   } catch (error) {
     if (error instanceof MissingEnvError) {
       return deny(503, 'not_configured', 'Evidence storage is not configured.')

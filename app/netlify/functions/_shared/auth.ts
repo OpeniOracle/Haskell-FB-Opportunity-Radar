@@ -13,7 +13,7 @@
  * operator mechanism, which is why it exists separately.
  */
 import { createClient } from '@supabase/supabase-js'
-import { serverEnv } from './env.js'
+import { demand, serverEnv } from './env.js'
 
 export interface Caller {
   readonly userId: string
@@ -109,8 +109,12 @@ export function constantTimeEquals(a: string, b: string): boolean {
 
 export function requireOperator(headers: Record<string, string | undefined>): void {
   const env = serverEnv()
+  // Demanded HERE rather than at function entry. A deployment with no operator
+  // secret cannot authenticate an operator -- but that is a fact about this one
+  // code path, and it must not be able to refuse anybody else's request.
+  const expected = demand(env.ingestSharedSecret, 'INGEST_SHARED_SECRET')
   const supplied = headers['x-radar-operator-secret'] ?? headers['X-Radar-Operator-Secret']
-  if (!supplied || !constantTimeEquals(supplied, env.ingestSharedSecret)) {
+  if (!supplied || !constantTimeEquals(supplied, expected)) {
     throw new UnauthorizedError('Operator credential required.')
   }
 }

@@ -170,7 +170,7 @@ describe('an invitation that cannot be used', () => {
     renderAt(`/auth/callback${tail}`, withoutPrefill(auth))
 
     expect(
-      await screen.findByRole('heading', { name: 'That link cannot be used' }),
+      await screen.findByRole('heading', { name: 'That invitation link cannot be used' }),
     ).toBeInTheDocument()
 
     // The classification exists for behaviour and for this assertion. It is not
@@ -179,8 +179,10 @@ describe('an invitation that cannot be used', () => {
     // necessarily that somebody.
     expect(screen.getByTestId('callback-failure-reason')).toHaveTextContent(reason)
 
-    // One sentence for all four.
-    expect(screen.getByText(/This link is no longer valid/i)).toBeInTheDocument()
+    // One sentence for all four. Flow-specific since the recovery flow needs its
+    // own vocabulary (see callbackVocabulary.test.tsx), but still identical
+    // across every reason WITHIN a flow, which is the property that matters.
+    expect(screen.getByText(/This invitation link is no longer valid/i)).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Choose a password' })).toBeNull()
   })
 
@@ -192,8 +194,8 @@ describe('an invitation that cannot be used', () => {
       '',
     ]) {
       const { unmount } = renderAt(`/auth/callback${tail}`, withoutPrefill(signedOut()))
-      await screen.findByRole('heading', { name: 'That link cannot be used' })
-      seen.add(screen.getByText(/This link is no longer valid/i).textContent ?? '')
+      await screen.findByRole('heading', { name: 'That invitation link cannot be used' })
+      seen.add(screen.getByText(/no longer valid/i).textContent ?? '')
       unmount()
     }
     expect(seen.size).toBe(1)
@@ -201,7 +203,7 @@ describe('an invitation that cannot be used', () => {
 
   it('offers a way back to sign in', async () => {
     renderAt('/auth/callback', withoutPrefill(signedOut()))
-    await screen.findByRole('heading', { name: 'That link cannot be used' })
+    await screen.findByRole('heading', { name: 'That invitation link cannot be used' })
     expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
   })
 

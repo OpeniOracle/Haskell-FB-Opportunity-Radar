@@ -86,7 +86,7 @@ type Handler = (event: unknown) => Promise<{
   body: string
 }>
 
-async function load(name: 'session' | 'status'): Promise<Handler> {
+async function load(name: 'session' | 'status' | 'evidence'): Promise<Handler> {
   const module = await import(`../../netlify/functions/${name}.ts`)
   return module.handler as Handler
 }
@@ -165,6 +165,86 @@ describe.each(['session', 'status'] as const)('/api/%s', (name) => {
     expectJson(response)
     expect(response.headers.allow).toBe('GET')
   })
+})
+
+/**
+ * NO FUNCTION MAY BE DISABLED BY ANOTHER FUNCTION'S DEPENDENCY.
+ *
+ * This is the defect stated as a property. `serverEnv()` required every
+ * variable in the project, so a Deploy Preview missing `SEC_EDGAR_USER_AGENT`
+ * -- which belongs to the SEC collector and to nothing else -- answered 503
+ * from `/api/session`, `/api/status` and `/api/evidence/*`. Authentication was
+ * switched off by an unconfigured optional integration.
+ */
+describe('per-function environment scoping', () => {
+  /** Everything except the SEC collector's variable and the operator secret. */
+  const WITHOUT_SEC = {
+    ...FAKE_ENV,
+    SEC_EDGAR_USER_AGENT: undefined,
+    INGEST_SHARED_SECRET: undefined,
+  }
+
+  it.each(['session', 'status'] as const)(
+    '/api/%s still authenticates with SEC and ingest unconfigured',
+    async (name) => {
+      setEnv(WITHOUT_SEC)
+      const handler = await load(name)
+      const response = await handler(request('GET'))
+
+      // 401, not 503. The function is working; the caller simply has no token.
+      expect(response.statusCode, `${name} was disabled by an unrelated variable`).toBe(401)
+      expect(JSON.parse(response.body).error.code).toBe('unauthorized')
+      expectJson(response)
+    },
+  )
+
+  it('the scope map gives each entry point only what it uses', async () => {
+    const { ENV_SCOPES } = await import('../../netlify/functions/_shared/env.ts')
+
+    // Nothing but the collector may require the SEC contact string.
+    for (const [scope, names] of Object.entries(ENV_SCOPES)) {
+      if (scope === 'ingest') continue
+      expect(names, `${scope} must not require the SEC collector's variable`).not.toContain(
+        'SEC_EDGAR_USER_AGENT',
+      )
+    }
+    expect(ENV_SCOPES.ingest).toContain('SEC_EDGAR_USER_AGENT')
+
+    // Only the operator-authenticated paths may require the operator secret.
+    for (const [scope, names] of Object.entries(ENV_SCOPES)) {
+      if (scope === 'ingest' || scope === 'admin-run') continue
+      expect(names, `${scope} must not require the operator secret`).not.toContain(
+        'INGEST_SHARED_SECRET',
+      )
+    }
+
+    // And every scope keeps the floor, because nothing works without it.
+    for (const [scope, names] of Object.entries(ENV_SCOPES)) {
+      expect(names, `${scope} is missing the Supabase URL`).toContain('SUPABASE_URL')
+      expect(names, `${scope} is missing the secret key`).toContain('SUPABASE_SECRET_KEY')
+    }
+  })
+
+  it.each(['session', 'status', 'evidence'] as const)(
+    'a 503 from %s never blames the SEC collector',
+    async (name) => {
+      // With EVERYTHING unset, each function must name only its own missing
+      // variables. Naming SEC here would mean it is still a precondition, and
+      // the operator would go and set a variable that changes nothing.
+      setEnv(Object.fromEntries(REQUIRED.map((key) => [key, undefined])))
+      const handler = await load(name)
+      const response = await handler(request('GET'))
+
+      expect(response.statusCode).toBe(503)
+      const message = JSON.parse(response.body).error.message as string
+      expect(message, `${name} reports SEC as its own missing dependency`).not.toContain(
+        'SEC_EDGAR_USER_AGENT',
+      )
+      expect(message, `${name} reports the operator secret as its own`).not.toContain(
+        'INGEST_SHARED_SECRET',
+      )
+    },
+  )
 })
 
 describe('environment reporting', () => {

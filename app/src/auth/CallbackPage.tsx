@@ -44,8 +44,53 @@ import {
  * necessarily that somebody.
  */
 
-const FAILURE_MESSAGE =
-  'This link is no longer valid. Invitation and password links can be used once, and they expire. Ask your administrator to send a new one.'
+/*
+   INVITATION AND RECOVERY ARE DIFFERENT ERRANDS AND GET DIFFERENT WORDS.
+
+   One set of sentences used to serve both, and it was written for invitations.
+   Somebody who asked for a password reset, opened the emailed link and hit a
+   service failure was told "Your invitation has not been used up by this" --
+   about a link that was not an invitation, and with a promise the application
+   cannot keep. Once GoTrue has verified or exchanged a link, whether it can be
+   opened again is Supabase's business, not something this page knows.
+
+   So recovery says "password reset link", and the safe instruction for a
+   recovery failure is to REQUEST A NEW ONE once the service is back. That is
+   true whether or not the old link survived, which is the property that matters
+   when the page cannot tell.
+*/
+interface FlowCopy {
+  readonly noun: string
+  readonly linkFailureTitle: string
+  readonly linkFailureMessage: string
+  readonly linkFailureNote: string
+  readonly serviceNote: string
+}
+
+const INVITATION_COPY: FlowCopy = {
+  noun: 'invitation',
+  linkFailureTitle: 'That invitation link cannot be used',
+  linkFailureMessage:
+    'This invitation link is no longer valid. Invitation links can be used once, and they expire. Ask your administrator to send a new one.',
+  linkFailureNote:
+    'If you already set a password, sign in normally — the invitation link is only needed once.',
+  // An invitation that never reached redemption genuinely has not been spent,
+  // because nothing was exchanged. This is the one case where saying so is safe.
+  serviceNote:
+    'Your invitation has not been used up by this. Wait a moment and open the link again, or reload this page.',
+}
+
+const RECOVERY_COPY: FlowCopy = {
+  noun: 'password reset',
+  linkFailureTitle: 'That password reset link cannot be used',
+  linkFailureMessage:
+    'This password reset link is no longer valid. Reset links can be used once, and they expire. Request a new one from the sign-in page.',
+  linkFailureNote:
+    'Password reset links are single-use. Requesting a new one is the way forward — it costs nothing and takes a moment.',
+  // Deliberately NO claim that the link survived. This page cannot know.
+  serviceNote:
+    'Once the service is back, request a new password reset link from the sign-in page. Do not rely on this one still working — reset links are single-use, and this one may already have been spent.',
+}
 
 export function CallbackPage() {
   const navigate = useNavigate()
@@ -132,6 +177,15 @@ export function CallbackPage() {
 
     So a service failure now says so and says nothing about the allowlist.
   */
+  /*
+     Which errand this is. Read from the credential captured during render, so
+     it is decided by what arrived in the URL rather than by anything that
+     happened afterwards -- a recovery link that fails must not be described in
+     invitation language just because the failure came late.
+  */
+  const copy: FlowCopy =
+    capture.current.credentialType === 'recovery' ? RECOVERY_COPY : INVITATION_COPY
+
   if (status === 'error' && reason === 'service_unavailable') {
     return (
       <AuthLayout
@@ -147,8 +201,7 @@ export function CallbackPage() {
             'The Radar could not reach the service that verifies sessions. This is a service problem, not a sign-in problem.'}
         </FormError>
         <p className="auth-card__note">
-          Your invitation has not been used up by this. Wait a moment and open the link again, or
-          reload this page. If it keeps happening, tell your administrator that{' '}
+          {copy.serviceNote} If it keeps happening, tell your administrator that{' '}
           <code>/api/session</code> is not responding — there is nothing wrong with your account.
         </p>
       </AuthLayout>
@@ -201,7 +254,7 @@ export function CallbackPage() {
   if (failure) {
     return (
       <AuthLayout
-        title="That link cannot be used"
+        title={copy.linkFailureTitle}
         footer={
           <Link className="auth-shell__link" to="/login">
             Back to sign in
@@ -216,10 +269,8 @@ export function CallbackPage() {
           fact about somebody's account, and the person holding a bad link is
           not necessarily that somebody.
         */}
-        <FormError id="callback-link-error">{FAILURE_MESSAGE}</FormError>
-        <p className="auth-card__note">
-          If you already set a password, sign in normally — the link is only needed once.
-        </p>
+        <FormError id="callback-link-error">{copy.linkFailureMessage}</FormError>
+        <p className="auth-card__note">{copy.linkFailureNote}</p>
         {/*
           The classification is carried in the markup for tests and for a
           support conversation, never as visible text. It names a category, not

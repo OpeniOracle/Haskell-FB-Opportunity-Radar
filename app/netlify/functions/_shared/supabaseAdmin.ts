@@ -10,7 +10,7 @@
  * persist; leaving it on writes tokens to whatever storage shim it finds.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { serverEnv } from './env.js'
+import { demand, serverEnv } from './env.js'
 
 let cached: SupabaseClient | null = null
 
@@ -39,7 +39,11 @@ export function supabaseAdmin(): SupabaseClient {
  */
 export function supabaseAsUser(accessToken: string): SupabaseClient {
   const env = serverEnv()
-  return createClient(env.supabaseUrl, env.supabasePublishableKey, {
+  // Demanded at the point of use. Reading as the caller is the only thing that
+  // needs the publishable key, so its absence fails reading-as-the-caller and
+  // leaves token verification and the session check working.
+  const publishable = demand(env.supabasePublishableKey, 'SUPABASE_PUBLISHABLE_KEY')
+  return createClient(env.supabaseUrl, publishable, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
   })

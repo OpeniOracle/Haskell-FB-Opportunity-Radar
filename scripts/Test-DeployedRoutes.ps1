@@ -97,30 +97,71 @@ function Get-Route([string] $Path) {
     }
 }
 
-function Test-ApiRoute([string] $Path, [int[]] $AcceptableStatus) {
+<#
+    TWO VERDICTS, KEPT APART.
+
+    An earlier version of this script accepted 401 OR 503 and reported
+    "20 passed, 0 failed" while all three protected endpoints were answering
+    503. That was wrong, and wrong in the most misleading direction: it told an
+    operator the deployment was ready when authentication was switched off.
+
+    503 does prove ROUTING works -- the request reached a function, because only
+    a function can produce that body. It also proves the deployment is NOT
+    READY. Those are different questions and they now have different answers.
+    Readiness requires 401.
+#>
+$script:RoutingOk = $true
+$script:ReadyOk = $true
+
+function Test-ApiRoute([string] $Path) {
     Write-Host "`n$Path" -ForegroundColor Cyan
     $r = Get-Route $Path
 
-    if ($r.Status -eq 0) { No "$Path is reachable" $r.Body; return }
+    if ($r.Status -eq 0) {
+        No "$Path is reachable" $r.Body
+        $script:RoutingOk = $false
+        $script:ReadyOk = $false
+        return
+    }
 
-    # THE DECISIVE ONE. The SPA fallback answers 200 with text/html, which looks
-    # like success everywhere except here.
+    # The status, always, whatever the verdict. A probe that hides the number it
+    # judged is a probe you cannot check.
+    Write-Host "        HTTP $($r.Status)   content-type: $($r.Type)" -ForegroundColor DarkGray
+
+    # ---- Routing: did this reach a function at all? ----------------------
     $isHtml = ($r.Type -like '*text/html*') -or ($r.Body.TrimStart().StartsWith('<'))
+    if ($isHtml) { $script:RoutingOk = $false }
     Check "$Path is not the single-page application" (-not $isHtml) `
         "content-type '$($r.Type)' -- the SPA fallback is winning, so this route never reaches its function"
 
+    if (-not ($r.Type -like '*application/json*')) { $script:RoutingOk = $false }
     Check "$Path declares JSON" ($r.Type -like '*application/json*') "content-type '$($r.Type)'"
-    Check "$Path does not redirect to the interface" (-not $r.Location) "Location: $($r.Location)"
-    Check "$Path answers $($AcceptableStatus -join ' or ')" ($AcceptableStatus -contains $r.Status) `
-        "got $($r.Status)"
 
-    if (-not $isHtml -and $r.Body) {
-        $parsed = $null
-        try { $parsed = $r.Body | ConvertFrom-Json } catch { $parsed = $null }
-        Check "$Path returns parseable JSON" ($null -ne $parsed) 'the body is not JSON'
+    if ($r.Location) { $script:RoutingOk = $false }
+    Check "$Path does not redirect to the interface" (-not $r.Location) "Location: $($r.Location)"
+
+    # ---- Readiness: is it actually able to serve? ------------------------
+    if ($r.Status -eq 503) {
+        $script:ReadyOk = $false
+        # The safe message, printed because it names what is missing and
+        # contains no value. It is the operator's whole diagnosis.
+        $detail = ''
+        try {
+            $parsed = $r.Body | ConvertFrom-Json
+            if ($parsed.error) { $detail = "$($parsed.error.code): $($parsed.error.message)" }
+        } catch { $detail = '' }
+        No "$Path is ready (expected HTTP 401)" "HTTP 503 -- the function ran but the deployment is incomplete"
+        if ($detail) { Write-Host "        $detail" -ForegroundColor Yellow }
+        return
     }
 
-    # Per-caller answers must not be held by a shared cache.
+    if ($r.Status -ne 401) { $script:ReadyOk = $false }
+    Check "$Path refuses an unauthenticated caller with HTTP 401" ($r.Status -eq 401) "got HTTP $($r.Status)"
+
+    $parsedOk = $null
+    try { $parsedOk = $r.Body | ConvertFrom-Json } catch { $parsedOk = $null }
+    Check "$Path returns parseable JSON" ($null -ne $parsedOk) 'the body is not JSON'
+
     if ($r.Cache) {
         Check "$Path is private and not stored" (
             ($r.Cache -like '*no-store*') -and ($r.Cache -like '*private*')
@@ -132,12 +173,10 @@ Write-Host "== Deployed API route contract" -ForegroundColor Cyan
 Write-Host "   origin: $Origin"
 Write-Host '   No credentials are used or required. Three unauthenticated GETs.'
 
-# Unauthenticated: each must REFUSE in JSON. A 503 is an acceptable refusal --
-# it means the function ran and found the deployment incomplete, which is still
-# proof the route reached a function rather than the SPA.
-Test-ApiRoute '/api/session' @(401, 503)
-Test-ApiRoute '/api/status'  @(401, 503)
-Test-ApiRoute '/api/evidence/00000000-0000-4000-8000-000000000000' @(401, 503)
+# Unauthenticated: each must refuse with HTTP 401, in JSON.
+Test-ApiRoute '/api/session'
+Test-ApiRoute '/api/status'
+Test-ApiRoute '/api/evidence/00000000-0000-4000-8000-000000000000'
 
 # A path under /api that is not a route must 404, not fall through to the SPA.
 Write-Host "`n/api/not-a-route (must not be the SPA)" -ForegroundColor Cyan
@@ -155,12 +194,36 @@ Check 'a deep link still serves the application' (
 
 Write-Host ''
 Write-Host "$script:Pass passed, $script:Fail failed"
-if ($script:Fail -gt 0) {
+Write-Host ''
+
+<#
+    THE TWO VERDICTS, STATED SEPARATELY AND IN ORDER.
+
+    Routing first, because a routing failure explains every readiness failure
+    beneath it and fixing readiness first would be wasted work.
+#>
+if (-not $script:RoutingOk) {
+    Write-Host 'ROUTING: FAILED' -ForegroundColor Red
+    Write-Host '  An /api route is being served by the single-page application.'
+    Write-Host '  Check that no _redirects file shadows the rules in netlify.toml.'
     Write-Host ''
-    Write-Host 'The API is not correctly routed on this deployment.' -ForegroundColor Red
-    Write-Host 'Do not send an invitation until this passes: the callback will fail'
-    Write-Host 'with a session-verification error that looks like an account problem.'
+    Write-Host 'DO NOT send an invitation. The callback cannot verify a session.'
     exit 1
 }
-Write-Host 'The API is correctly routed on this deployment.' -ForegroundColor Green
+Write-Host 'ROUTING: OK -- every /api route reaches its function.' -ForegroundColor Green
+
+if (-not $script:ReadyOk) {
+    Write-Host 'READINESS: FAILED' -ForegroundColor Red
+    Write-Host '  The routes reach their functions, but a function reported that the'
+    Write-Host '  deployment is incomplete (HTTP 503). The message above names what is'
+    Write-Host '  missing. Set it in Netlify with Functions scope, for this deploy'
+    Write-Host '  context, and redeploy.'
+    Write-Host ''
+    Write-Host 'DO NOT send an invitation and DO NOT delete any account yet.'
+    Write-Host 'Sign-in cannot succeed while a required variable is missing.'
+    exit 1
+}
+Write-Host 'READINESS: OK -- every protected route refuses an anonymous caller with 401.' -ForegroundColor Green
+Write-Host ''
+Write-Host 'This deployment is routed and ready.' -ForegroundColor Green
 exit 0

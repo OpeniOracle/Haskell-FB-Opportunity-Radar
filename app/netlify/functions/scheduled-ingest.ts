@@ -65,7 +65,9 @@ async function runIngestion(window: { start: string; end: string }) {
 // failure has a working day in front of it rather than behind it.
 export const handler = schedule('0 6 * * *', async () => {
   try {
-    serverEnv()
+    // The one entry point that genuinely talks to SEC, so the one that
+    // genuinely requires SEC_EDGAR_USER_AGENT.
+    serverEnv('ingest')
   } catch (error) {
     if (error instanceof MissingEnvError) {
       console.error(`[scheduled-ingest] not configured: ${error.names.join(', ')}`)

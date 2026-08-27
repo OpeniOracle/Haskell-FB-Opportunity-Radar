@@ -30,7 +30,8 @@ export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'GET') return methodNotAllowed('GET')
 
   try {
-    serverEnv()
+    // Only what answering one boolean about the caller needs.
+    serverEnv('session')
   } catch (error) {
     if (error instanceof MissingEnvError) {
       return failure(503, 'not_configured', 'Authentication is not configured.')

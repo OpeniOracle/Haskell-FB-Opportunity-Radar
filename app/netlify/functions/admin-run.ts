@@ -23,7 +23,7 @@ export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') return methodNotAllowed('POST')
 
   try {
-    serverEnv()
+    serverEnv('admin-run')
     requireOperator(event.headers as Record<string, string | undefined>)
   } catch (error) {
     if (error instanceof MissingEnvError) {

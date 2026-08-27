@@ -36,7 +36,9 @@ export const handler: Handler = async (event) => {
 
   let env
   try {
-    env = serverEnv()
+    // Also reads AS THE CALLER, which needs the publishable key. SEC is
+    // reported as a component below rather than required here.
+    env = serverEnv('status')
   } catch (error) {
     if (error instanceof MissingEnvError) {
       return failure(
@@ -114,7 +116,10 @@ export const handler: Handler = async (event) => {
   // `ok` reflects the FOUNDATION: can we reach the database as the caller.
   // The model is reported separately and deliberately does not affect it — an
   // absent model key is a supported state in which collection, preservation and
-  // resolution all still run, and only classification refuses.
+  // resolution all still run, and only classification refuses. SEC is reported
+  // the same way and for the same reason: an unconfigured collector is a
+  // supported state, not a broken deployment, and it must never be able to
+  // report the foundation as unhealthy.
   return json(200, {
     ok: !error,
     modelConfigured: gateway.available,
@@ -152,8 +157,22 @@ export const handler: Handler = async (event) => {
       jwtVerification: evidenceAccess.jwtVerification,
       dashboardTokenLifetime: 'supabase_default_until_exp',
     },
+    /*
+       SEC IS A COMPONENT, NOT A PRECONDITION.
+
+       This block used to be unreachable without SEC_EDGAR_USER_AGENT, because
+       serverEnv() required it globally -- so the diagnostic that exists to tell
+       you a collector is unconfigured was the one thing an unconfigured
+       collector prevented you from reading. It reports now, and says plainly
+       that this affects collection only.
+    */
     sec: {
+      configured: Boolean(env.secEdgarUserAgent),
       contactConfirmed: env.secContactConfirmed,
+      // Named so an operator knows what is switched off, and what is not.
+      affects: env.secEdgarUserAgent
+        ? 'none'
+        : 'sec_collection_only: authentication, evidence and reads are unaffected',
     },
     // Names only. Never values.
     requiredServerVariables: REQUIRED_SERVER_VARS,

@@ -53,9 +53,14 @@ export interface ServerEnv {
   readonly supabaseJwtSecret: string | undefined
   readonly evidenceBucket: string
   readonly egressAllowlist: readonly string[]
-  readonly secEdgarUserAgent: string
+  /**
+   * OPTIONAL on the type, because most functions do not collect from SEC.
+   * Present when the scope that was asked for requires it; see `serverEnv`.
+   */
+  readonly secEdgarUserAgent: string | undefined
   readonly secContactConfirmed: boolean
-  readonly ingestSharedSecret: string
+  /** OPTIONAL on the type, for the same reason as `secEdgarUserAgent`. */
+  readonly ingestSharedSecret: string | undefined
   readonly radarEnv: 'development' | 'preview' | 'production'
 }
 
@@ -210,22 +215,76 @@ export function assertKeyShapes(): void {
   }
 }
 
-export function serverEnv(): ServerEnv {
+/**
+ * WHAT EACH ENTRY POINT ACTUALLY DEPENDS ON.
+ *
+ * THIS MAP EXISTS BECAUSE A MISSING SEC CONTACT STRING SWITCHED OFF
+ * AUTHENTICATION.
+ *
+ * `serverEnv()` used to require every variable in the project, so any function
+ * that called it inherited every other function's dependencies. On a Deploy
+ * Preview with `SEC_EDGAR_USER_AGENT` unset, `/api/session`, `/api/status` and
+ * `/api/evidence/*` all answered 503 -- not because anything they do was
+ * unavailable, but because a variable belonging to the SEC collector was
+ * absent. Sign-in and evidence authorization have nothing to do with the SEC
+ * collector, and an unconfigured optional integration must not be able to
+ * disable them.
+ *
+ * So a scope is named at every call site and only that scope is required.
+ * Anything outside it stays readable but is never a precondition. `status`
+ * reports SEC as a component instead, which is the honest place for it: a
+ * diagnostic should tell you a collector is unconfigured, not refuse to answer.
+ *
+ * `core` is the floor: a Supabase URL and the secret key. Nothing in this
+ * project works without those, and no scope may be smaller.
+ */
+export const ENV_SCOPES = {
+  /** The shared helpers: an admin client, and token verification. */
+  core: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY'],
+  /** `/api/session`. Answers one boolean about the caller. */
+  session: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY'],
+  /** `/api/evidence/*`. Verifies a token, checks the session, streams bytes. */
+  evidence: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY'],
+  /** `/api/status`. Also reads AS THE CALLER, which needs the publishable key. */
+  status: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'SUPABASE_PUBLISHABLE_KEY'],
+  /** `/api/admin-run`. Authenticated by the operator secret. */
+  'admin-run': ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'INGEST_SHARED_SECRET'],
+  /** The scheduled collector. The only thing that genuinely talks to SEC. */
+  ingest: ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'SEC_EDGAR_USER_AGENT', 'INGEST_SHARED_SECRET'],
+} as const
+
+export type EnvScope = keyof typeof ENV_SCOPES
+
+/**
+ * Demand one variable at the point it is actually used.
+ *
+ * The counterpart to scoping: a value only one code path needs is required by
+ * THAT path, so its absence fails that path and nothing else.
+ */
+export function demand(value: string | undefined, name: string): string {
+  if (value === undefined || value.trim() === '') throw new MissingEnvError([name])
+  return value
+}
+
+/**
+ * Read the environment, requiring ONLY what the named scope depends on.
+ *
+ * The default is `core` deliberately. A shared helper that does not say what it
+ * needs gets the floor, not everything -- the previous default was "all of it",
+ * and that is how the coupling spread without anyone choosing it.
+ */
+export function serverEnv(scope: EnvScope = 'core'): ServerEnv {
   assertKeyShapes()
-  const v = require_([
-    'SUPABASE_URL',
-    'SUPABASE_PUBLISHABLE_KEY',
-    'SUPABASE_SECRET_KEY',
-    'SEC_EDGAR_USER_AGENT',
-    'INGEST_SHARED_SECRET',
-  ])
+  const v = require_([...ENV_SCOPES[scope]])
   const radarEnv = read('RADAR_ENV') ?? 'development'
   if (radarEnv !== 'development' && radarEnv !== 'preview' && radarEnv !== 'production') {
     throw new Error(`RADAR_ENV must be development, preview or production; got "${radarEnv}".`)
   }
   return {
     supabaseUrl: v.SUPABASE_URL!,
-    supabasePublishableKey: v.SUPABASE_PUBLISHABLE_KEY!,
+    // Read, not required, unless the scope named it. `userClient()` demands it
+    // at the point of use, which is the only place it is actually needed.
+    supabasePublishableKey: v.SUPABASE_PUBLISHABLE_KEY ?? read('SUPABASE_PUBLISHABLE_KEY') ?? '',
     supabaseSecretKey: v.SUPABASE_SECRET_KEY!,
     supabaseJwtSecret: read('SUPABASE_JWT_SECRET'),
     evidenceBucket: read('SUPABASE_EVIDENCE_BUCKET') ?? 'evidence-raw',
@@ -233,9 +292,9 @@ export function serverEnv(): ServerEnv {
       .split(',')
       .map((h) => h.trim().toLowerCase())
       .filter(Boolean),
-    secEdgarUserAgent: v.SEC_EDGAR_USER_AGENT!,
+    secEdgarUserAgent: v.SEC_EDGAR_USER_AGENT ?? read('SEC_EDGAR_USER_AGENT'),
     secContactConfirmed: parseSecConfirmation(read('SEC_CONTACT_CONFIRMED')),
-    ingestSharedSecret: v.INGEST_SHARED_SECRET!,
+    ingestSharedSecret: v.INGEST_SHARED_SECRET ?? read('INGEST_SHARED_SECRET'),
     radarEnv,
   }
 }
@@ -281,7 +340,9 @@ export function modelEnv(): ModelEnv | null {
  * and nobody discovers the mailbox is unread until they needed to be reachable.
  */
 export function assertSecUserAgentUsable(env: ServerEnv): void {
-  const userAgent = env.secEdgarUserAgent
+  // Demanded here: this is the SEC collector's own precondition, and only the
+  // collector calls it. An absent value stops collection and nothing else.
+  const userAgent = demand(env.secEdgarUserAgent, 'SEC_EDGAR_USER_AGENT')
   if (/<[^>]+>/.test(userAgent)) {
     throw new Error(
       `SEC_EDGAR_USER_AGENT still contains an unresolved placeholder: "${userAgent}". ` +

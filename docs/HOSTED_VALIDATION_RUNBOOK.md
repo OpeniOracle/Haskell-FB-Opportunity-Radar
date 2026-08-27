@@ -111,13 +111,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-DeployedRoute
 bash scripts/test-deployed-routes.sh   # Linux / macOS
 ```
 
-If `/api/session` returns the application instead of JSON, the invitation
-callback **will** fail — with *"We could not verify your session"*, which reads
-like an account problem and is not one. Fix the deployment before sending
-anything, or you will spend the invitation for nothing.
+It reports **two separate verdicts**, and both must pass:
 
-The decisive signal is the **content type**, not the status: a SPA fallback
-answers `200 text/html`, and a 200 looks like success everywhere else.
+| Verdict | Means | If it fails |
+| --- | --- | --- |
+| **ROUTING** | every `/api/*` path reaches a function rather than the SPA | a `_redirects` file is shadowing `netlify.toml` |
+| **READINESS** | every protected route refuses an anonymous caller with **401** | a required variable is missing — the message names it |
+
+**HTTP 503 is a deployment failure, not a pass.** It proves routing works (only
+a function can produce that body) and proves the deployment is *not ready*. The
+script prints every status it saw and the safe `not_configured` message, exits
+non-zero, and tells you not to send an invitation or delete an account.
+
+The decisive routing signal is the **content type**, not the status: a SPA
+fallback answers `200 text/html`, and a 200 looks like success everywhere else.
+
+Variables must be set with **Functions** scope and for the **Deploy Preview**
+context — a variable set only for production is invisible to a preview's
+functions, which is exactly how `SEC_EDGAR_USER_AGENT` went missing.
 
 ### Step 1 — allowlist the address FIRST
 
