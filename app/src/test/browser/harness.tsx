@@ -58,6 +58,14 @@ const SCENARIOS: Record<string, () => FakeAuth> = {
   // The genuinely de-listed account, for contrast: the one case where the
   // allowlist really is the thing to go and look at.
   'callback-not-invited': () => new FakeAuth({ standing: 'not_invited' }),
+  /*
+     RECOVERY BY CODE, WHICH IS NOW A PAGE AN UNAUTHENTICATED VISITOR SEES.
+
+     Two fields and a refusal, at every width and in both themes. It is the
+     first screen a reviewer meets when setting a password for the first time,
+     so a layout fault here is a layout fault in the onboarding path.
+  */
+  'recovery-code': () => new FakeAuth(),
 }
 
 const build = SCENARIOS[scenario]

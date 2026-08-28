@@ -7,7 +7,7 @@ import { APP_ROOT } from '@/test/paths'
 import { render } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from '@/App'
-import { signedOut, withoutPrefill, TEST_USER_EMAIL } from '@/test/authFake'
+import { makeSession, signedOut, withoutPrefill, TEST_USER_EMAIL } from '@/test/authFake'
 import type { AuthPort } from '@/auth/authPort'
 
 /** Real browser history, because these pages read and rewrite the address. */
@@ -359,6 +359,76 @@ describe('the recovery flow never speaks of invitations', () => {
     await screen.findByRole('alert')
     const main = screen.getByRole('main').textContent ?? ''
     expect(main).not.toMatch(/invitation|invite|accept invitation/i)
+  })
+})
+
+/**
+ * THE DEPLOYMENT WINDOW.
+ *
+ * The Supabase email template is project-wide: saving it changes production
+ * immediately. So the new interface must ship BEFORE the template changes, and
+ * during that window unexpired CONFIRMATION-LINK emails are still landing.
+ * Both shapes have to work at the same time.
+ */
+describe('a link already in somebody inbox still works', () => {
+  it('redeems a recovery credential that arrives in the URL, and shows the password form', async () => {
+    const auth = signedOut()
+    auth.redeemResult = { ok: true, session: makeSession() }
+    renderAt(
+      '/auth/reset-password#access_token=aaa.bbb.ccc&refresh_token=rrr&type=recovery',
+      withoutPrefill(auth),
+    )
+
+    // The old flow completes: no code is asked for, because the person already
+    // proved receipt by following a link that still had a live token in it.
+    expect(await screen.findByRole('heading', { name: 'Set a new password' })).toBeInTheDocument()
+    expect(auth.calls.filter((c) => c.startsWith('redeem'))).toHaveLength(1)
+    expect(screen.queryByRole('heading', { name: 'Enter your recovery code' })).toBeNull()
+  })
+
+  it('takes the credential out of the address bar and the history entry', async () => {
+    const auth = signedOut()
+    auth.redeemResult = { ok: true, session: makeSession() }
+    renderAt(
+      '/auth/reset-password#access_token=aaa.bbb.ccc&refresh_token=rrr&type=recovery',
+      withoutPrefill(auth),
+    )
+    await screen.findByRole('heading', { name: 'Set a new password' })
+    expect(window.location.hash).toBe('')
+    expect(window.location.href).not.toContain('aaa.bbb.ccc')
+  })
+
+  it('falls back to the code form when the arriving credential is spent', async () => {
+    const auth = signedOut()
+    auth.redeemResult = { ok: false, reason: 'already_used' }
+    renderAt(
+      '/auth/reset-password#access_token=aaa.bbb.ccc&refresh_token=rrr&type=recovery',
+      withoutPrefill(auth),
+    )
+
+    // Which is exactly the case a scanner creates. The person is not stranded
+    // on an error page; they are handed the route that cannot be prefetched.
+    expect(
+      await screen.findByRole('heading', { name: 'Enter your recovery code' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the code form directly when no credential arrives at all', async () => {
+    const auth = signedOut()
+    renderAt('/auth/reset-password', withoutPrefill(auth))
+    expect(
+      await screen.findByRole('heading', { name: 'Enter your recovery code' }),
+    ).toBeInTheDocument()
+    // Nothing to redeem, so nothing was attempted.
+    expect(auth.calls.filter((c) => c.startsWith('redeem'))).toHaveLength(0)
+  })
+
+  it('never calls an arriving recovery credential an invitation', async () => {
+    const auth = signedOut()
+    auth.redeemResult = { ok: false, reason: 'expired' }
+    renderAt('/auth/reset-password#error=access_denied&error_code=otp_expired', withoutPrefill(auth))
+    await screen.findByRole('heading', { name: 'Enter your recovery code' })
+    expect(screen.getByRole('main').textContent ?? '').not.toMatch(/invitation|invite/i)
   })
 })
 

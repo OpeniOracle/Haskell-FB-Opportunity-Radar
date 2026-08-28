@@ -197,6 +197,44 @@ try {
       notice?.ariaLive === 'polite' || notice?.role === 'status', `role=${notice?.role} aria-live=${notice?.ariaLive}`)
     await shoot(page, `${tag}-recovery-confirmation-${viewport.name}`)
 
+    // ---- 3b. Recovery code entry -----------------------------------------
+    //
+    // The scanner-resistant recovery step. Measured like every other screen
+    // because it is now on the onboarding path for every pre-provisioned
+    // reviewer, not an edge case reached after a failure.
+    await page.goto(`${base}/auth/reset-password?scenario=recovery-code`)
+    await page.getByRole('heading', { name: /enter your recovery code/i }).waitFor()
+
+    const codeField = page.getByLabel(/six-digit code/i)
+    check(`recovery code @${viewport.name}: offers the one-time-code autofill hint`,
+      (await codeField.getAttribute('autocomplete')) === 'one-time-code',
+      await codeField.getAttribute('autocomplete'))
+    check(`recovery code @${viewport.name}: asks for a numeric keypad`,
+      (await codeField.getAttribute('inputmode')) === 'numeric',
+      await codeField.getAttribute('inputmode'))
+
+    const codeBox = await codeField.boundingBox()
+    check(`recovery code @${viewport.name}: the code field is a full-size touch target`,
+      (codeBox?.height ?? 0) >= 40, `height ${codeBox?.height}`)
+    check(`recovery code @${viewport.name}: the code field fits the viewport`,
+      (codeBox?.width ?? 0) <= viewport.width, `width ${codeBox?.width} vs ${viewport.width}`)
+
+    await shoot(page, `${tag}-recovery-code-${viewport.name}`)
+
+    // A refused code: generic, recovery-specific, and never invitation wording.
+    await page.getByLabel(/email address/i).fill('analyst@openi-analytics.invalid')
+    await codeField.fill('999999')
+    await page.getByRole('button', { name: /continue/i }).click()
+    await page.getByRole('alert').waitFor()
+    const refusal = await measureCallout(page, '[data-testid="auth-status-error"]', 'recovery code refusal', viewport)
+    check(`recovery code refusal @${viewport.name}: says nothing about the account`,
+      /was not accepted/i.test(refusal?.textContent ?? ''), refusal?.textContent)
+    check(`recovery code refusal @${viewport.name}: never uses invitation wording`,
+      !/invitation|invite/i.test(refusal?.textContent ?? ''), refusal?.textContent)
+    check(`recovery code refusal @${viewport.name}: clears the code from the field`,
+      (await codeField.inputValue()) === '', await codeField.inputValue())
+    await shoot(page, `${tag}-recovery-code-refused-${viewport.name}`)
+
     // ---- 4. Password policy ----------------------------------------------
     await page.goto(`${base}/auth/set-password?scenario=password-policy`)
     await page.getByLabel(/^new password|^password$/i).first().fill('short')

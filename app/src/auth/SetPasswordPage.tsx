@@ -9,7 +9,11 @@ import {
   checkPassword,
   type PasswordProblem,
 } from '@/auth/passwordPolicy'
-import { scrubCredentialFromHistory } from '@/auth/urlCredentials'
+import {
+  parseUrlCredential,
+  scrubCredentialFromHistory,
+  type UrlCredential,
+} from '@/auth/urlCredentials'
 import { RecoveryCodeStep } from '@/auth/RecoveryCodeStep'
 
 /**
@@ -26,8 +30,35 @@ import { RecoveryCodeStep } from '@/auth/RecoveryCodeStep'
  * satisfies it.
  */
 export function SetPasswordPage({ mode }: { mode: 'invitation' | 'recovery' }) {
-  const { status, session, completeOnboarding, signOut } = useAuth()
+  const { status, session, completeOnboarding, signOut, adoptSession } = useAuth()
   const navigate = useNavigate()
+
+  /*
+    TRANSITION SAFETY: A LINK ALREADY IN SOMEBODY'S INBOX STILL WORKS.
+
+    The hosted email template is project-wide and changes production the moment
+    it is saved, so there is a window in which the new interface is deployed and
+    unexpired CONFIRMATION-LINK emails are still arriving. Those land here with
+    a credential in the URL.
+
+    Before this, the credential was scrubbed from history and never redeemed —
+    the person lost a working link, silently, and was shown a code form for a
+    code they had never been sent. Read once during render, ref-guarded, exactly
+    as the callback does: a fragment is destroyed by any navigation, so reading
+    it in an effect is too late.
+  */
+  const arrival = useRef<UrlCredential | null>(null)
+  if (arrival.current === null) {
+    arrival.current =
+      mode === 'recovery'
+        ? parseUrlCredential(window.location.search, window.location.hash)
+        : { kind: 'none' }
+  }
+  const [redeeming, setRedeeming] = useState(
+    mode === 'recovery' &&
+      arrival.current.kind !== 'none' &&
+      arrival.current.kind !== 'error',
+  )
 
   const passwordId = useId()
   const confirmId = useId()
@@ -44,16 +75,34 @@ export function SetPasswordPage({ mode }: { mode: 'invitation' | 'recovery' }) {
   const { port } = useAuth()
 
   useEffect(() => {
-    // Belt and braces. The callback already scrubbed, but a recovery link can
-    // land here directly if a redirect target is ever configured that way, and
-    // a credential must not survive in history on either path.
+    // The credential is out of the address bar and out of the history entry
+    // before anything else happens. It was captured during render, so scrubbing
+    // here loses nothing.
     scrubCredentialFromHistory(
       mode === 'invitation' ? '/auth/set-password' : '/auth/reset-password',
     )
     firstFieldRef.current?.focus()
   }, [mode])
 
-  if (status === 'loading') return null
+  useEffect(() => {
+    const credential = arrival.current
+    if (!redeeming || !credential) return
+    let cancelled = false
+    void port.redeem(credential).then((result) => {
+      if (cancelled) return
+      // A failed redemption is not an error page here. The person still has the
+      // code route in front of them, which is the whole point of the fallback.
+      if (result.ok) adoptSession(result.session)
+      setRedeeming(false)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Runs once: `redeeming` only ever goes true -> false.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (status === 'loading' || redeeming) return null
 
   if (status !== 'authenticated' || !session) {
     /*
