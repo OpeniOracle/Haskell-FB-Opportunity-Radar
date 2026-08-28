@@ -197,6 +197,44 @@ try {
       notice?.ariaLive === 'polite' || notice?.role === 'status', `role=${notice?.role} aria-live=${notice?.ariaLive}`)
     await shoot(page, `${tag}-recovery-confirmation-${viewport.name}`)
 
+    // ---- 3b. Recovery code entry -----------------------------------------
+    //
+    // The scanner-resistant recovery step. Measured like every other screen
+    // because it is now on the onboarding path for every pre-provisioned
+    // reviewer, not an edge case reached after a failure.
+    await page.goto(`${base}/auth/reset-password?scenario=recovery-code`)
+    await page.getByRole('heading', { name: /enter your recovery code/i }).waitFor()
+
+    const codeField = page.getByLabel(/six-digit code/i)
+    check(`recovery code @${viewport.name}: offers the one-time-code autofill hint`,
+      (await codeField.getAttribute('autocomplete')) === 'one-time-code',
+      await codeField.getAttribute('autocomplete'))
+    check(`recovery code @${viewport.name}: asks for a numeric keypad`,
+      (await codeField.getAttribute('inputmode')) === 'numeric',
+      await codeField.getAttribute('inputmode'))
+
+    const codeBox = await codeField.boundingBox()
+    check(`recovery code @${viewport.name}: the code field is a full-size touch target`,
+      (codeBox?.height ?? 0) >= 40, `height ${codeBox?.height}`)
+    check(`recovery code @${viewport.name}: the code field fits the viewport`,
+      (codeBox?.width ?? 0) <= viewport.width, `width ${codeBox?.width} vs ${viewport.width}`)
+
+    await shoot(page, `${tag}-recovery-code-${viewport.name}`)
+
+    // A refused code: generic, recovery-specific, and never invitation wording.
+    await page.getByLabel(/email address/i).fill('analyst@openi-analytics.invalid')
+    await codeField.fill('999999')
+    await page.getByRole('button', { name: /continue/i }).click()
+    await page.getByRole('alert').waitFor()
+    const refusal = await measureCallout(page, '[data-testid="auth-status-error"]', 'recovery code refusal', viewport)
+    check(`recovery code refusal @${viewport.name}: says nothing about the account`,
+      /was not accepted/i.test(refusal?.textContent ?? ''), refusal?.textContent)
+    check(`recovery code refusal @${viewport.name}: never uses invitation wording`,
+      !/invitation|invite/i.test(refusal?.textContent ?? ''), refusal?.textContent)
+    check(`recovery code refusal @${viewport.name}: clears the code from the field`,
+      (await codeField.inputValue()) === '', await codeField.inputValue())
+    await shoot(page, `${tag}-recovery-code-refused-${viewport.name}`)
+
     // ---- 4. Password policy ----------------------------------------------
     await page.goto(`${base}/auth/set-password?scenario=password-policy`)
     await page.getByLabel(/^new password|^password$/i).first().fill('short')
@@ -294,6 +332,39 @@ try {
   await darkPage.getByRole('alert').waitFor()
   await measureCallout(darkPage, '[data-testid="auth-status-error"]', 'login failure (dark)', { name: '390-dark' })
   await shoot(darkPage, `${tag}-login-failure-390-dark`)
+
+  // The recovery code page in the dark palette, at mobile width. It is the
+  // first screen a pre-provisioned reviewer meets, and half of them will open
+  // it on a phone at night.
+  await darkPage.goto(`${base}/auth/reset-password?scenario=recovery-code&theme=dark`)
+  await darkPage.getByRole('heading', { name: /enter your recovery code/i }).waitFor()
+
+  const darkCode = darkPage.getByLabel(/six-digit code/i)
+  const darkBox = await darkCode.boundingBox()
+  check('recovery code @390-dark: the code field fits the viewport',
+    (darkBox?.width ?? 0) <= 390, `width ${darkBox?.width}`)
+  check('recovery code @390-dark: the code field is a full-size touch target',
+    (darkBox?.height ?? 0) >= 40, `height ${darkBox?.height}`)
+
+  // Contrast is carried by the tokens, so the check that matters is that the
+  // palette actually changed rather than the page rendering light-on-light.
+  const darkInk = await darkCode.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { color: style.color, background: style.backgroundColor }
+  })
+  check('recovery code @390-dark: takes its colours from the dark palette',
+    darkInk.color !== darkInk.background, JSON.stringify(darkInk))
+  await shoot(darkPage, `${tag}-recovery-code-390-dark`)
+
+  await darkPage.getByLabel(/email address/i).fill('analyst@openi-analytics.invalid')
+  await darkCode.fill('999999')
+  await darkPage.getByRole('button', { name: /continue/i }).click()
+  await darkPage.getByRole('alert').waitFor()
+  const darkRefusal = await measureCallout(darkPage, '[data-testid="auth-status-error"]', 'recovery code refusal (dark)', { name: '390-dark' })
+  check('recovery code refusal @390-dark: never uses invitation wording',
+    !/invitation|invite/i.test(darkRefusal?.textContent ?? ''), darkRefusal?.textContent)
+  await shoot(darkPage, `${tag}-recovery-code-refused-390-dark`)
+
   await dark.close()
 } finally {
   await browser.close()

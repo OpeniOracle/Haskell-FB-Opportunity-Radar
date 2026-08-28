@@ -6,7 +6,7 @@ import type {
   RedeemResult,
   SignInFailure,
 } from '@/auth/authPort'
-import type { UrlCredential } from '@/auth/urlCredentials'
+import type { RedeemFailure, UrlCredential } from '@/auth/urlCredentials'
 
 /**
  * A controllable authentication provider, for tests.
@@ -134,6 +134,43 @@ export class FakeAuth implements AuthPort {
     this.recoveryEmails.push({ email, redirectTo })
   }
 
+  /**
+   * The recovery-code exchange, as the real port does it.
+   *
+   * `recoveryCode` is what a test says the emailed code was; anything else is
+   * refused. `recoveryCodeOutcome` lets a test make a CORRECT code fail the way
+   * an expired or already-used one does, which is the case that matters most
+   * and cannot be produced by typing the wrong digits.
+   */
+  recoveryCode = '123456'
+  recoveryCodeEmail = 'analyst@openi-analytics.invalid'
+  recoveryCodeOutcome: 'ok' | 'expired' | 'already_used' | 'unknown' = 'ok'
+  verifiedCodes: { email: string; code: string }[] = []
+
+  async verifyRecoveryCode(
+    email: string,
+    code: string,
+  ): Promise<{ ok: true; session: AuthSession } | { ok: false; reason: RedeemFailure }> {
+    // Recorded WITHOUT the code, so a test asserting on `calls` cannot itself
+    // become the place a credential is written down.
+    this.calls.push('verifyRecoveryCode')
+    this.verifiedCodes.push({ email, code })
+
+    if (email !== this.recoveryCodeEmail || code !== this.recoveryCode) {
+      // One answer for a wrong code and a wrong address: the page must not
+      // become a way to discover which addresses have a code outstanding.
+      return { ok: false, reason: 'unknown' }
+    }
+    if (this.recoveryCodeOutcome !== 'ok') return { ok: false, reason: this.recoveryCodeOutcome }
+
+    // Same shape the real port produces: a live recovery session, announced
+    // to the provider so the page can move on to the password fields.
+    const session = makeSession({ email })
+    this.session = session
+    for (const handler of this.handlers) handler('PASSWORD_RECOVERY', session)
+    return { ok: true, session }
+  }
+
   async redeem(credential: UrlCredential): Promise<RedeemResult> {
     this.calls.push(`redeem:${credential.kind}`)
     this.redeemed.push(credential)
@@ -214,6 +251,7 @@ export function neverResolves(): AuthPort {
     signOut: async () => {},
     updatePassword: async () => ({ ok: false, message: 'unavailable' }),
     sendRecoveryEmail: async () => {},
+    verifyRecoveryCode: () => new Promise(() => {}),
     redeem: () => new Promise(() => {}),
     confirmStanding: () => new Promise<InvitationStanding>(() => {}),
   }

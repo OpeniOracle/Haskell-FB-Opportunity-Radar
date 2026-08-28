@@ -159,18 +159,29 @@ describe('accepting an invitation', () => {
   })
 })
 
-describe('an invitation that cannot be used', () => {
+describe('a link that cannot be used', () => {
+  /*
+    A GoTrue ERROR REDIRECT CARRIES NO `type`.
+
+    `error` and `error_code` come back; the flow does not. These cases used to
+    assert invitation wording for exactly that shape, which is how a reviewer
+    who asked to set a password was told her INVITATION was invalid -- a false
+    statement about an account that was never invited by email at all.
+
+    Neutral wording is the only true answer available here, and it still says
+    what to do next.
+  */
   it.each([
     ['expired', '#error=access_denied&error_code=otp_expired&error_description=Email+link+has+expired'],
     ['already_used', '?error=invalid_request&error_description=Token+has+already+been+used'],
-    ['malformed', '#access_token=only-half-of-it&type=invite'],
+    ['malformed', '#access_token=only-half-of-it'],
     ['missing', ''],
-  ])('reports %s without saying which it was', async (reason, tail) => {
+  ])('reports %s in neutral language, without naming a flow it cannot identify', async (reason, tail) => {
     const auth = signedOut()
     renderAt(`/auth/callback${tail}`, withoutPrefill(auth))
 
     expect(
-      await screen.findByRole('heading', { name: 'That invitation link cannot be used' }),
+      await screen.findByRole('heading', { name: 'This account link cannot be used' }),
     ).toBeInTheDocument()
 
     // The classification exists for behaviour and for this assertion. It is not
@@ -179,11 +190,37 @@ describe('an invitation that cannot be used', () => {
     // necessarily that somebody.
     expect(screen.getByTestId('callback-failure-reason')).toHaveTextContent(reason)
 
-    // One sentence for all four. Flow-specific since the recovery flow needs its
-    // own vocabulary (see callbackVocabulary.test.tsx), but still identical
-    // across every reason WITHIN a flow, which is the property that matters.
-    expect(screen.getByText(/This invitation link is no longer valid/i)).toBeInTheDocument()
+    expect(screen.getByText(/This link is no longer valid/i)).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Choose a password' })).toBeNull()
+
+    /*
+      THE REGRESSION. This is the screenshot the reviewer sent.
+
+      Scoped to the failure panel rather than the whole document: the layout
+      footer carries a standing sentence about access being by invitation,
+      which is a true statement about the product and not a claim about this
+      link. What must never appear is invitation vocabulary describing THIS
+      failure.
+    */
+    const panel = screen.getByRole('heading', { name: 'This account link cannot be used' })
+      .closest('main')
+    const failureText = panel?.textContent?.replace(
+      /Access is by invitation\. There is no way to create an account here\./,
+      '',
+    )
+    for (const word of [/invitation/i, /invite/i, /accept invitation/i]) {
+      expect(failureText ?? '').not.toMatch(word)
+    }
+  })
+
+  it('still names the invitation when the credential positively says so', async () => {
+    renderAt(
+      '/auth/callback#error=access_denied&error_code=otp_expired&type=invite',
+      withoutPrefill(signedOut()),
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'That invitation link cannot be used' }),
+    ).toBeInTheDocument()
   })
 
   it('gives every failure the identical visible explanation', async () => {
@@ -194,7 +231,7 @@ describe('an invitation that cannot be used', () => {
       '',
     ]) {
       const { unmount } = renderAt(`/auth/callback${tail}`, withoutPrefill(signedOut()))
-      await screen.findByRole('heading', { name: 'That invitation link cannot be used' })
+      await screen.findByRole('heading', { name: 'This account link cannot be used' })
       seen.add(screen.getByText(/no longer valid/i).textContent ?? '')
       unmount()
     }
@@ -203,7 +240,7 @@ describe('an invitation that cannot be used', () => {
 
   it('offers a way back to sign in', async () => {
     renderAt('/auth/callback', withoutPrefill(signedOut()))
-    await screen.findByRole('heading', { name: 'That invitation link cannot be used' })
+    await screen.findByRole('heading', { name: 'This account link cannot be used' })
     expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
   })
 
@@ -421,7 +458,7 @@ describe('password recovery', () => {
     expect([...answers][0]).toContain('If that address has an account')
   })
 
-  it('asks the provider to send the link back through the one callback route', async () => {
+  it('asks the provider to send people to the code page, not to the token callback', async () => {
     const auth = signedOut()
     renderAt('/forgot-password', withoutPrefill(auth))
     await screen.findByRole('heading', { name: 'Set or reset your password' })
@@ -430,7 +467,15 @@ describe('password recovery', () => {
 
     await screen.findByRole('status')
     expect(auth.recoveryEmails).toHaveLength(1)
-    expect(auth.recoveryEmails[0]!.redirectTo).toBe(`${window.location.origin}/auth/callback`)
+    /*
+      The redirect points at the page that ASKS FOR A CODE. Nothing in the
+      emailed message carries a credential, so a mail scanner that fetches
+      every link in it consumes nothing -- which is the whole point of the
+      change, and the thing that made the previous flow fail before the
+      recipient ever saw it.
+    */
+    expect(auth.recoveryEmails[0]!.redirectTo).toBe(`${window.location.origin}/auth/reset-password`)
+    expect(auth.recoveryEmails[0]!.redirectTo).not.toContain('/auth/callback')
   })
 
   it('gives the same answer even when the provider fails', async () => {
@@ -477,9 +522,16 @@ describe('resetting a password', () => {
     expect(auth.passwordUpdates).toEqual(['a-brand-new-passphrase-7'])
   })
 
-  it('cannot be reached without a recovery session', async () => {
+  it('asks for the code when there is no recovery session yet', async () => {
+    // This used to bounce to sign-in. It is now the FIRST half of recovery:
+    // the person arrives here from an email that contains no credential, and
+    // proves receipt by typing the code.
     renderAt('/auth/reset-password', withoutPrefill(signedOut()))
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Enter your recovery code' }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Email address')).toBeInTheDocument()
+    expect(screen.getByLabelText('Six-digit code')).toBeInTheDocument()
   })
 
   it('leaves no credential in the address bar', async () => {

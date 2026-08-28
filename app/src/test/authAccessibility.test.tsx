@@ -20,7 +20,12 @@ import type { AuthPort } from '@/auth/authPort'
  * without a mouse is a login form that excludes people from the pilot.
  */
 
-const AUTH_ROUTES = ['/login', '/forgot-password'] as const
+/*
+  `/auth/reset-password` joins the list because it is now a page an
+  unauthenticated visitor genuinely lands on: recovery starts by entering a
+  code, not by following a link that carries a token.
+*/
+const AUTH_ROUTES = ['/login', '/forgot-password', '/auth/reset-password'] as const
 
 function renderPublic(route: string, port: AuthPort = withoutPrefill(signedOut())) {
   return render(
@@ -113,6 +118,28 @@ describe('keyboard navigation', () => {
     const link = screen.getByRole('link', { name: /set or reset your password/i })
     link.focus()
     expect(link).toHaveFocus()
+  })
+
+  it('puts focus in the first field of the code form, and offers the one-time-code hint', async () => {
+    renderPublic('/auth/reset-password')
+    await screen.findByRole('heading', { name: 'Enter your recovery code' })
+    expect(screen.getByLabelText('Email address')).toHaveFocus()
+    // What lets a phone offer the code from the message instead of making
+    // somebody memorise six digits and switch apps.
+    expect(screen.getByLabelText('Six-digit code')).toHaveAttribute('autocomplete', 'one-time-code')
+    expect(screen.getByLabelText('Six-digit code')).toHaveAttribute('inputmode', 'numeric')
+  })
+
+  it('completes the code form from the keyboard alone', async () => {
+    renderPublic('/auth/reset-password')
+    await screen.findByRole('heading', { name: 'Enter your recovery code' })
+    expect(screen.getByLabelText('Email address')).toHaveFocus()
+    await userEvent.keyboard('analyst@openi-analytics.invalid')
+    await userEvent.tab()
+    expect(screen.getByLabelText('Six-digit code')).toHaveFocus()
+    await userEvent.keyboard('123456')
+    await userEvent.tab()
+    expect(screen.getByRole('button', { name: 'Continue' })).toHaveFocus()
   })
 
   it('puts focus in the first field of the recovery form', async () => {

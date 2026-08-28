@@ -80,6 +80,30 @@ const INVITATION_COPY: FlowCopy = {
     'Your invitation has not been used up by this. Wait a moment and open the link again, or reload this page.',
 }
 
+/**
+ * WHEN THE PAGE CANNOT TELL WHICH ERRAND THIS IS.
+ *
+ * A GoTrue error redirect carries `error` and `error_code` and does NOT carry
+ * `type`, so a failed recovery arrives here indistinguishable from a failed
+ * invitation. The previous code resolved that by defaulting to invitation
+ * language, and a reviewer who had asked to set a password was told her
+ * INVITATION was invalid -- a false statement about her own account, and a
+ * confusing one for someone who was never invited by email in the first place.
+ *
+ * Neutral is not a worse message. It is the only true one available, and it
+ * still tells the person exactly what to do next.
+ */
+const INDETERMINATE_COPY: FlowCopy = {
+  noun: 'account link',
+  linkFailureTitle: 'This account link cannot be used',
+  linkFailureMessage:
+    'This link is no longer valid. Links and codes can be used once, and they expire. Request a new link or code and try again.',
+  linkFailureNote:
+    'If you were setting or resetting a password, start again from "Set or reset your password" on the sign-in page.',
+  serviceNote:
+    'Once the service is back, request a new link or code and try again. Do not rely on this one still working.',
+}
+
 const RECOVERY_COPY: FlowCopy = {
   noun: 'password reset',
   linkFailureTitle: 'That password reset link cannot be used',
@@ -183,8 +207,15 @@ export function CallbackPage() {
      happened afterwards -- a recovery link that fails must not be described in
      invitation language just because the failure came late.
   */
+  /*
+    POSITIVELY ESTABLISHED, OR NEUTRAL. There is no third branch that guesses.
+  */
   const copy: FlowCopy =
-    capture.current.credentialType === 'recovery' ? RECOVERY_COPY : INVITATION_COPY
+    capture.current.credentialType === 'recovery'
+      ? RECOVERY_COPY
+      : capture.current.credentialType === 'invite'
+        ? INVITATION_COPY
+        : INDETERMINATE_COPY
 
   if (status === 'error' && reason === 'service_unavailable') {
     return (

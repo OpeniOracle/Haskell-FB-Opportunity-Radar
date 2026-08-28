@@ -36,7 +36,7 @@ import { useAuth } from '@/auth/authContext'
    have to guess that a reset is what they need.
 */
 const SAME_ANSWER =
-  'If that address has an account on the Radar, a link to set or reset your password is on its way. It expires shortly and can be used once.'
+  'If that address has an account on the Radar, a six-digit code is on its way. Enter it on the next page with your email address. The code expires shortly and can be used once.'
 
 export function ForgotPasswordPage() {
   const { port } = useAuth()
@@ -68,9 +68,16 @@ export function ForgotPasswordPage() {
 
     setBusy(true)
     try {
+      /*
+        The redirect now points at the page that ASKS FOR THE CODE, not at the
+        callback that redeems a token from a URL. The emailed link carries no
+        credential at all -- it is an address, so a mail scanner that fetches it
+        consumes nothing. The exact value must be on the Supabase redirect
+        allowlist.
+      */
       await port.sendRecoveryEmail(
         trimmed,
-        `${window.location.origin}/auth/callback`,
+        `${window.location.origin}/auth/reset-password`,
       )
     } catch {
       // Even a failure gets the same answer. A visible difference between "sent"
