@@ -18,14 +18,15 @@
  * computes the SAME window and collides with the run already recorded instead of
  * producing a second one. Retries are attempts against that run, not new runs.
  *
- * No connector runs in this PR. `runIngestion` is the seam the First Live Data
- * PR fills; today it records that the schedule fired and that nothing was
- * configured to collect, which is a truthful Source Health state rather than a
- * silent no-op.
+ * THE SCHEDULE IN BOTH CLOCKS. `0 6 * * *` is 06:00 UTC every day, which is
+ * 02:00 US Eastern during daylight time and 01:00 during standard time. It is
+ * fixed in UTC deliberately: pinning it to Eastern would move the run twice a
+ * year and put a shifted window either side of the change.
  */
 import { schedule } from '@netlify/functions'
 import { MissingEnvError, serverEnv } from './_shared/env.js'
 import { supabaseAdmin } from './_shared/supabaseAdmin.js'
+import { runIngestion } from './_shared/connectors/runner.js'
 
 /** Midnight UTC on the day the schedule fired. Stable across retries. */
 export function collectionWindow(now: Date): { start: string; end: string } {
@@ -34,30 +35,45 @@ export function collectionWindow(now: Date): { start: string; end: string } {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
-async function runIngestion(window: { start: string; end: string }) {
+export async function collect(window: { start: string; end: string }) {
+  const env = serverEnv('ingest')
   const client = supabaseAdmin()
 
-  const { data: sources, error } = await client
-    .from('sources')
-    .select('id, name, enabled')
-    .eq('enabled', true)
+  const results = await runIngestion(client, {
+    window,
+    userAgent: env.secEdgarUserAgent!,
+    allowlist: env.egressAllowlist,
+    log: (message) => console.log(message),
+  })
 
-  if (error) {
-    return { ok: false, window, reason: `sources unreadable: ${error.code ?? 'unknown'}` }
+  if (results.length === 0) {
+    return {
+      ok: true,
+      window,
+      sources: [],
+      note: 'No source is enabled. Nothing was collected, and this is a coverage gap rather than a success.',
+    }
   }
 
-  // The First Live Data PR replaces this branch with real collection. Until
-  // then the honest report is "the schedule ran and there is nothing enabled",
-  // which Source Health can show as a coverage gap.
+  // Per source, never aggregated into one verdict: one failing connector must
+  // not report the cohort as current, and one succeeding connector must not
+  // hide a failure next to it.
   return {
-    ok: true,
+    ok: results.every((r) => r.runStatus !== 'failure'),
     window,
-    enabledSources: sources?.length ?? 0,
-    collected: 0,
-    note:
-      (sources?.length ?? 0) === 0
-        ? 'No source is enabled. Nothing was collected, and this is a coverage gap rather than a success.'
-        : 'Connectors are not implemented in the Production Foundation PR.',
+    sources: results.map((r) => ({
+      sourceId: r.sourceId,
+      runStatus: r.runStatus,
+      healthStatus: r.healthStatus,
+      evidenceCreated: r.counters.evidenceCreated,
+      documentsDiscovered: r.counters.documentsDiscovered,
+      documentsAccepted: r.counters.documentsAccepted,
+      documentsRejected: r.counters.documentsRejected,
+      duplicatesPrevented: r.counters.duplicatesPrevented,
+      opportunitiesCreated: r.counters.opportunitiesCreated,
+      opportunitiesSuppressed: r.counters.opportunitiesSuppressed,
+      note: r.note,
+    })),
   }
 }
 
@@ -77,7 +93,16 @@ export const handler = schedule('0 6 * * *', async () => {
   }
 
   const window = collectionWindow(new Date())
-  const result = await runIngestion(window)
-  console.log(`[scheduled-ingest] ${JSON.stringify(result)}`)
+  try {
+    const result = await collect(window)
+    console.log(`[scheduled-ingest] ${JSON.stringify(result)}`)
+  } catch (error) {
+    // Never rethrow into the platform: a thrown scheduled function is retried
+    // by Netlify, and a retry that repeats a failing fetch against a
+    // fair-access source is the one thing worse than the original failure.
+    console.error(
+      `[scheduled-ingest] run failed: ${error instanceof Error ? error.message : 'unknown'}`,
+    )
+  }
   return { statusCode: 200 }
 })

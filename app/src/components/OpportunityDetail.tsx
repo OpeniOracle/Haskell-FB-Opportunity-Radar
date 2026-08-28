@@ -65,8 +65,10 @@ export function OpportunityDetail({
     <>
       <section className="drawer__section">
         <div className="drawer__score">
-          <span className="drawer__score-value">{scores.finalScore}</span>
-          <span className="drawer__score-band">{PRIORITY_LABEL[band]}</span>
+          <span className="drawer__score-value">{scores.finalScore ?? '\u2014'}</span>
+          <span className="drawer__score-band">
+            {band ? PRIORITY_LABEL[band] : 'Not scored yet'}
+          </span>
         </div>
         <dl className="drawer__facts">
           <div className="fact">
@@ -175,32 +177,45 @@ export function OpportunityDetail({
           {SCORE_ROWS.map((row) => {
             const value = scores[row.key]
             const cap = SCORE_CAPS[row.key]
+            // An unscored axis renders an empty bar and says "not scored".
+            // A zero-width bar with a number beside it would read as a
+            // measured zero, which is a different and much stronger claim.
+            const label = value === null ? 'not scored' : `${value} out of ${cap}`
             return (
               <div className="score-row" key={row.key}>
                 <span className="score-row__label">{row.label}</span>
                 <span className="score-row__value">
-                  {value}/{cap}
+                  {value === null ? '\u2014' : `${value}/${cap}`}
                 </span>
                 <span
                   className="score-row__bar"
                   role="img"
-                  aria-label={`${row.label}: ${value} out of ${cap}`}
+                  aria-label={`${row.label}: ${label}`}
                 >
                   <span
                     className="score-row__fill"
-                    style={{ width: `${Math.round((value / cap) * 100)}%` }}
+                    style={{ width: value === null ? '0%' : `${Math.round((value / cap) * 100)}%` }}
                   />
                 </span>
               </div>
             )
           })}
         </div>
-        <p className="drawer__prose drawer__prose--small">
-          Raw score {scores.rawScore} of 100, multiplied by a confidence factor of{' '}
-          {scores.confidenceMultiplier.toFixed(2)} to give {scores.finalScore}. The
-          multiplier stops a thinly evidenced opportunity out-ranking a well-evidenced
-          one.
-        </p>
+        {scores.rawScore === null ||
+        scores.confidenceMultiplier === null ||
+        scores.finalScore === null ? (
+          <p className="drawer__prose drawer__prose--small">
+            This opportunity was derived from collected evidence and has not been scored
+            yet. The evidence below is what it rests on.
+          </p>
+        ) : (
+          <p className="drawer__prose drawer__prose--small">
+            Raw score {scores.rawScore} of 100, multiplied by a confidence factor of{' '}
+            {scores.confidenceMultiplier.toFixed(2)} to give {scores.finalScore}. The
+            multiplier stops a thinly evidenced opportunity out-ranking a well-evidenced
+            one.
+          </p>
+        )}
       </section>
 
       <section className="drawer__section">

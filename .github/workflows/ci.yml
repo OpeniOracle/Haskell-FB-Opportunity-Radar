@@ -49,6 +49,74 @@ jobs:
       - name: Build
         run: npm run build
 
+      # THE BUNDLE SCAN RUNS AFTER THE BUILD, WHICH IS THE ONLY TIME IT CAN.
+      #
+      # The unit test that asserts this skips when `dist/` is absent, and the
+      # test job runs before the build -- so without this step the guarantee
+      # was asserted by a test that never had anything to look at. Production
+      # must not merely avoid displaying illustrative records; it must not
+      # contain them.
+      - name: The production bundle contains no illustrative record
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test -d dist/assets || { echo 'No build output to scan.'; exit 1; }
+          failed=0
+          for file in dist/assets/*.js; do
+            for marker in createFixtureDataSource 'opp-fixture-' 'fx-company-' 'fx-facility-'; do
+              if grep -qF "$marker" "$file"; then
+                echo "FAIL  $file ships '$marker'"
+                failed=1
+              fi
+            done
+            # The flag may appear. A TRUE flag, or fixture mode, may not.
+            if grep -qE 'illustrative:\s*!0|mode:\s*"fixture"' "$file"; then
+              echo "FAIL  $file declares itself illustrative"
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then exit 1; fi
+          echo "ok    no fixture module, identifier or illustrative flag in $(ls dist/assets/*.js | wc -l) chunk(s)"
+
+      # A chunk NAMED after the fixture module is fine when it IS the stub.
+      # What must never ship is a fabricated record, which the step above
+      # checks by content. This one proves the replacement actually happened
+      # rather than the output merely looking clean.
+      - name: Any fixture-named chunk is the production stub
+        working-directory: app
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for file in dist/assets/*fixture*; do
+            if ! grep -qF 'not part of a production build' "$file"; then
+              echo "FAIL  $file is not the stub"
+              exit 1
+            fi
+            echo "ok    $file is the stub"
+          done
+          echo 'ok    no fixture chunk carries the corpus'
+
+      # The alias that performs the replacement was once shadowed by the `@`
+      # prefix alias, and the clean output came from tree-shaking instead. A
+      # build with NODE_ENV=test keeps `import.meta.env.DEV` true, so the
+      # dynamic import survives and the alias is the only thing left standing
+      # between the corpus and dist/. This is the build that proves it.
+      - name: The fixture corpus stays out even when the import survives
+        working-directory: app
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          NODE_ENV=test npx vite build --logLevel error
+          for marker in 'opp-fixture-' 'Example Beverage' 'mode:"fixture"'; do
+            if grep -rqF "$marker" dist/assets/; then
+              echo "FAIL  the corpus reached dist/ when the dynamic import survived ($marker)"
+              exit 1
+            fi
+          done
+          echo 'ok    corpus absent even with the import retained'
+          rm -rf dist
+          npm run build
+
   boundaries:
     name: Milestone boundary checks
     runs-on: ubuntu-latest
@@ -166,6 +234,24 @@ jobs:
       # cannot reach it, and this is what holds that apart. A harness that
       # leaked into a shipped chunk would be an authentication bypass sitting
       # in the bundle.
+      # The application imports the LIVE provider and nothing else. The
+      # fixture corpus is reached only by a dynamic import guarded by a
+      # build-time constant, and only a test hands a data source in.
+      - name: The runtime does not import the illustrative corpus
+        run: |
+          set -euo pipefail
+          offenders=$(grep -rlE "^\s*import\s[^\n]*from\s+['\"]@/data/fixture" app/src \
+                      --include='*.ts' --include='*.tsx' \
+                      | grep -v '/test/' | grep -v '/data/fixture' || true)
+          if [ -n "$offenders" ]; then
+            echo 'FAIL  the runtime statically imports the fixture corpus:'
+            echo "$offenders"
+            exit 1
+          fi
+          grep -q 'FIXTURES_AVAILABLE' app/src/data/DataSourceContext.tsx
+          grep -q "import.meta.env.DEV" app/src/data/DataSourceContext.tsx
+          echo 'ok    fixtures are reachable only behind the build-time guard'
+
       - name: The test authentication fake is not reachable from the application
         run: |
           if grep -rn "test/browser/harness\|test/authFake" app/src/main.tsx app/src/App.tsx \

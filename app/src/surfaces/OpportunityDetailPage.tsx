@@ -111,7 +111,10 @@ export function OpportunityDetailPage() {
                 {opportunity.organization.canonicalName}
                 <span className="detail__band">
                   {' · '}
-                  {PRIORITY_SHORT[priorityBand(opportunity.scores.finalScore)]} priority
+                  {(() => {
+                    const band = priorityBand(opportunity.scores.finalScore)
+                    return band ? `${PRIORITY_SHORT[band]} priority` : 'Not scored yet'
+                  })()}
                 </span>
               </p>
               <h1 className="page-head__title detail__title">{opportunity.title}</h1>

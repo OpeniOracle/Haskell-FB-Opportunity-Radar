@@ -45,7 +45,10 @@
 #>
 
 param(
-    [string] $Branch = 'claude/production-foundation',
+    # PR #9 merged; the production foundation now lives on main. A default
+    # naming a merged branch would refuse to run for the reason that it no
+    # longer matches the checkout an operator actually has.
+    [string] $Branch = 'main',
     [string] $Repository = 'OpeniOracle/Haskell-FB-Opportunity-Radar',
     # Optional belt-and-braces: the head SHA shown on the PR page.
     [string] $ExpectedHead,

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useContext, useMemo, type ReactNode } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
 import { AuthProvider } from '@/auth/AuthProvider'
@@ -9,7 +9,7 @@ import { RequireAuth } from '@/auth/RequireAuth'
 import { SetPasswordPage } from '@/auth/SetPasswordPage'
 import type { AuthPort } from '@/auth/authPort'
 import { DataSourceProvider } from '@/data/DataSourceContext'
-import { parseScenario } from '@/data/fixtureDataSource'
+import { DataSourceInputContext, type DataSourceInput } from '@/data/DataSourceInput'
 import {
   LEGACY_OPPORTUNITY_PARAM,
   opportunityDetailPath,
@@ -80,9 +80,22 @@ export const PUBLIC_AUTH_ROUTES = [
  * and constructing it outside would mean the data existed in the page before
  * anyone had established a right to it, even if nothing rendered it.
  */
-export function App({ authPort }: { authPort?: AuthPort } = {}) {
+/**
+ * `dataSource` is how a TEST supplies fixtures.
+ *
+ * There is no production caller: the application constructs the live provider
+ * and nothing else. Making test data an explicit argument rather than a
+ * default is the structural half of "production never shows illustrative
+ * records" — the runtime cannot reach the fixtures unless something hands
+ * them in, and only a test does.
+ */
+export function App({
+  authPort,
+  dataSource,
+}: { authPort?: AuthPort; dataSource?: DataSourceInput } = {}) {
   return (
     <AuthProvider port={authPort}>
+      <DataSourceInputContext.Provider value={dataSource}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<CallbackPage />} />
@@ -116,22 +129,37 @@ export function App({ authPort }: { authPort?: AuthPort } = {}) {
           </Route>
         </Route>
       </Routes>
+      </DataSourceInputContext.Provider>
     </AuthProvider>
   )
 }
 
 /**
- * The fixture data source, scoped to authenticated routes.
+ * The data source, scoped to authenticated routes.
  *
  * A layout route rather than a wrapper around `<Routes>`, so `useLocation` here
- * reads the matched application address and the scenario parameter keeps
- * working exactly as before.
+ * reads the matched application address.
+ *
+ * The `?state=` parameter is passed through verbatim and is honoured only by a
+ * development build. In production the provider has no fixture module to load,
+ * so the parameter cannot substitute illustrative business data into an
+ * authenticated session.
  */
 function ProtectedApplication() {
   const { search } = useLocation()
-  const scenario = parseScenario(search)
+  const scenario = new URLSearchParams(search).get('state') ?? undefined
+  const injected = useContext(DataSourceInputContext)
+  // MEMOISED, because a factory called during render returns a NEW object every
+  // time. Without this the provider saw a different data source on each render,
+  // re-ran its effect, set state, and re-rendered -- which made every
+  // asynchronous surface assertion race the churn. It surfaced as an
+  // intermittent failure in a browser-history test, three layers away.
+  const source = useMemo(
+    () => (typeof injected === 'function' ? injected(scenario) : injected),
+    [injected, scenario],
+  )
   return (
-    <DataSourceProvider scenario={scenario}>
+    <DataSourceProvider scenario={scenario} source={source}>
       <Outlet />
     </DataSourceProvider>
   )

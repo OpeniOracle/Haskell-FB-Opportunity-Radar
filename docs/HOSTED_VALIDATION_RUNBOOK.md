@@ -196,7 +196,7 @@ Windows PowerShell 5.1 loopback test parses the real request line to prove it.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 pwsh -File .\scripts\Send-BootstrapInvitation.ps1
 ```
@@ -351,7 +351,7 @@ accounts ever have is the one their owner chooses.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\New-PreprovisionedAccounts.ps1
 ```
@@ -464,7 +464,7 @@ in the hosted database waiting for a human to come back.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 pwsh -File .\scripts\Invoke-HostedValidation.ps1
 ```
@@ -491,7 +491,7 @@ It will ask for two values, each hidden as you type:
 
 ```bash
 cd /path/to/Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation && git pull
+git switch main && git pull
 bash scripts/hosted-validation.sh
 ```
 
@@ -526,3 +526,240 @@ so there is nothing to enter and nothing to toggle. `/api/status` reports
 The mailbox is reserved for automated-source identification and operational
 notices only, and `reserved_service_addresses` makes it impossible to allowlist
 as an application account.
+
+---
+
+# F. First live collection — Tyson Foods, PepsiCo, Mars
+
+**Read this section end to end before running anything in it.** Every step is
+reversible; the point of reading first is that the stop conditions matter more
+than the commands.
+
+The collection runs **on the deployment**, not on your machine. Your machine
+sends one authenticated request. Nothing here needs the Supabase secret key.
+
+## F0. What this will and will not do
+
+It will retrieve documents from SEC EDGAR and the Mars newsroom, store each one
+as evidence with its provenance, classify what it can, and derive opportunities
+only where the evidence supports one. It will not delete anything, will not
+modify a document it already holds, and will not send any email.
+
+**A company producing zero opportunities is a valid outcome.** If Mars published
+nothing about a facility in the last year, the correct result is zero. Do not
+fill that in.
+
+## F1. Apply the migration
+
+Backward compatible: every column is nullable or defaulted, every index is
+partial or on a new column, and a pre-0019 application keeps working against the
+migrated database.
+
+```bash
+# Against the hosted database, from a machine with psql and the pooler URL.
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/migrations/0019_live_source_ingestion.up.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/seed/0006_live_cohort_sources.sql
+```
+
+**Expected:** `COMMIT`, then two `INSERT 0 1`. The seed is idempotent — running
+it twice updates the rows and never resets `enabled` or `health_status`.
+
+**Rollback**, if you need it: `db/migrations/0019_live_source_ingestion.down.sql`.
+It drops only what 0019 added. Evidence rows written by a live run would lose
+their `source_document_id`, so roll back before collecting, not after.
+
+## F2. Confirm the sources exist and are still disabled
+
+```sql
+select id, enabled, health_status, connector_id, last_success_at from sources order by id;
+```
+
+**Expected:** `sec-edgar` and `mars-newsroom`, both `enabled = false`,
+`health_status = 'disabled'`, `last_success_at` null. Seeded off deliberately:
+enabling is an operator decision made while someone is watching.
+
+## F3. Check the network path, before the credential
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-SourceConnectivity.ps1
+```
+
+```bash
+bash scripts/test-source-connectivity.sh
+```
+
+**Expected:** `HTTP 200` for `company_tickers.json`, the submissions API, and at
+least one Mars candidate.
+
+**Stop conditions:**
+
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| `this machine's network refused the connection` | Your proxy, not the source | Run from a machine with direct egress, or allow the hosts. **Do not disable the source.** |
+| `403` / `503` with a challenge marker | A WAF or interstitial | Do not work around it. Look for an official feed, sitemap or IR distribution endpoint and record the exact URL and status. |
+| `404` on a Mars candidate | The guessed path is wrong | Expected. Correct it in F6. |
+| `429` | Rate limited | Wait. The connector honours `Retry-After`; you should too. |
+
+The three SEC endpoints failing while Mars succeeds (or vice versa) is
+informative — record which.
+
+## F4. Confirm the deployed environment
+
+`EGRESS_ALLOWLIST` must permit the connector hosts, or the run fails with a
+message naming the host. The connector will not grant itself egress.
+
+Required, Functions scope, all deploy contexts:
+
+```
+SUPABASE_URL, SUPABASE_SECRET_KEY, INGEST_SHARED_SECRET, SEC_EDGAR_USER_AGENT
+EGRESS_ALLOWLIST = sec.gov,data.sec.gov,www.sec.gov,mars.com,www.mars.com
+```
+
+`SEC_EDGAR_USER_AGENT` must name the organisation and a monitored address, e.g.
+`Openi-Haskell-FB-Radar/1.0 (oracles@openi-analytics.com)`. SEC's fair-access
+guidance asks for a contact; an anonymous agent is the one that gets blocked.
+
+## F5. Enable the sources
+
+```sql
+update sources set enabled = true, health_status = 'healthy' where id in ('sec-edgar', 'mars-newsroom');
+```
+
+## F6. Correct the Mars retrieval strategy, if F3 showed you the real paths
+
+The candidate URLs are **configuration, not code**. There is no deploy.
+
+```sql
+update sources
+   set connector_config = connector_config || jsonb_build_object(
+         'feedCandidates', jsonb_build_array('<the real feed URL>'),
+         'indexCandidates', jsonb_build_array('<the real newsroom URL>'),
+         'confirmedOnFirstLiveRun', true)
+ where id = 'mars-newsroom';
+```
+
+The development environment that wrote this connector could not reach mars.com,
+so the seeded candidates are conventional guesses. Confirming them is part of
+this run, not a defect.
+
+## F7. Run the backfill
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-LiveBackfill.ps1 `
+  -BaseUri 'https://deploy-preview-<N>--haskell-fb-opportunity-radar.netlify.app' `
+  -WindowDays 365
+```
+
+It refuses before asking for the secret: another repository, a dirty tree, the
+wrong branch, a `HEAD` behind the remote, a transcript, `-Verbose`, `-Debug`,
+tracing, a debugger. Then it does a **dry run** (authenticates, checks
+configuration, writes nothing), asks you to type `BACKFILL`, runs, and then
+**runs the same window again** to prove idempotency.
+
+Twelve months is the window recorded in **ADR 0016**.
+
+**Expected on the first run:** per source, a `runStatus`, counts, and a note.
+
+**Stop conditions:**
+
+| Response | Meaning | Action |
+| --- | --- | --- |
+| `401` | Wrong or missing operator secret | Check `INGEST_SHARED_SECRET`. Do not retry blindly. |
+| `503 not_configured` | A variable is missing | The message names it. Add it, redeploy, re-run. |
+| `502 collection_failed` | The run threw server-side | Read the message. Do not re-run until you know why. |
+| any source `runStatus: failure` | That source did not complete | **The cohort is not current.** Investigate that source. |
+| `mars-newsroom` `manual_review_required` | No compliant automated path | Correct. Import by hand; do not bypass the control. |
+
+**Expected on the repeat run:** `evidenceCreated: 0` for every source and
+`duplicatesPrevented` greater than zero. The script says so explicitly. If the
+repeat run creates records, stop and investigate before trusting any count.
+
+## F8. Verify in the database
+
+```sql
+-- Per company: what was collected and what it produced.
+select o.canonical_name,
+       count(distinct e.id)  filter (where e.superseded_at is null) as current_evidence,
+       count(distinct s.id)                                          as signals,
+       count(distinct opp.id)                                        as opportunities
+  from organizations o
+  left join evidence_entity_links l on l.organization_id = o.id
+  left join evidence e   on e.id = l.evidence_id
+  left join signals s    on s.organization_id = o.id
+  left join opportunities opp on opp.organization_id = o.id
+ where o.entity_key in ('sec:0000077476', 'sec:0000100493', 'radar:mars-incorporated')
+ group by o.canonical_name order by o.canonical_name;
+
+-- Provenance is present on every stored document.
+select source_id, connector_id, connector_version,
+       count(*) as documents,
+       count(*) filter (where source_document_id is null) as missing_document_id,
+       count(*) filter (where published_at is null)       as no_published_date,
+       min(first_seen_at) as first_seen, max(last_seen_at) as last_seen
+  from evidence where connector_id is not null group by 1,2,3;
+
+-- Run outcomes, including the ones that found nothing.
+select source_id, run_status, items_seen, items_stored, duplicate_count,
+       started_at, completed_at, error_summary
+  from source_runs order by started_at desc limit 20;
+```
+
+**Expected:** `missing_document_id = 0`. Every live document has a stable source
+identity — that is what makes the second run a no-op.
+
+## F9. Verify in the preview
+
+Sign in as a pre-provisioned reviewer, then check:
+
+1. **Sign-in is still required.** Open the preview in a private window; every
+   protected route redirects to `/login` with no data visible.
+2. **No illustrative data.** There is no "illustrative" banner and no
+   preview-state control in the navigation — both are gated on a flag the live
+   provider sets to false.
+3. **`?state=empty` does nothing.** The parameter is inert outside a development
+   build; the page shows live state.
+4. **Counts match F8.** The opportunity count on screen equals the query.
+5. **Empty is honest.** A company with no qualifying signal reads as "no
+   qualifying opportunity has been found", not as an error.
+6. **Evidence resolves through the proxy** and the response carries
+   `Cache-Control: private, no-store`.
+7. **Source URLs and timestamps are visible** and match the filing or article.
+8. **Source Health** shows the real run outcomes, including
+   `manual_review_required` if that is what happened.
+9. **Sign out** removes all protected content immediately.
+10. **No credential survives** in the URL, in history, in rendered content, or
+    in the console.
+
+## F10. Cleanup
+
+**Nothing to clean up.** This procedure creates no canary: the verification uses
+the real collected records and the repeat run, so there is no test row to
+remove and no artefact to leave behind.
+
+If you need to re-run a window from scratch — after correcting a Mars URL, say —
+delete that source's rows rather than the cohort's:
+
+```sql
+-- Reversible and scoped to one source. Evidence rows cascade to their links.
+delete from evidence     where source_id = 'mars-newsroom';
+delete from source_runs  where source_id = 'mars-newsroom';
+delete from source_document_cache where source_id = 'mars-newsroom';
+update sources set last_success_at = null, health_status = 'healthy',
+                   consecutive_failures = 0
+ where id = 'mars-newsroom';
+```
+
+Signals and opportunities derived only from those documents lose their evidence
+links and should be reviewed before deletion — an opportunity an analyst has
+since touched is not the collector's to remove.
+
+## F11. Schedule
+
+The collector runs **`0 6 * * *` — 06:00 UTC daily**, which is **02:00 US
+Eastern during daylight time and 01:00 during standard time**. It is pinned to
+UTC deliberately: an Eastern-pinned schedule would move twice a year and put a
+shifted collection window either side of the change.
+
+The scheduled function has no HTTP route and cannot be invoked by a request.
+`admin-run` is the only manual path and carries its own operator credential.
+Overlap is refused by the database, not by a check in the handler.

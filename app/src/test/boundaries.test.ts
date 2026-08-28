@@ -37,7 +37,22 @@ function walk(dir: string): string[] {
  * can check in one place, and still fails for every surface, hook and component.
  */
 const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
-const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
+/*
+  Three modules may read build-time configuration.
+
+  `supabaseClient.ts` needs the project URL and publishable key.
+  `vite-env.d.ts` declares their types.
+  `DataSourceContext.tsx` reads `import.meta.env.DEV` and nothing else — it is
+  the build-time constant that decides whether the fixture module is reachable
+  at all. Reading it here is what lets the production bundle exclude fixtures
+  structurally rather than skip them at runtime, so this entry buys a stronger
+  guarantee than it costs.
+*/
+const ENV_MODULES = [
+  '/lib/supabaseClient.ts',
+  '/vite-env.d.ts',
+  '/data/DataSourceContext.tsx',
+]
 
 /**
  * Seven files necessarily contain the very strings this suite forbids, each for
@@ -61,6 +76,22 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  *                         and friends — as open-redirect candidates. A return-path
  *                         test that could not name an external origin would be
  *                         testing nothing
+ *   liveConnectors.test.ts
+ *                         drives the SEC and Mars connectors against recorded
+ *                         transport contracts, so it must name the real filers
+ *                         and the real endpoints. A connector test that could
+ *                         not write `data.sec.gov` or `PepsiCo` would be
+ *                         asserting against an imaginary API — and the point of
+ *                         the pilot-cohort rule is that the APPLICATION must not
+ *                         hard-code the roster, not that a test may not name the
+ *                         companies whose transport it is checking
+ *   liveDataMode.test.ts  asserts that the fixture corpus is reachable only
+ *                         behind `import.meta.env.DEV`, so it must name that
+ *                         expression to check for it
+ *   publicationTimestamps.test.tsx
+ *                         asserts that a source-stated publication time is
+ *                         preserved exactly, which means quoting real archive
+ *                         URLs as the documents those timestamps came from
  *   authAccessibility.test.tsx
  *                         asserts that no key, token or `service_role` string
  *                         reaches the rendered sign-in page, so it must name them
@@ -83,6 +114,9 @@ const SELF_REFERENTIAL = [
   'authGate.test.tsx',
   'authAccessibility.test.tsx',
   'apiContract.test.ts',
+  'liveConnectors.test.ts',
+  'publicationTimestamps.test.tsx',
+  'liveDataMode.test.ts',
 ]
 
 const files = walk(srcDir)
