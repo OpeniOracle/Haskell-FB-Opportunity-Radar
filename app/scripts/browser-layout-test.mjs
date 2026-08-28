@@ -332,6 +332,39 @@ try {
   await darkPage.getByRole('alert').waitFor()
   await measureCallout(darkPage, '[data-testid="auth-status-error"]', 'login failure (dark)', { name: '390-dark' })
   await shoot(darkPage, `${tag}-login-failure-390-dark`)
+
+  // The recovery code page in the dark palette, at mobile width. It is the
+  // first screen a pre-provisioned reviewer meets, and half of them will open
+  // it on a phone at night.
+  await darkPage.goto(`${base}/auth/reset-password?scenario=recovery-code&theme=dark`)
+  await darkPage.getByRole('heading', { name: /enter your recovery code/i }).waitFor()
+
+  const darkCode = darkPage.getByLabel(/six-digit code/i)
+  const darkBox = await darkCode.boundingBox()
+  check('recovery code @390-dark: the code field fits the viewport',
+    (darkBox?.width ?? 0) <= 390, `width ${darkBox?.width}`)
+  check('recovery code @390-dark: the code field is a full-size touch target',
+    (darkBox?.height ?? 0) >= 40, `height ${darkBox?.height}`)
+
+  // Contrast is carried by the tokens, so the check that matters is that the
+  // palette actually changed rather than the page rendering light-on-light.
+  const darkInk = await darkCode.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { color: style.color, background: style.backgroundColor }
+  })
+  check('recovery code @390-dark: takes its colours from the dark palette',
+    darkInk.color !== darkInk.background, JSON.stringify(darkInk))
+  await shoot(darkPage, `${tag}-recovery-code-390-dark`)
+
+  await darkPage.getByLabel(/email address/i).fill('analyst@openi-analytics.invalid')
+  await darkCode.fill('999999')
+  await darkPage.getByRole('button', { name: /continue/i }).click()
+  await darkPage.getByRole('alert').waitFor()
+  const darkRefusal = await measureCallout(darkPage, '[data-testid="auth-status-error"]', 'recovery code refusal (dark)', { name: '390-dark' })
+  check('recovery code refusal @390-dark: never uses invitation wording',
+    !/invitation|invite/i.test(darkRefusal?.textContent ?? ''), darkRefusal?.textContent)
+  await shoot(darkPage, `${tag}-recovery-code-refused-390-dark`)
+
   await dark.close()
 } finally {
   await browser.close()
