@@ -226,9 +226,15 @@ jobs:
       # is refused instead, with the documented placeholders allowlisted by
       # exact value. Adding a real colleague fails this step; adding a fictional
       # example means adding it here, deliberately, in review.
+      # `stranger@` is the one placeholder that deliberately uses the REAL
+      # approved domains rather than a `.example` one. microsoftIdentity.test.ts
+      # asserts that an @haskell.com or @openi-analytics.com address grants
+      # nothing on its own -- that Microsoft authenticating somebody is not the
+      # same as authorizing them. Written against `.example` domains that
+      # assertion would prove nothing about the domains it is actually about.
       - name: No real person is named in the repository
         run: |
-          allowed='^(first\.person|second\.person|existing\.person|unlisted\.person|firstname\.lastname|loopback\.tester|oracles|you)@'
+          allowed='^(first\.person|second\.person|existing\.person|unlisted\.person|firstname\.lastname|loopback\.tester|oracles|you|stranger)@'
           found=$(git grep -hEio '[A-Za-z0-9._%+-]+@(haskell|openi-analytics)\.com' \
                     -- . ':(exclude).github/workflows/ci.yml' \
                   | sort -u | grep -Ev "$allowed" || true)
