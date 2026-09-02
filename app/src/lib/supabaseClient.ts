@@ -30,6 +30,8 @@ export interface BrowserConfig {
   readonly url: string
   readonly publishableKey: string
   readonly radarEnv: string
+  /** Whether this deployment offers "Continue with Microsoft". */
+  readonly microsoftSignIn: boolean
 }
 
 /**
@@ -47,7 +49,27 @@ export function browserConfig(): BrowserConfig | null {
     url,
     publishableKey,
     radarEnv: import.meta.env.VITE_RADAR_ENV ?? 'development',
+    // Exactly `true`, nothing else. See the note in `vite-env.d.ts`: a flag that
+    // can be switched on by a typo is not a gate.
+    microsoftSignIn: import.meta.env.VITE_AUTH_MICROSOFT_ENABLED === 'true',
   }
+}
+
+/**
+ * Whether to offer "Continue with Microsoft" on the sign-in page.
+ *
+ * Two conditions, both required. The flag says this deployment was configured
+ * for it; `browserConfig()` returning at all says there is a Supabase project
+ * to sign in to. A build with the flag on and no project would render a button
+ * that cannot do anything.
+ *
+ * Read through here rather than from `import.meta.env` directly, because
+ * `boundaries.test.ts` holds this module as the only place in `src/` allowed to
+ * read build-time configuration — and that rule is worth more than the
+ * convenience of reading it where it is used.
+ */
+export function microsoftSignInEnabled(): boolean {
+  return browserConfig()?.microsoftSignIn === true
 }
 
 let cached: SupabaseClient | null = null

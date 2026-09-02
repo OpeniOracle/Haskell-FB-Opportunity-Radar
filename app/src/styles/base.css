@@ -3344,6 +3344,76 @@ a {
   line-height: 1.5;
 }
 
+/*
+ * "Continue with Microsoft", and the seam between it and the password form.
+ *
+ * The button is a SURFACE-coloured button rather than an accent-filled one, and
+ * that is a brand constraint rather than a taste: Microsoft's mark must sit on a
+ * neutral background. It gets its prominence from being first, full width and
+ * 44px tall, which is what "clearly visible" actually means on a phone.
+ */
+.auth-provider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+
+.auth-provider__button {
+  justify-content: center;
+  width: 100%;
+  /* The same comfortable target as the password submit below it. */
+  min-height: 44px;
+  border-color: var(--c-border-interactive);
+  font-weight: var(--fw-semibold);
+}
+
+.auth-provider__button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* Fixed box. The mark may neither grow into the label nor shrink out of view. */
+.auth-provider__mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.auth-provider__note {
+  /* Wraps rather than widening the card, however long the sentence gets. */
+  min-width: 0;
+}
+
+/*
+ * The divider.
+ *
+ * A rule with a label sitting in the gap, drawn with two flexible borders so it
+ * works at any card width without a fixed line length. `aria-hidden` is NOT set:
+ * the label is real text that tells a screen-reader user the alternative is
+ * coming, which is exactly what the visual rule tells everybody else.
+ */
+.auth-provider__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--fs-label);
+}
+
+.auth-provider__divider::before,
+.auth-provider__divider::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--c-border);
+}
+
+.auth-provider__divider-label {
+  flex: none;
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
