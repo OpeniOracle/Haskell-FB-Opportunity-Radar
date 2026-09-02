@@ -14,13 +14,32 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { demand, serverEnv } from './env.js'
+import { screenIdentity, type AdmissionRefusal, type IdentityFacts } from './emailIdentity.js'
 
 export interface Caller {
   readonly userId: string
   readonly email: string | null
-  /** True only when the address is on `auth_invite_allowlist`. */
+  /**
+   * Whether this caller may use the Radar.
+   *
+   * Named `invited` because that is what it has always meant to every caller,
+   * but it is now the conjunction of every admission rule, not the allowlist
+   * lookup alone: an unverified address, an unusable one, a personal Microsoft
+   * account and a missing allowlist row all produce `false`.
+   *
+   * That conflation is deliberate rather than sloppy. The one thing this may
+   * not do is tell the holder of a browser WHICH rule refused them — "your
+   * address is not on the list" and "your address is not verified" are
+   * different facts about somebody's account, and the endpoint that answers
+   * this question answers it to whoever is holding the token.
+   */
   readonly invited: boolean
   readonly isAnonymous: boolean
+  /**
+   * Which rule refused, for SERVER-SIDE behaviour and for tests. Never returned
+   * to a client and never rendered.
+   */
+  readonly refusal: AdmissionRefusal | null
 }
 
 export class UnauthorizedError extends Error {
@@ -59,20 +78,42 @@ export async function requireUser(
   const email = data.user.email ?? null
   const isAnonymous = data.user.is_anonymous === true || email === null
 
+  /*
+     EVERYTHING THAT CAN BE DECIDED WITHOUT THE DATABASE, FIRST.
+
+     Anonymity, an address that cannot be compared safely, an unverified
+     address, a personal Microsoft account. Screening before the query means a
+     caller who was never going to be admitted does not cost a round trip, and
+     — more usefully — it means the allowlist is only ever consulted with an
+     address that has already been normalized to the same shape the rows are
+     stored in.
+
+     Signing in with Microsoft proves identity. It does not authorize anybody,
+     and NOTHING below grants access on the strength of a tenant, a directory
+     or an email domain.
+  */
+  const screened = screenIdentity(data.user as IdentityFacts)
+  if (!screened.ok) {
+    return { userId: data.user.id, email, invited: false, isAnonymous, refusal: screened.refusal }
+  }
+
   // Membership is re-checked on EVERY request, not trusted from the token. A
   // token issued before someone was removed from the allowlist is still
   // cryptographically valid; the allowlist is the current answer.
-  let invited = false
-  if (email) {
-    const { data: rows } = await client
-      .from('auth_invite_allowlist')
-      .select('email_normalized')
-      .eq('email_normalized', email.trim().toLowerCase())
-      .limit(1)
-    invited = Array.isArray(rows) && rows.length > 0
-  }
+  const { data: rows } = await client
+    .from('auth_invite_allowlist')
+    .select('email_normalized')
+    .eq('email_normalized', screened.email)
+    .limit(1)
+  const invited = Array.isArray(rows) && rows.length > 0
 
-  return { userId: data.user.id, email, invited, isAnonymous }
+  return {
+    userId: data.user.id,
+    email,
+    invited,
+    isAnonymous,
+    refusal: invited ? null : 'not_allowlisted',
+  }
 }
 
 /**

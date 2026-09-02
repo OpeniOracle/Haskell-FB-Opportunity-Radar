@@ -35,6 +35,33 @@ anywhere in `app/src`.
 | `VITE_SUPABASE_URL` | yes | `https://<project-ref>.supabase.co` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | yes | `sb_publishable_…` |
 | `VITE_RADAR_ENV` | no | `development` \| `preview` \| `production` |
+| `VITE_AUTH_MICROSOFT_ENABLED` | no | exactly `true` to offer "Continue with Microsoft" |
+
+### `VITE_AUTH_MICROSOFT_ENABLED`
+
+Whether this deployment shows the **Continue with Microsoft** button. Read at
+BUILD time by Vite, so **changing it requires a redeploy** — setting it in the
+Netlify dashboard does not switch the button on for the build already live.
+
+Off unless the value is exactly the string `true`. Absent, empty, `1`, `yes` and
+`TRUE` all mean off: a configuration flag whose failure mode is "enabled by
+accident" is the wrong way round.
+
+It is **not a security control**. It decides whether a button is rendered, and
+every authorization rule holds identically whether it is on or off. Its purpose
+is to stop a deployment offering a door that opens onto an error, since
+Microsoft sign-in only works where an Entra registration exists and its
+credentials have been entered into that Supabase project.
+
+The Entra **client ID, tenant ID and client secret are NOT here and never will
+be.** They live in the Supabase dashboard, because the token exchange is
+server-to-server between Supabase and Microsoft and the browser has no part in
+it. `bundleSecrets.test.ts` plants an Entra-secret-shaped value at build time
+and fails if anything resembling it reaches the bundle.
+
+The full manual configuration — Azure App Registration, the required `xms_edov`
+optional claim, the Supabase provider fields, administrator consent, and the
+hosted test — is in **`docs/MICROSOFT_ENTRA_SETUP.md`**.
 
 ### Why the current key system, and not the legacy pair
 

@@ -40,7 +40,7 @@ const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
 const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
 
 /**
- * Seven files necessarily contain the very strings this suite forbids, each for
+ * A few files necessarily contain the very strings this suite forbids, each for
  * a stated reason:
  *
  *   boundaries.test.ts    this file — it lists what it forbids
@@ -64,6 +64,12 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  *   authAccessibility.test.tsx
  *                         asserts that no key, token or `service_role` string
  *                         reaches the rendered sign-in page, so it must name them
+ *   microsoftSignIn.test.tsx
+ *                         supplies absolute attacker URLs as open-redirect
+ *                         candidates for the callback URL handed to Microsoft,
+ *                         and names an example origin to build that URL against.
+ *                         A test that could not name an external origin could
+ *                         not prove the redirect never reaches one
  *   apiContract.test.ts   RUNS the Netlify handlers to prove they answer JSON
  *                         rather than HTML, which means setting the server
  *                         variables they read and giving each one a value of the
@@ -76,6 +82,7 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  */
 const SELF_REFERENTIAL = [
   'boundaries.test.ts',
+  'microsoftSignIn.test.tsx',
   'bundleSecrets.test.ts',
   'cspPolicy.test.ts',
   'sessionRevocation.test.ts',

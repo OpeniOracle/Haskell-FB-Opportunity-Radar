@@ -35,6 +35,23 @@
   VITE_SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
   VITE_RADAR_ENV = "development"
 
+  # "Continue with Microsoft" — OFF by committed default.
+  #
+  # Not a secret, and not a security control: it decides whether a button is
+  # rendered, and every authorization rule holds identically either way. What it
+  # prevents is a deployment offering a door that opens onto an error, because
+  # Microsoft sign-in only works where an Entra application registration exists
+  # and its credentials have been entered into that Supabase project — which is
+  # true of neither a local checkout nor a fresh preview.
+  #
+  # Turned on per deployment in the Netlify UI, and only after the manual
+  # configuration in docs/MICROSOFT_ENTRA_SETUP.md is complete. Read at BUILD
+  # time by Vite, so changing it requires a redeploy.
+  #
+  # The Entra client ID, tenant ID and client secret are NOT here. They belong to
+  # the Supabase project; the browser never sees them.
+  VITE_AUTH_MICROSOFT_ENABLED = "false"
+
   # Server-side, non-secret. The functions runtime inherits these.
   #
   # The publishable key appears here deliberately. It is not confidential — it

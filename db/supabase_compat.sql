@@ -85,3 +85,22 @@ create table if not exists auth.sessions (
     updated_at  timestamptz not null default now(),
     not_after   timestamptz
 );
+
+-- `auth.identities` exists on every Supabase project: GoTrue writes one row per
+-- external identity attached to a user, and it is the table an OAuth sign-in
+-- touches when it LINKS to an account that already exists. Migration 0020 puts a
+-- trigger on it, so the test target needs a table of the same name with the
+-- columns that trigger reads.
+--
+-- Only `user_id`, `provider` and `identity_data` matter here. GoTrue's real
+-- table also carries `provider_id`, sign-in timings and a generated `email`
+-- column; reproducing those would be pretending to test something this shim
+-- cannot test. The cascade matches GoTrue's.
+create table if not exists auth.identities (
+    id              uuid primary key default gen_random_uuid(),
+    user_id         uuid not null references auth.users (id) on delete cascade,
+    provider        text not null,
+    identity_data   jsonb not null default '{}'::jsonb,
+    created_at      timestamptz not null default now(),
+    updated_at      timestamptz not null default now()
+);

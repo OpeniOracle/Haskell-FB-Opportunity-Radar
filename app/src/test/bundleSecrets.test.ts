@@ -21,6 +21,24 @@ import { APP_ROOT } from '@/test/paths'
 const PLANTED_SECRET = 'sb_secret_PLANTEDCANARYVALUEdoNotShip'
 const PLANTED_PUBLISHABLE = 'sb_publishable_PLANTEDCANARYVALUEisFine'
 
+/*
+   THE ENTRA CREDENTIALS, WHICH BELONG TO SUPABASE AND NOT TO THIS BUNDLE.
+
+   Microsoft sign-in is configured by giving the Supabase project an Entra
+   application ID and client secret. The BROWSER needs neither: it calls
+   `signInWithOAuth`, Supabase redirects it to Microsoft, and the secret is used
+   server-to-server in the token exchange. So neither value has any business
+   being VITE_-prefixed, and a paste into the wrong environment variable is
+   exactly the mistake this plants for.
+
+   The tenant ID is not secret — it appears in every authority URL — but it is
+   planted too, because a tenant ID in the bundle means somebody wired the
+   authority into the client, which is a design this application does not have
+   and would not want.
+*/
+const PLANTED_ENTRA_SECRET = 'PLANTEDentraClientSecretValue~doNotShip'
+const PLANTED_ENTRA_TENANT = 'PLANTED-tenant-0000-4000-8000-000000000000'
+
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry)
@@ -43,6 +61,14 @@ describe('build output carries no secret', () => {
         SUPABASE_SECRET_KEY: PLANTED_SECRET,
         MODEL_API_KEY: 'sk-planted-model-key-value',
         INGEST_SHARED_SECRET: 'planted-ingest-shared-secret',
+        // Both unprefixed AND prefixed, so both routes into the bundle are
+        // exercised. The application reads neither.
+        AZURE_CLIENT_SECRET: PLANTED_ENTRA_SECRET,
+        VITE_AZURE_CLIENT_SECRET: PLANTED_ENTRA_SECRET,
+        AZURE_TENANT_ID: PLANTED_ENTRA_TENANT,
+        VITE_AZURE_TENANT_ID: PLANTED_ENTRA_TENANT,
+        // The flag that IS read, and is deliberately not a secret.
+        VITE_AUTH_MICROSOFT_ENABLED: 'true',
       },
       stdio: 'pipe',
     })
@@ -76,6 +102,8 @@ describe('build output carries no secret', () => {
       ['planted secret key', PLANTED_SECRET],
       ['planted model key', 'sk-planted-model-key-value'],
       ['planted ingest secret', 'planted-ingest-shared-secret'],
+      ['planted Entra client secret', PLANTED_ENTRA_SECRET],
+      ['planted Entra tenant id', PLANTED_ENTRA_TENANT],
     ] as const) {
       const offenders = contents.filter((c) => c.text.includes(needle)).map((c) => c.path)
       expect(offenders, label).toEqual([])
@@ -90,6 +118,17 @@ describe('build output carries no secret', () => {
       ['service_role', /service_role/],
       ['postgres connection string', /postgres(ql)?:\/\/[^\s"']+/],
       ['private key block', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
+      /*
+         No Microsoft endpoint may be addressed by the browser directly.
+
+         The sign-in redirect is Supabase's to construct: the application calls
+         `signInWithOAuth` and Supabase builds the authority URL from
+         credentials only it holds. A `login.microsoftonline.com` literal in the
+         bundle would mean the client had taken that over, which is how a client
+         secret ends up somewhere it can be read.
+      */
+      ['a Microsoft authority URL', /login\.microsoftonline\.com/],
+      ['a Microsoft Graph endpoint', /graph\.microsoft\.com/],
     ] as const) {
       const offenders = contents.filter((c) => pattern.test(c.text)).map((c) => c.path)
       expect(offenders, label).toEqual([])
