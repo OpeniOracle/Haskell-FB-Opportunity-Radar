@@ -40,8 +40,15 @@ anywhere in `app/src`.
 ### `VITE_AUTH_MICROSOFT_ENABLED`
 
 Whether this deployment shows the **Continue with Microsoft** button. Read at
-BUILD time by Vite, so **changing it requires a redeploy** — setting it in the
-Netlify dashboard does not switch the button on for the build already live.
+BUILD time by Vite, so changing it requires a rebuild of that context.
+
+**Set per context in `netlify.toml`, never in the Netlify UI.** Production
+`"false"`, deploy previews `"true"`, branch deploys `"false"`, everything else
+unset and therefore disabled. Values in `netlify.toml` override the Netlify UI
+and API, so a dashboard value for this variable would be silently ignored —
+which is why it is not declared in `[build.environment]` at all, and why each
+context states it explicitly. `app/src/test/microsoftFlagContexts.test.ts`
+fails if that shape drifts.
 
 Off unless the value is exactly the string `true`. Absent, empty, `1`, `yes` and
 `TRUE` all mean off: a configuration flag whose failure mode is "enabled by

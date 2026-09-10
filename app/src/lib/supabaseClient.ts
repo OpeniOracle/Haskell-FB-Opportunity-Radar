@@ -49,9 +49,7 @@ export function browserConfig(): BrowserConfig | null {
     url,
     publishableKey,
     radarEnv: import.meta.env.VITE_RADAR_ENV ?? 'development',
-    // Exactly `true`, nothing else. See the note in `vite-env.d.ts`: a flag that
-    // can be switched on by a typo is not a gate.
-    microsoftSignIn: import.meta.env.VITE_AUTH_MICROSOFT_ENABLED === 'true',
+    microsoftSignIn: microsoftFlagEnabled(import.meta.env.VITE_AUTH_MICROSOFT_ENABLED),
   }
 }
 
@@ -70,6 +68,24 @@ export function browserConfig(): BrowserConfig | null {
  */
 export function microsoftSignInEnabled(): boolean {
   return browserConfig()?.microsoftSignIn === true
+}
+
+/**
+ * The flag rule, as a pure function of the raw environment value.
+ *
+ * Separated from `browserConfig` so it can be tested against the values actually
+ * committed in `netlify.toml`, per context, without a build. That is what
+ * `microsoftFlagContexts.test.ts` does: it reads the three context declarations
+ * out of the file and puts each one through THIS function, so the test is about
+ * the deployment contract rather than about a copy of it.
+ *
+ * EXACTLY `true`, nothing else. Unset, empty, `TRUE`, `1` and `yes` all mean
+ * off. A flag whose failure mode is "enabled by accident" is the wrong way
+ * round — and it is what makes an unlisted Netlify context safe by default,
+ * since an unset variable arrives here as `undefined`.
+ */
+export function microsoftFlagEnabled(raw: string | undefined): boolean {
+  return raw === 'true'
 }
 
 let cached: SupabaseClient | null = null

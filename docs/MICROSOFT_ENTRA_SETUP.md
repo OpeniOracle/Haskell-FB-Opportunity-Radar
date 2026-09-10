@@ -254,33 +254,37 @@ controlled piece of work that has not been started.
 
 ---
 
-## 5. Netlify
+## 5. Netlify — nothing to do
 
-**Site configuration → Environment variables.**
+**There is no Netlify UI variable to set, and adding one would not work.**
 
-| Variable | Value | Scope |
+`VITE_AUTH_MICROSOFT_ENABLED` is declared per context in `netlify.toml`:
+
+| Context | Value | Effect |
 | --- | --- | --- |
-| `VITE_AUTH_MICROSOFT_ENABLED` | `true` | Production (add to Deploy previews to test there) |
+| `[context.production.environment]` | `"false"` | production never shows the button |
+| `[context.deploy-preview.environment]` | `"true"` | pull-request previews show it |
+| `[context.branch-deploy.environment]` | `"false"` | branch deploys do not |
+| anything else (a named branch context, `netlify dev`, a laptop) | unset | disabled |
 
-That is the whole list. There is **no** Entra client ID, tenant ID or client
-secret in Netlify — Supabase holds them, and the browser never sees them.
+**Values in `netlify.toml` override anything set in the Netlify UI or API.** An
+earlier version of this file told you to switch the flag on in the dashboard
+while the repository committed a single global `"false"`. That could not have
+worked: the dashboard value would have been silently ignored, the preview would
+have built with the button off, and nothing anywhere would have said why.
 
-The variable is read at **build** time by Vite, so **changing it requires a
-redeploy.** Setting it in the dashboard does not switch the button on for the
-build that is already live.
+So the flag moved into three explicit per-context declarations, and turning it
+on for production is a **commit** — an edit to
+`[context.production.environment]`, reviewed like any other change — rather than
+a dashboard toggle nobody can see the history of.
 
-It is not a security control. It decides whether a button is rendered; every
-authorization rule holds identically whether it is on or off. Its purpose is to
-stop a deployment offering a door that opens onto an error — a build with the
-flag on and no Entra registration behind it would show a button that fails for
-everybody.
+`app/src/test/microsoftFlagContexts.test.ts` holds that shape. It fails if the
+flag reappears in `[build.environment]`, if any context stops declaring it, if a
+context resolves to the wrong value, or if the two context builds stop differing.
 
-`netlify.toml` sets it to `false` as the committed default, so a new preview or
-a fresh deploy never enables it by accident. Exactly the string `true` turns it
-on; `1`, `yes`, `TRUE` and anything else mean off, because a flag that can be
-switched on by a typo is not a gate.
-
----
+The Entra client ID, tenant ID and client secret are **not** in Netlify at all.
+They belong to the Supabase project; the browser never sees them, and the build
+scan plants an Entra-shaped secret and fails if anything like it ships.
 
 ## 6. Migration 0020
 
@@ -309,7 +313,9 @@ The flag is last, and that is the point.
 4. Obtain administrator consent if the tenant requires it (step 4).
 5. Confirm the allowlist row exists for the **one** reviewer doing the hosted
    test.
-6. Set `VITE_AUTH_MICROSOFT_ENABLED=true` and redeploy.
+6. Deploy previews already build with the button on. To enable PRODUCTION,
+   change `[context.production.environment]` in `netlify.toml` to `"true"` and
+   merge; that redeploys production with the flag set.
 7. Run the hosted test with that one reviewer.
 8. Only then tell the other three.
 
@@ -371,9 +377,14 @@ Check in this order:
 
 ## 9. Rollback
 
-**To switch it off immediately:** set `VITE_AUTH_MICROSOFT_ENABLED=false` in
-Netlify and redeploy. The button disappears. Password sign-in and recovery are
-untouched — they never depended on any of this.
+**To switch it off immediately:** set `VITE_AUTH_MICROSOFT_ENABLED = "false"`
+in `[context.production.environment]` and deploy. The button disappears.
+Password sign-in and recovery are untouched — they never depended on any of
+this.
+
+That is a commit rather than a dashboard toggle, which is slower by a few
+minutes and worth it: the flag's history is then in the repository, and a
+dashboard value could not have overridden the committed one anyway.
 
 That is the whole rollback for the interface. Beyond it:
 

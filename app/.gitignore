@@ -6,4 +6,9 @@ screenshots
 .vite
 dist-harness/
 
+# Per-context build outputs from microsoftFlagContexts.test.ts. The suite
+# removes them itself; this is for the run that is interrupted.
+dist-flagcheck-production/
+dist-flagcheck-preview/
+
 browser-screenshots/
