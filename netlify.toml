@@ -35,6 +35,28 @@
   VITE_SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
   VITE_RADAR_ENV = "development"
 
+  # VITE_AUTH_MICROSOFT_ENABLED IS DELIBERATELY NOT DECLARED HERE.
+  #
+  # It is set per CONTEXT, further down, and this absence is the point.
+  #
+  # A value in `[build.environment]` applies to every context, and netlify.toml
+  # OVERRIDES anything set in the Netlify UI or API. So a global "false" here
+  # could not be turned on for deploy previews from the dashboard: the UI value
+  # would be silently ignored and the preview would build with the button off,
+  # with nothing anywhere saying why. That is the failure this layout removes.
+  #
+  # Not a secret, and not a security control: it decides whether a button is
+  # rendered, and every authorization rule holds identically either way. What it
+  # prevents is a deployment offering a door that opens onto an error, because
+  # Microsoft sign-in only works where an Entra application registration exists
+  # and its credentials have been entered into that Supabase project.
+  #
+  # Read at BUILD time by Vite, so changing a context requires a rebuild of that
+  # context. See docs/MICROSOFT_ENTRA_SETUP.md.
+  #
+  # The Entra client ID, tenant ID and client secret are NOT here and never will
+  # be. They belong to the Supabase project; the browser never sees them.
+
   # Server-side, non-secret. The functions runtime inherits these.
   #
   # The publishable key appears here deliberately. It is not confidential — it
@@ -76,17 +98,51 @@
   MODEL_ID = "claude-sonnet-5"
   MODEL_PROMPT_VERSION = "v0"
 
+# EVERY CONTEXT STATES THE MICROSOFT FLAG EXPLICITLY.
+#
+# Three declarations rather than one default plus an exception, because an
+# exception is invisible: reading `[context.production.environment]` and finding
+# nothing tells you the flag is off ONLY if you also know what the global block
+# says and how Netlify merges the two. Stating it three times means each context
+# can be read on its own and be right.
+#
+# `app/src/test/microsoftFlagContexts.test.ts` holds this shape: it fails if the
+# flag reappears in `[build.environment]`, if any context stops declaring it, or
+# if a context resolves to the wrong value.
+#
+# A context not listed here (a named branch context, `netlify dev`, or a plain
+# `vite build` on a laptop) leaves the variable UNSET, and unset is disabled --
+# `microsoftFlagEnabled` requires the exact string "true". Off is what you get
+# by default, everywhere, without anybody writing it down.
+
 [context.production.environment]
   VITE_RADAR_ENV = "production"
   RADAR_ENV = "production"
+  # ON. Microsoft sign-in was hosted-tested on the PR 13 deploy preview with an
+  # existing allowlisted Openi account: the identity linked to the EXISTING
+  # Supabase user, no duplicate was created, and password sign-in and recovery
+  # by code both still worked afterwards.
+  #
+  # A Haskell account was not available to test before release, so Haskell
+  # tenant consent and Haskell first-login identity linking are PENDING
+  # OPERATIONAL VALIDATION in production. See docs/MICROSOFT_ENTRA_SETUP.md.
+  # If Haskell's tenant refuses, the fix is on Microsoft's side or is this flag
+  # going back to "false" -- never a relaxed authorization control here.
+  VITE_AUTH_MICROSOFT_ENABLED = "true"
 
 [context.deploy-preview.environment]
   VITE_RADAR_ENV = "preview"
   RADAR_ENV = "preview"
+  # ON for pull-request previews, which is where Microsoft sign-in is tested
+  # before production is asked to carry it.
+  VITE_AUTH_MICROSOFT_ENABLED = "true"
 
 [context.branch-deploy.environment]
   VITE_RADAR_ENV = "preview"
   RADAR_ENV = "preview"
+  # A branch deploy is not a reviewed pull request. It gets the preview
+  # environment but NOT the Microsoft button.
+  VITE_AUTH_MICROSOFT_ENABLED = "false"
 
 # The API. Same-origin by construction: the browser only ever addresses this
 # origin, so `connect-src` needs to permit exactly two things — 'self' and the

@@ -898,6 +898,211 @@ set local role authenticated;
 select count(*) from reserved_service_addresses;`,
   },
 
+  // ---- Microsoft identity linking (0020). --------------------------------
+  //
+  // Signing in with Microsoft proves identity to Microsoft. These cases hold
+  // the database to the three things that must remain true regardless of what
+  // any dashboard toggle says: one account per address, an identity may only
+  // attach to its own address, and it may only do so on a VERIFIED address.
+  //
+  // `auth.identities` on a test target is the compatibility shim's; on Supabase
+  // it is GoTrue's. Only `user_id`, `provider` and `identity_data` are touched,
+  // which both have.
+  {
+    group: 'microsoft-identity',
+    name: 'an invited address can still create its first account',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('first@example.invalid', 'first@example.invalid', 'tester');
+
+insert into auth.users (email) values ('first@example.invalid');`,
+  },
+  {
+    // The pre-provisioned reviewers already exist. A Microsoft sign-in that
+    // created a SECOND account for the same address would leave the reviewer in
+    // an empty duplicate while their allowlist row still pointed at the
+    // original, and "who is this person" would stop having one answer.
+    group: 'microsoft-identity',
+    name: 'a second account for the same address is refused',
+    expect: 'An account already exists for this address',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('dupe@example.invalid', 'dupe@example.invalid', 'tester');
+
+insert into auth.users (email) values ('dupe@example.invalid');
+insert into auth.users (email) values ('dupe@example.invalid');`,
+  },
+  {
+    group: 'microsoft-identity',
+    name: 'a duplicate is refused across differing casing too',
+    expect: 'An account already exists for this address',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('dupe@example.invalid', 'dupe@example.invalid', 'tester');
+
+insert into auth.users (email) values ('dupe@example.invalid');
+insert into auth.users (email) values ('DUPE@Example.Invalid');`,
+  },
+  {
+    // The linking case, which is the one the four existing reviewers depend on.
+    // Attaching an identity does NOT insert into auth.users, so the invite-only
+    // trigger is not consulted and cannot refuse a legitimate first sign-in.
+    group: 'microsoft-identity',
+    name: 'a verified Microsoft identity links to the EXISTING account',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('linked@example.invalid', 'linked@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b0', 'linked@example.invalid');
+
+insert into auth.identities (user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000b0', 'azure',
+        '{"email": "linked@example.invalid", "email_verified": true}'::jsonb);
+
+do $$
+declare n int;
+begin
+    select count(*) into n from auth.users where lower(email) = 'linked@example.invalid';
+    if n <> 1 then
+        raise exception 'linking must not create a second account, found %', n;
+    end if;
+end
+$$;`,
+  },
+  {
+    // Entra emits `xms_edov` only when the optional claim is configured, and
+    // Supabase records it under either name depending on versions.
+    group: 'microsoft-identity',
+    name: 'xms_edov is accepted as the verification claim',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('edov@example.invalid', 'edov@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b1', 'edov@example.invalid');
+
+insert into auth.identities (user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000b1', 'azure',
+        '{"email": "edov@example.invalid", "xms_edov": true}'::jsonb);`,
+  },
+  {
+    // ACCOUNT TAKEOVER, and it needs no password. In a tenant that permits it a
+    // directory administrator can set a user's mail attribute to anything.
+    group: 'microsoft-identity',
+    name: 'a Microsoft identity cannot attach to somebody else\'s account',
+    expect: 'may only be attached to the account holding the same address',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('owner@example.invalid', 'owner@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b2', 'owner@example.invalid');
+
+insert into auth.identities (user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000b2', 'azure',
+        '{"email": "attacker@example.invalid", "email_verified": true}'::jsonb);`,
+  },
+  {
+    // "We were not told" is not "it is verified", and the difference is the
+    // entire security value of the claim.
+    group: 'microsoft-identity',
+    name: 'an UNVERIFIED Microsoft identity is refused',
+    expect: 'did not assert this address as verified',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('unverified@example.invalid', 'unverified@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b3', 'unverified@example.invalid');
+
+insert into auth.identities (user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000b3', 'azure',
+        '{"email": "unverified@example.invalid", "email_verified": false}'::jsonb);`,
+  },
+  {
+    group: 'microsoft-identity',
+    name: 'a Microsoft identity with NO verification claim at all is refused',
+    expect: 'did not assert this address as verified',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('silent@example.invalid', 'silent@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b4', 'silent@example.invalid');
+
+insert into auth.identities (user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000b4', 'azure',
+        '{"email": "silent@example.invalid"}'::jsonb);`,
+  },
+  {
+    group: 'microsoft-identity',
+    name: 'a Microsoft identity carrying no email at all is refused',
+    expect: 'carries no email address',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('noemail@example.invalid', 'noemail@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b5', 'noemail@example.invalid');
+
+insert into auth.identities (user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000b5', 'azure',
+        '{"email_verified": true}'::jsonb);`,
+  },
+  {
+    // The guard must not fire on anything else. Every existing account has an
+    // `email` identity, and password sign-in, invitations and the recovery-code
+    // flow all have to keep working exactly as they did.
+    group: 'microsoft-identity',
+    name: 'a non-Microsoft identity passes through untouched',
+    expect: 'ok',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('pwd@example.invalid', 'pwd@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b6', 'pwd@example.invalid');
+
+-- No verification claim, and a deliberately mismatched address: neither is
+-- this guard's business for a provider it does not police.
+insert into auth.identities (user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000b6', 'email',
+        '{"email": "something-else@example.invalid"}'::jsonb);`,
+  },
+  {
+    group: 'microsoft-identity',
+    name: 'an UPDATE cannot smuggle a mismatched identity past the guard',
+    expect: 'may only be attached to the account holding the same address',
+    sql: `
+insert into auth_invite_allowlist (email_normalized, email_as_entered, invited_by)
+values ('upd@example.invalid', 'upd@example.invalid', 'tester');
+
+insert into auth.users (id, email)
+values ('00000000-0000-4000-8000-0000000000b7', 'upd@example.invalid');
+
+insert into auth.identities (id, user_id, provider, identity_data)
+values ('00000000-0000-4000-8000-0000000000c7',
+        '00000000-0000-4000-8000-0000000000b7', 'azure',
+        '{"email": "upd@example.invalid", "email_verified": true}'::jsonb);
+
+update auth.identities
+   set identity_data = '{"email": "someone-else@example.invalid", "email_verified": true}'::jsonb
+ where id = '00000000-0000-4000-8000-0000000000c7';`,
+  },
+  {
+    group: 'microsoft-identity',
+    name: 'linking is still refused for an address that was never invited',
+    expect: 'Self-registration is disabled',
+    sql: `
+-- No allowlist row, so the account cannot exist in the first place. This is
+-- the path an uninvited stranger with a valid Microsoft account takes.
+insert into auth.users (email) values ('stranger@example.invalid');`,
+  },
+
   // ---- Evidence session guard (0018). ------------------------------------
   // The evidence proxy's immediate revocation depends entirely on this
   // function. `app/src/test/sessionRevocation.test.ts` models it in memory and

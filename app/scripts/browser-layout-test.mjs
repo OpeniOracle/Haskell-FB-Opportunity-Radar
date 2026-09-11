@@ -153,6 +153,71 @@ async function measureCallout(page, selector, label, viewport) {
   return box
 }
 
+/**
+ * The "Continue with Microsoft" button, measured rather than inspected.
+ *
+ * Its shape is the same one that shipped broken once: a fixed-size mark beside
+ * a flexible label inside a flex row. An unsized `<svg>` in that position
+ * expands to fill the line and squeezes the label to nothing, and no DOM-only
+ * test in this repository can see it happen.
+ *
+ * The 44px floor is not decoration. It is the smallest comfortable touch target
+ * on a phone, and this is the primary sign-in control for every reviewer who
+ * has no password.
+ */
+async function measureProviderButton(page, viewport) {
+  const box = await page.evaluate(() => {
+    const button = document.querySelector('.auth-provider__button')
+    if (!button) return null
+    const mark = button.querySelector('svg')
+    const label = button.querySelector('span')
+    const card = button.closest('.auth-card')
+    const divider = document.querySelector('.auth-provider__divider')
+    const r = (n) => (n ? n.getBoundingClientRect() : null)
+    return {
+      button: r(button), mark: r(mark), label: r(label), card: r(card), divider: r(divider),
+      docScrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+      text: (button.textContent ?? '').trim(),
+    }
+  })
+
+  const at = `microsoft button @${viewport.name}`
+  if (!check(`${at}: is present`, box !== null, 'no .auth-provider__button')) return
+
+  check(`${at}: says what it does`, /continue with microsoft/i.test(box.text), box.text)
+
+  // The brand mark is a fixed box that can neither grow into the label nor
+  // shrink out of sight.
+  check(`${at}: mark is at most 24px wide`, box.mark && box.mark.width <= 24.5,
+    `mark is ${box.mark?.width?.toFixed(1)}px`)
+  check(`${at}: mark is at least 14px`, box.mark && box.mark.width >= 13.5,
+    `mark is ${box.mark?.width?.toFixed(1)}px -- too small to recognise`)
+  check(`${at}: mark is square`, box.mark && Math.abs(box.mark.width - box.mark.height) <= 1.5,
+    `mark is ${box.mark?.width?.toFixed(1)}x${box.mark?.height?.toFixed(1)}`)
+
+  // A comfortable target, and the full width of the card.
+  check(`${at}: is at least 44px tall`, box.button && box.button.height >= 43.5,
+    `button is ${box.button?.height?.toFixed(1)}px tall`)
+  check(`${at}: fills the card width`,
+    box.card && box.button && box.button.width >= box.card.width * 0.8,
+    `button ${box.button?.width?.toFixed(0)}px in a ${box.card?.width?.toFixed(0)}px card`)
+  check(`${at}: stays inside the card`,
+    box.card && box.button && box.button.left >= box.card.left - 1 && box.button.right <= box.card.right + 1,
+    `button ${box.button?.left?.toFixed(0)}-${box.button?.right?.toFixed(0)} vs card ${box.card?.left?.toFixed(0)}-${box.card?.right?.toFixed(0)}`)
+
+  // The divider between the two ways in. Two flexible rules either side of a
+  // label; at a narrow width they must still leave the label readable.
+  check(`${at}: the divider stays inside the card`,
+    box.card && box.divider && box.divider.width <= box.card.width + 1,
+    `divider is ${box.divider?.width?.toFixed(1)}px in a ${box.card?.width?.toFixed(1)}px card`)
+
+  check(`${at}: page does not scroll sideways`, box.docScrollWidth <= box.innerWidth + 1,
+    `document is ${box.docScrollWidth}px wide in a ${box.innerWidth}px viewport`)
+
+  return box
+}
+
 async function shoot(page, name) {
   await mkdir(SHOTS, { recursive: true })
   await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true })
@@ -197,6 +262,44 @@ try {
       notice?.ariaLive === 'polite' || notice?.role === 'status', `role=${notice?.role} aria-live=${notice?.ariaLive}`)
     await shoot(page, `${tag}-recovery-confirmation-${viewport.name}`)
 
+    // ---- 3b. Recovery code entry -----------------------------------------
+    //
+    // The scanner-resistant recovery step. Measured like every other screen
+    // because it is now on the onboarding path for every pre-provisioned
+    // reviewer, not an edge case reached after a failure.
+    await page.goto(`${base}/auth/reset-password?scenario=recovery-code`)
+    await page.getByRole('heading', { name: /enter your recovery code/i }).waitFor()
+
+    const codeField = page.getByLabel(/six-digit code/i)
+    check(`recovery code @${viewport.name}: offers the one-time-code autofill hint`,
+      (await codeField.getAttribute('autocomplete')) === 'one-time-code',
+      await codeField.getAttribute('autocomplete'))
+    check(`recovery code @${viewport.name}: asks for a numeric keypad`,
+      (await codeField.getAttribute('inputmode')) === 'numeric',
+      await codeField.getAttribute('inputmode'))
+
+    const codeBox = await codeField.boundingBox()
+    check(`recovery code @${viewport.name}: the code field is a full-size touch target`,
+      (codeBox?.height ?? 0) >= 40, `height ${codeBox?.height}`)
+    check(`recovery code @${viewport.name}: the code field fits the viewport`,
+      (codeBox?.width ?? 0) <= viewport.width, `width ${codeBox?.width} vs ${viewport.width}`)
+
+    await shoot(page, `${tag}-recovery-code-${viewport.name}`)
+
+    // A refused code: generic, recovery-specific, and never invitation wording.
+    await page.getByLabel(/email address/i).fill('analyst@openi-analytics.invalid')
+    await codeField.fill('999999')
+    await page.getByRole('button', { name: /continue/i }).click()
+    await page.getByRole('alert').waitFor()
+    const refusal = await measureCallout(page, '[data-testid="auth-status-error"]', 'recovery code refusal', viewport)
+    check(`recovery code refusal @${viewport.name}: says nothing about the account`,
+      /was not accepted/i.test(refusal?.textContent ?? ''), refusal?.textContent)
+    check(`recovery code refusal @${viewport.name}: never uses invitation wording`,
+      !/invitation|invite/i.test(refusal?.textContent ?? ''), refusal?.textContent)
+    check(`recovery code refusal @${viewport.name}: clears the code from the field`,
+      (await codeField.inputValue()) === '', await codeField.inputValue())
+    await shoot(page, `${tag}-recovery-code-refused-${viewport.name}`)
+
     // ---- 4. Password policy ----------------------------------------------
     await page.goto(`${base}/auth/set-password?scenario=password-policy`)
     await page.getByLabel(/^new password|^password$/i).first().fill('short')
@@ -214,6 +317,20 @@ try {
     await page.getByRole('alert').waitFor()
     await measureCallout(page, '[data-testid="auth-status-error"]', 'password mismatch', viewport)
     await shoot(page, `${tag}-password-mismatch-${viewport.name}`)
+
+    // ---- 5. "Continue with Microsoft", at every width --------------------
+    await page.goto(`${base}/login?scenario=microsoft-login`)
+    await page.getByRole('button', { name: /continue with microsoft/i }).waitFor()
+    await measureProviderButton(page, viewport)
+
+    // The password form has to survive beside it. A fallback that is pushed
+    // off the card, or off the screen, is not a fallback.
+    const passwordBox = await page.getByLabel(/password/i).boundingBox()
+    check(`microsoft button @${viewport.name}: the password field is still on screen`,
+      passwordBox !== null && passwordBox.width > 0 && passwordBox.x >= 0
+        && passwordBox.x + passwordBox.width <= viewport.width + 1,
+      `password field at ${passwordBox?.x?.toFixed(0)} width ${passwordBox?.width?.toFixed(0)}`)
+    await shoot(page, `${tag}-microsoft-login-${viewport.name}`)
 
     await context.close()
   }
@@ -294,6 +411,95 @@ try {
   await darkPage.getByRole('alert').waitFor()
   await measureCallout(darkPage, '[data-testid="auth-status-error"]', 'login failure (dark)', { name: '390-dark' })
   await shoot(darkPage, `${tag}-login-failure-390-dark`)
+
+  // The recovery code page in the dark palette, at mobile width. It is the
+  // first screen a pre-provisioned reviewer meets, and half of them will open
+  // it on a phone at night.
+  await darkPage.goto(`${base}/auth/reset-password?scenario=recovery-code&theme=dark`)
+  await darkPage.getByRole('heading', { name: /enter your recovery code/i }).waitFor()
+
+  const darkCode = darkPage.getByLabel(/six-digit code/i)
+  const darkBox = await darkCode.boundingBox()
+  check('recovery code @390-dark: the code field fits the viewport',
+    (darkBox?.width ?? 0) <= 390, `width ${darkBox?.width}`)
+  check('recovery code @390-dark: the code field is a full-size touch target',
+    (darkBox?.height ?? 0) >= 40, `height ${darkBox?.height}`)
+
+  // Contrast is carried by the tokens, so the check that matters is that the
+  // palette actually changed rather than the page rendering light-on-light.
+  const darkInk = await darkCode.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { color: style.color, background: style.backgroundColor }
+  })
+  check('recovery code @390-dark: takes its colours from the dark palette',
+    darkInk.color !== darkInk.background, JSON.stringify(darkInk))
+  await shoot(darkPage, `${tag}-recovery-code-390-dark`)
+
+  await darkPage.getByLabel(/email address/i).fill('analyst@openi-analytics.invalid')
+  await darkCode.fill('999999')
+  await darkPage.getByRole('button', { name: /continue/i }).click()
+  await darkPage.getByRole('alert').waitFor()
+  const darkRefusal = await measureCallout(darkPage, '[data-testid="auth-status-error"]', 'recovery code refusal (dark)', { name: '390-dark' })
+
+  // "Continue with Microsoft" in the dark palette, at mobile width. The brand
+  // mark is four fixed colours that are NOT themed, so this is the one control
+  // on the page whose contrast cannot be fixed by a token -- which is exactly
+  // why it sits on a surface-coloured button rather than an accent-filled one.
+  await darkPage.goto(`${base}/login?scenario=microsoft-login&theme=dark`)
+  await darkPage.getByRole('button', { name: /continue with microsoft/i }).waitFor()
+  await measureProviderButton(darkPage, { name: '390-dark' })
+
+  const darkButtonContrast = await darkPage.evaluate(() => {
+    const button = document.querySelector('.auth-provider__button')
+    if (!button) return null
+    const cs = getComputedStyle(button)
+    const parse = (value) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)
+    const luminance = ([r, g, b]) => {
+      const f = (c) => {
+        const v = c / 255
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+      }
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+    }
+    const bg = parse(cs.backgroundColor)
+    const fg = parse(cs.color)
+    if (bg.length < 3 || fg.length < 3) return null
+    const [a, b] = [luminance(fg), luminance(bg)].sort((x, y) => y - x)
+    return (a + 0.05) / (b + 0.05)
+  })
+  check('microsoft button @390-dark: label meets 4.5:1 against its own background',
+    darkButtonContrast !== null && darkButtonContrast >= 4.5,
+    `contrast is ${darkButtonContrast?.toFixed(2)}:1`)
+  await shoot(darkPage, `${tag}-microsoft-login-390-dark`)
+
+  /*
+     AUTHENTICATED BY MICROSOFT, AND REFUSED.
+
+     The screen anybody in either tenant can reach. It must not name an
+     allowlist, must not name an address, and must not describe itself in
+     invitation language -- a person who signed in with Microsoft was never
+     invited by email and has no invitation to be told about.
+  */
+  await darkPage.goto(`${base}/auth/callback?scenario=microsoft-denied&flow=microsoft&code=harness-code`)
+  await darkPage.getByRole('heading', { name: /not authorized/i }).waitFor()
+  const deniedText = await darkPage.evaluate(
+    () => document.querySelector('.auth-card')?.textContent ?? '',
+  )
+  check('microsoft denied: does not mention an allowlist',
+    !/allowlist|allow list|invitation list/i.test(deniedText), deniedText.slice(0, 120))
+  check('microsoft denied: does not use invitation language',
+    !/invitation|invite/i.test(deniedText), deniedText.slice(0, 120))
+  check('microsoft denied: says access was not granted',
+    /not authorized/i.test(deniedText), deniedText.slice(0, 120))
+  const deniedUrl = darkPage.url()
+  check('microsoft denied: the code is gone from the address bar',
+    !deniedUrl.includes('harness-code'), deniedUrl)
+  await measureCallout(darkPage, '[data-testid="auth-status-error"]', 'microsoft denied (dark)', { name: '390-dark' })
+  await shoot(darkPage, `${tag}-microsoft-denied-390-dark`)
+  check('recovery code refusal @390-dark: never uses invitation wording',
+    !/invitation|invite/i.test(darkRefusal?.textContent ?? ''), darkRefusal?.textContent)
+  await shoot(darkPage, `${tag}-recovery-code-refused-390-dark`)
+
   await dark.close()
 } finally {
   await browser.close()

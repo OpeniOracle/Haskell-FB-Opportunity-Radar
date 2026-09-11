@@ -6,7 +6,7 @@ import type {
   RedeemResult,
   SignInFailure,
 } from '@/auth/authPort'
-import type { UrlCredential } from '@/auth/urlCredentials'
+import type { RedeemFailure, UrlCredential } from '@/auth/urlCredentials'
 
 /**
  * A controllable authentication provider, for tests.
@@ -47,12 +47,17 @@ export interface FakeAuthOptions {
   readonly signInFailure?: SignInFailure
   /** Simulate a build with no Supabase project. */
   readonly configured?: boolean
+  /** Simulate a deployment where Microsoft sign-in was switched on. */
+  readonly microsoftEnabled?: boolean
+  /** Make the redirect to Microsoft fail before it starts. */
+  readonly microsoftFailure?: SignInFailure
   /** Make `getSession()` reject, as an unreachable provider would. */
   readonly getSessionThrows?: boolean
 }
 
 export class FakeAuth implements AuthPort {
   readonly configured: boolean
+  readonly microsoftEnabled: boolean
 
   /** Everything the port was asked to do, in order. Assertable. */
   readonly calls: string[] = []
@@ -60,10 +65,19 @@ export class FakeAuth implements AuthPort {
   readonly passwordUpdates: string[] = []
   /** The credentials handed to `redeem`, so a test can assert what was parsed. */
   readonly redeemed: UrlCredential[] = []
+  /**
+   * The `redirectTo` values handed to `signInWithMicrosoft`.
+   *
+   * Recorded because the callback URL is the open-redirect surface: a test that
+   * only asserts "the button started a sign-in" would pass while sending people
+   * to somebody else's domain.
+   */
+  readonly microsoftRedirects: string[] = []
 
   standing: InvitationStanding
   redeemResult: RedeemResult
   signInFailure: SignInFailure | null
+  microsoftFailure: SignInFailure | null
   updatePasswordFailure: string | null = null
 
   private session: AuthSession | null
@@ -72,6 +86,8 @@ export class FakeAuth implements AuthPort {
 
   constructor(options: FakeAuthOptions = {}) {
     this.configured = options.configured ?? true
+    this.microsoftEnabled = options.microsoftEnabled ?? false
+    this.microsoftFailure = options.microsoftFailure ?? null
     this.session = options.initialSession ?? null
     this.standing = options.standing ?? 'invited'
     this.redeemResult = options.redeemResult ?? { ok: true, session: makeSession() }
@@ -115,6 +131,21 @@ export class FakeAuth implements AuthPort {
     return { ok: true as const, session: this.session }
   }
 
+  /**
+   * Begin a Microsoft sign-in.
+   *
+   * Records the redirect and stops. The real port hands control to the browser
+   * at this point and no session exists yet — a fake that returned a session
+   * here would let a page pass that never handled the callback at all, which is
+   * the exact class of bug that produced an invitation nobody could redeem.
+   */
+  async signInWithMicrosoft(redirectTo: string) {
+    this.calls.push('signInWithMicrosoft')
+    this.microsoftRedirects.push(redirectTo)
+    if (this.microsoftFailure) return { ok: false as const, failure: this.microsoftFailure }
+    return { ok: true as const }
+  }
+
   async signOut() {
     this.calls.push('signOut')
     this.session = null
@@ -132,6 +163,43 @@ export class FakeAuth implements AuthPort {
   async sendRecoveryEmail(email: string, redirectTo: string) {
     this.calls.push(`sendRecoveryEmail:${email}`)
     this.recoveryEmails.push({ email, redirectTo })
+  }
+
+  /**
+   * The recovery-code exchange, as the real port does it.
+   *
+   * `recoveryCode` is what a test says the emailed code was; anything else is
+   * refused. `recoveryCodeOutcome` lets a test make a CORRECT code fail the way
+   * an expired or already-used one does, which is the case that matters most
+   * and cannot be produced by typing the wrong digits.
+   */
+  recoveryCode = '123456'
+  recoveryCodeEmail = 'analyst@openi-analytics.invalid'
+  recoveryCodeOutcome: 'ok' | 'expired' | 'already_used' | 'unknown' = 'ok'
+  verifiedCodes: { email: string; code: string }[] = []
+
+  async verifyRecoveryCode(
+    email: string,
+    code: string,
+  ): Promise<{ ok: true; session: AuthSession } | { ok: false; reason: RedeemFailure }> {
+    // Recorded WITHOUT the code, so a test asserting on `calls` cannot itself
+    // become the place a credential is written down.
+    this.calls.push('verifyRecoveryCode')
+    this.verifiedCodes.push({ email, code })
+
+    if (email !== this.recoveryCodeEmail || code !== this.recoveryCode) {
+      // One answer for a wrong code and a wrong address: the page must not
+      // become a way to discover which addresses have a code outstanding.
+      return { ok: false, reason: 'unknown' }
+    }
+    if (this.recoveryCodeOutcome !== 'ok') return { ok: false, reason: this.recoveryCodeOutcome }
+
+    // Same shape the real port produces: a live recovery session, announced
+    // to the provider so the page can move on to the password fields.
+    const session = makeSession({ email })
+    this.session = session
+    for (const handler of this.handlers) handler('PASSWORD_RECOVERY', session)
+    return { ok: true, session }
   }
 
   async redeem(credential: UrlCredential): Promise<RedeemResult> {
@@ -208,12 +276,15 @@ export function withoutPrefill(fake: FakeAuth): AuthPort {
 export function neverResolves(): AuthPort {
   return {
     configured: true,
+    microsoftEnabled: false,
     getSession: () => new Promise<AuthSession | null>(() => {}),
     onAuthStateChange: () => () => {},
     signInWithPassword: async () => ({ ok: false, failure: { code: 'unavailable' } }),
+    signInWithMicrosoft: () => new Promise(() => {}),
     signOut: async () => {},
     updatePassword: async () => ({ ok: false, message: 'unavailable' }),
     sendRecoveryEmail: async () => {},
+    verifyRecoveryCode: () => new Promise(() => {}),
     redeem: () => new Promise(() => {}),
     confirmStanding: () => new Promise<InvitationStanding>(() => {}),
   }

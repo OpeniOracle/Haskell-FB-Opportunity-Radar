@@ -22,7 +22,8 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSession as getServerSession } from '@/lib/apiClient'
-import { supabaseBrowser } from '@/lib/supabaseClient'
+import { MICROSOFT_PROVIDER, MICROSOFT_SCOPES } from '@/auth/microsoftSignIn'
+import { microsoftSignInEnabled, supabaseBrowser } from '@/lib/supabaseClient'
 import { classifyFailure, type RedeemFailure, type UrlCredential } from '@/auth/urlCredentials'
 
 export interface AuthUser {
@@ -62,6 +63,15 @@ export type InvitationStanding = 'invited' | 'not_invited' | 'unknown'
 export interface AuthPort {
   /** False when the build was never pointed at a project. */
   readonly configured: boolean
+  /**
+   * Whether this deployment offers "Continue with Microsoft".
+   *
+   * On the PORT rather than read from configuration at the point of use, so
+   * that the login page has no build-time dependency and a test can render both
+   * states without rebuilding. See `microsoftSignInEnabled` for the two things
+   * that have to be true in production.
+   */
+  readonly microsoftEnabled: boolean
   getSession(): Promise<AuthSession | null>
   /** Returns an unsubscribe function. */
   onAuthStateChange(
@@ -71,9 +81,36 @@ export interface AuthPort {
     email: string,
     password: string,
   ): Promise<{ ok: true; session: AuthSession } | { ok: false; failure: SignInFailure }>
+  /**
+   * Begin a Microsoft Entra ID sign-in.
+   *
+   * On success THE PAGE NAVIGATES AWAY — `{ ok: true }` means "the redirect was
+   * started", not "somebody is signed in". Everything that decides whether they
+   * may be here happens when they come back to `/auth/callback`, and none of it
+   * is decided by this call.
+   *
+   * `redirectTo` is passed in, already sanitised, rather than built here: an
+   * open redirect is a URL problem and it belongs with the other URL rules in
+   * `microsoftSignIn.ts` where it is tested as a pure function.
+   */
+  signInWithMicrosoft(
+    redirectTo: string,
+  ): Promise<{ ok: true } | { ok: false; failure: SignInFailure }>
   signOut(): Promise<void>
   updatePassword(password: string): Promise<{ ok: true } | { ok: false; message: string }>
   sendRecoveryEmail(email: string, redirectTo: string): Promise<void>
+  /**
+   * Exchange an emailed six-digit code for a recovery session.
+   *
+   * This exists because a LINK in an email is not a secret that survives
+   * delivery: corporate mail security fetches every URL it sees, and a
+   * single-use token is spent by the first fetch. A code is inert until a
+   * human types it into a page that a scanner never visits.
+   */
+  verifyRecoveryCode(
+    email: string,
+    code: string,
+  ): Promise<{ ok: true; session: AuthSession } | { ok: false; reason: RedeemFailure }>
   redeem(credential: UrlCredential): Promise<RedeemResult>
   /**
    * Asked of the SERVER, because it cannot be asked of the browser: migration
@@ -149,6 +186,7 @@ function classifySignInError(message: string, status?: number): SignInFailure {
 export function supabaseAuthPort(client: SupabaseClient): AuthPort {
   return {
     configured: true,
+    microsoftEnabled: microsoftSignInEnabled(),
 
     async getSession() {
       const { data } = await client.auth.getSession()
@@ -175,6 +213,33 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
       return { ok: true, session }
     },
 
+    async signInWithMicrosoft(redirectTo) {
+      /*
+         `signInWithOAuth` starts PKCE and redirects. The client was created
+         with `flowType: 'pkce'`, so the code verifier is stored locally and the
+         authorization code that comes back is worthless to anybody who did not
+         start the flow in this browser.
+
+         `scopes` is the narrow set in `microsoftSignIn.ts` — enough to learn
+         who is signing in and nothing more. No Microsoft Graph permission is
+         requested, because the application reads nothing from Microsoft.
+
+         NOTHING IS LOGGED HERE. Not the redirect URL, not the provider's
+         response, not the URL the provider sends back.
+      */
+      const { error } = await client.auth.signInWithOAuth({
+        provider: MICROSOFT_PROVIDER,
+        options: { scopes: MICROSOFT_SCOPES, redirectTo },
+      })
+      if (error) {
+        return {
+          ok: false,
+          failure: classifySignInError(error.message, (error as { status?: number }).status),
+        }
+      }
+      return { ok: true }
+    },
+
     async signOut() {
       // `local` scope: end THIS browser's session. A global sign-out would end
       // the person's other devices too, which is not what a Sign out control in
@@ -199,6 +264,24 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
       await client.auth.resetPasswordForEmail(email, { redirectTo })
     },
 
+    async verifyRecoveryCode(email, code) {
+      try {
+        const { data, error } = await client.auth.verifyOtp({
+          email,
+          token: code,
+          type: 'recovery',
+        })
+        if (error) return { ok: false, reason: classifyFailure(null, error.message) }
+        const session = toAuthSession(data.session as SupabaseSessionShape | null)
+        return session ? { ok: true, session } : { ok: false, reason: 'unknown' }
+      } catch {
+        // Never let a thrown provider error reach an error boundary: the code
+        // and the address are both in scope here and a stack trace is a place
+        // they must not appear.
+        return { ok: false, reason: 'unknown' }
+      }
+    },
+
     async redeem(credential) {
       if (credential.kind === 'none') return { ok: false, reason: 'missing' }
       if (credential.kind === 'error') return { ok: false, reason: credential.reason }
@@ -221,9 +304,21 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
           return session ? { ok: true, session } : { ok: false, reason: 'unknown' }
         }
 
+        /*
+          NO DEFAULT TO 'invite'.
+
+          This used to read `credential.type ?? 'invite'`, which is how a
+          RECOVERY failure came to be announced as an expired invitation: when
+          the type is absent there is nothing to base that guess on, and
+          guessing tells the person a false story about their own account.
+          A credential with no stated type is refused as indeterminate, and the
+          callback renders neutral language for it.
+        */
+        if (!credential.type) return { ok: false, reason: 'unknown' }
+
         const { data, error } = await client.auth.verifyOtp({
           token_hash: credential.tokenHash,
-          type: (credential.type ?? 'invite') as 'invite',
+          type: credential.type as 'invite' | 'recovery' | 'magiclink' | 'signup',
         })
         if (error) return { ok: false, reason: classifyFailure(null, error.message) }
         const session = toAuthSession(data.session as SupabaseSessionShape | null)
@@ -255,12 +350,15 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
  */
 export const unconfiguredAuthPort: AuthPort = {
   configured: false,
+  microsoftEnabled: false,
   getSession: async () => null,
   onAuthStateChange: () => () => {},
   signInWithPassword: async () => ({ ok: false, failure: { code: 'unavailable' } }),
+  signInWithMicrosoft: async () => ({ ok: false, failure: { code: 'unavailable' } }),
   signOut: async () => {},
   updatePassword: async () => ({ ok: false, message: 'Authentication is not configured.' }),
   sendRecoveryEmail: async () => {},
+  verifyRecoveryCode: async () => ({ ok: false, reason: 'unknown' }),
   redeem: async () => ({ ok: false, reason: 'unknown' }),
   confirmStanding: async () => 'unknown',
 }

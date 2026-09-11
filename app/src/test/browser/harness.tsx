@@ -58,6 +58,28 @@ const SCENARIOS: Record<string, () => FakeAuth> = {
   // The genuinely de-listed account, for contrast: the one case where the
   // allowlist really is the thing to go and look at.
   'callback-not-invited': () => new FakeAuth({ standing: 'not_invited' }),
+  /*
+     RECOVERY BY CODE, WHICH IS NOW A PAGE AN UNAUTHENTICATED VISITOR SEES.
+
+     Two fields and a refusal, at every width and in both themes. It is the
+     first screen a reviewer meets when setting a password for the first time,
+     so a layout fault here is a layout fault in the onboarding path.
+  */
+  'recovery-code': () => new FakeAuth(),
+  /*
+     "CONTINUE WITH MICROSOFT", WHICH IS NOW THE FIRST THING ON THE PAGE.
+
+     Worth measuring in a real browser rather than jsdom for two reasons that
+     are both layout: the button carries a fixed-size brand mark beside a label,
+     which is the exact shape of the defect that shipped once already, and the
+     divider between it and the password form is drawn with two flexible rules
+     that have to survive a 360px card without pushing the page sideways.
+  */
+  'microsoft-login': () => new FakeAuth({ microsoftEnabled: true }),
+  // Authenticated by Microsoft, and refused by the allowlist. The screen a
+  // non-reviewer sees, which anybody in either tenant can reach.
+  'microsoft-denied': () =>
+    new FakeAuth({ microsoftEnabled: true, standing: 'not_invited' }),
 }
 
 const build = SCENARIOS[scenario]
