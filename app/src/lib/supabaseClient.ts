@@ -30,6 +30,8 @@ export interface BrowserConfig {
   readonly url: string
   readonly publishableKey: string
   readonly radarEnv: string
+  /** Whether this deployment offers "Continue with Microsoft". */
+  readonly microsoftSignIn: boolean
 }
 
 /**
@@ -47,7 +49,43 @@ export function browserConfig(): BrowserConfig | null {
     url,
     publishableKey,
     radarEnv: import.meta.env.VITE_RADAR_ENV ?? 'development',
+    microsoftSignIn: microsoftFlagEnabled(import.meta.env.VITE_AUTH_MICROSOFT_ENABLED),
   }
+}
+
+/**
+ * Whether to offer "Continue with Microsoft" on the sign-in page.
+ *
+ * Two conditions, both required. The flag says this deployment was configured
+ * for it; `browserConfig()` returning at all says there is a Supabase project
+ * to sign in to. A build with the flag on and no project would render a button
+ * that cannot do anything.
+ *
+ * Read through here rather than from `import.meta.env` directly, because
+ * `boundaries.test.ts` holds this module as the only place in `src/` allowed to
+ * read build-time configuration — and that rule is worth more than the
+ * convenience of reading it where it is used.
+ */
+export function microsoftSignInEnabled(): boolean {
+  return browserConfig()?.microsoftSignIn === true
+}
+
+/**
+ * The flag rule, as a pure function of the raw environment value.
+ *
+ * Separated from `browserConfig` so it can be tested against the values actually
+ * committed in `netlify.toml`, per context, without a build. That is what
+ * `microsoftFlagContexts.test.ts` does: it reads the three context declarations
+ * out of the file and puts each one through THIS function, so the test is about
+ * the deployment contract rather than about a copy of it.
+ *
+ * EXACTLY `true`, nothing else. Unset, empty, `TRUE`, `1` and `yes` all mean
+ * off. A flag whose failure mode is "enabled by accident" is the wrong way
+ * round — and it is what makes an unlisted Netlify context safe by default,
+ * since an unset variable arrives here as `undefined`.
+ */
+export function microsoftFlagEnabled(raw: string | undefined): boolean {
+  return raw === 'true'
 }
 
 let cached: SupabaseClient | null = null

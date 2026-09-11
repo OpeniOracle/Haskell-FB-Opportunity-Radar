@@ -4,6 +4,12 @@ import { AuthLayout, FormError } from '@/auth/AuthLayout'
 import { AuthPending } from '@/auth/RequireAuth'
 import { useAuth } from '@/auth/authContext'
 import {
+  classifyCallback,
+  consumeMicrosoftFlowMarker,
+  returnPathFromCallback,
+  type CallbackFlow,
+} from '@/auth/microsoftSignIn'
+import {
   isInvitationOnboarding,
   parseUrlCredential,
   scrubCredentialFromHistory,
@@ -104,6 +110,52 @@ const INDETERMINATE_COPY: FlowCopy = {
     'Once the service is back, request a new link or code and try again. Do not rely on this one still working.',
 }
 
+/**
+ * A Microsoft sign-in that started but did not finish.
+ *
+ * Covers a spent or replayed authorization code, a code that belongs to another
+ * browser's PKCE exchange, a mismatched state, and an exchange that Supabase
+ * refused for a reason it does not disclose. One screen for all of them,
+ * because the difference between "already used" and "not yours" is a fact about
+ * somebody's sign-in attempt and the person reading this is not necessarily
+ * that somebody.
+ *
+ * The instruction is always the same and always works: start again. A Microsoft
+ * sign-in costs nothing to repeat, unlike an emailed link.
+ */
+const MICROSOFT_COPY: FlowCopy = {
+  noun: 'Microsoft sign-in',
+  linkFailureTitle: 'That Microsoft sign-in could not be completed',
+  linkFailureMessage:
+    'The Radar could not complete this Microsoft sign-in. Sign-in attempts can only be finished once, in the browser that started them.',
+  linkFailureNote:
+    'Go back to the sign-in page and choose "Continue with Microsoft" again. If you have a password, that still works too.',
+  serviceNote:
+    'Once the service is back, start the Microsoft sign-in again from the sign-in page.',
+}
+
+/**
+ * Microsoft itself said no, and did not say why in terms this page may repeat.
+ *
+ * `error=access_denied` is what arrives when somebody presses Cancel, when
+ * administrator consent has not been granted for the tenant, and when a
+ * conditional-access policy refuses. The page cannot tell them apart and must
+ * not guess — telling a reviewer "your administrator has not approved this"
+ * when they simply pressed Cancel sends them to raise a ticket for nothing.
+ *
+ * So it states what happened, offers the two things that might work, and stops.
+ */
+const MICROSOFT_REFUSAL_COPY: FlowCopy = {
+  noun: 'Microsoft sign-in',
+  linkFailureTitle: 'Microsoft did not complete the sign-in',
+  linkFailureMessage:
+    'Microsoft returned without signing you in. That happens if the sign-in was cancelled, or if your organization has not approved the Radar for use with Microsoft accounts.',
+  linkFailureNote:
+    'Try "Continue with Microsoft" once more. If it stops here again, sign in with your password instead and tell your administrator that the Radar needs approval in your Microsoft tenant.',
+  serviceNote:
+    'Once the service is back, start the Microsoft sign-in again from the sign-in page.',
+}
+
 const RECOVERY_COPY: FlowCopy = {
   noun: 'password reset',
   linkFailureTitle: 'That password reset link cannot be used',
@@ -140,15 +192,35 @@ export function CallbackPage() {
   const capture = useRef<{
     credential: ReturnType<typeof parseUrlCredential>
     onboarding: boolean
-    credentialType: string | null
+    flow: CallbackFlow
+    next: string
   } | null>(null)
   if (capture.current === null) {
-    const credential = parseUrlCredential(window.location.search, window.location.hash)
+    const { search, hash } = window.location
+    const credential = parseUrlCredential(search, hash)
     capture.current = {
       credential,
       onboarding: isInvitationOnboarding(credential),
-      // `none` carries no type; every other shape does.
-      credentialType: credential.kind === 'none' ? null : credential.type,
+      /*
+         WHICH ERRAND THIS IS, ESTABLISHED POSITIVELY.
+
+         `consumeMicrosoftFlowMarker` reads AND removes the session marker, so it
+         describes exactly one returning navigation. Read here, inside the
+         ref-guarded capture, for the same reason the credential is: it must
+         happen before any effect, any paint and any redirect a child could
+         queue — and exactly once, because a second read would find the marker
+         already spent and report a genuine Microsoft callback as something else.
+      */
+      flow: classifyCallback({ search, hash, microsoftFlowStarted: consumeMicrosoftFlowMarker() }),
+      /*
+         Where to go afterwards, sanitised AGAIN on arrival.
+
+         It was already sanitised before it was sent to Microsoft. Doing it twice
+         is not belt and braces for its own sake: what comes back arrives from
+         outside, through a provider, and treating a value as safe because an
+         earlier version of it was checked is how open redirects survive.
+      */
+      next: returnPathFromCallback(search),
     }
   }
 
@@ -157,7 +229,7 @@ export function CallbackPage() {
     started.current = true
 
     // 1. Already read, above, before anything could discard it.
-    const { credential, onboarding, credentialType } = capture.current!
+    const { credential, onboarding, flow, next } = capture.current!
 
     // 2. Scrub before anything else can observe it.
     scrubCredentialFromHistory('/auth/callback')
@@ -176,14 +248,24 @@ export function CallbackPage() {
       const admitted = await adoptSession(result.session, { onboarding })
       if (!admitted) return
 
-      // 5. Onward. `replace` throughout: the callback must not sit in history.
-      //    A recovery link goes to the reset form, an invitation to onboarding,
-      //    anything else straight into the application.
+      /*
+        5. Onward. `replace` throughout: the callback must not sit in history.
+
+        An invitation goes to onboarding, a recovery link to the reset form, and
+        a Microsoft sign-in to wherever the person was heading when the gate
+        stopped them — which is the whole point of carrying `next` through the
+        provider and back. `next` was sanitised on the way out and again on the
+        way in, and `safeReturnPath` resolves anything it does not like to `/`,
+        so the worst case here is the home page rather than somebody else's
+        domain.
+      */
       const destination = onboarding
         ? '/auth/set-password'
-        : credentialType === 'recovery'
+        : flow === 'recovery'
           ? '/auth/reset-password'
-          : '/'
+          : flow === 'microsoft'
+            ? next
+            : '/'
       navigate(destination, { replace: true })
     })()
   }, [adoptSession, navigate, port])
@@ -208,14 +290,26 @@ export function CallbackPage() {
      invitation language just because the failure came late.
   */
   /*
-    POSITIVELY ESTABLISHED, OR NEUTRAL. There is no third branch that guesses.
+    POSITIVELY ESTABLISHED, OR NEUTRAL. There is no branch here that guesses.
+
+    Every flow the classifier can return is listed, so adding a seventh is a
+    type error rather than a silent fall through to somebody else's wording.
+    `absent`, `indeterminate` and a refusal that never said which flow it
+    belonged to all resolve to neutral language — which is not a worse message,
+    it is the only true one available.
   */
-  const copy: FlowCopy =
-    capture.current.credentialType === 'recovery'
-      ? RECOVERY_COPY
-      : capture.current.credentialType === 'invite'
-        ? INVITATION_COPY
-        : INDETERMINATE_COPY
+  const COPY_FOR_FLOW: Record<CallbackFlow, FlowCopy> = {
+    microsoft: MICROSOFT_COPY,
+    microsoft_refusal: MICROSOFT_REFUSAL_COPY,
+    invitation: INVITATION_COPY,
+    recovery: RECOVERY_COPY,
+    provider_refusal: INDETERMINATE_COPY,
+    absent: INDETERMINATE_COPY,
+    indeterminate: INDETERMINATE_COPY,
+  }
+  const flow = capture.current.flow
+  const copy: FlowCopy = COPY_FOR_FLOW[flow]
+  const isMicrosoft = flow === 'microsoft' || flow === 'microsoft_refusal'
 
   if (status === 'error' && reason === 'service_unavailable') {
     return (
@@ -259,10 +353,44 @@ export function CallbackPage() {
     )
   }
 
-  // The link was good and the ACCOUNT was not. This is the one case where the
-  // allowlist is genuinely the thing to go and look at.
+  /*
+    AUTHENTICATED, AND STILL NOT ALLOWED IN.
+
+    Microsoft — or an emailed link — proved who this is. The allowlist then said
+    no. That is the design working, not a fault: identity is not authorization,
+    and this is the screen where the difference becomes visible to a person.
+
+    THE MICROSOFT WORDING IS DELIBERATELY GENERIC. A successful Microsoft
+    sign-in can be performed by anybody in either tenant, so this screen is
+    reachable by people who are not reviewers and were never meant to be. Saying
+    "your address is not on the invitation list" would confirm to any of them
+    that a list exists, that theirs is not on it, and — run against a few
+    addresses — which ones are. So the Microsoft case says only that access was
+    not granted.
+
+    The emailed-link case keeps its more specific wording: reaching it requires
+    a link that was addressed to a particular person, so the audience is not the
+    same and the extra sentence is genuinely useful to them.
+  */
   if (status === 'error') {
-    return (
+    return isMicrosoft ? (
+      <AuthLayout
+        title="You are signed in, but not authorized"
+        footer={
+          <Link className="auth-shell__link" to="/login">
+            Back to sign in
+          </Link>
+        }
+      >
+        <FormError id="callback-standing-error">
+          This Microsoft account is not authorized to use the Opportunity Radar.
+        </FormError>
+        <p className="auth-card__note">
+          Signing in with Microsoft proves who you are. Access to the Radar is granted separately,
+          to named reviewers. If you should have access, ask your administrator to arrange it.
+        </p>
+      </AuthLayout>
+    ) : (
       <AuthLayout
         title="This account cannot be used"
         footer={
@@ -309,6 +437,15 @@ export function CallbackPage() {
         */}
         <span className="visually-hidden" data-testid="callback-failure-reason">
           {failure}
+        </span>
+        {/*
+          Which FLOW this was, alongside which failure it was. Both name a
+          category and neither names a token, an address or an account. Together
+          they are what turns "it did not work" into an answerable support
+          question without anybody having to paste a URL into a chat window.
+        */}
+        <span className="visually-hidden" data-testid="callback-flow">
+          {flow}
         </span>
       </AuthLayout>
     )

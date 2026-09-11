@@ -226,9 +226,15 @@ jobs:
       # is refused instead, with the documented placeholders allowlisted by
       # exact value. Adding a real colleague fails this step; adding a fictional
       # example means adding it here, deliberately, in review.
+      # `stranger@` is the one placeholder that deliberately uses the REAL
+      # approved domains rather than a `.example` one. microsoftIdentity.test.ts
+      # asserts that an @haskell.com or @openi-analytics.com address grants
+      # nothing on its own -- that Microsoft authenticating somebody is not the
+      # same as authorizing them. Written against `.example` domains that
+      # assertion would prove nothing about the domains it is actually about.
       - name: No real person is named in the repository
         run: |
-          allowed='^(first\.person|second\.person|existing\.person|unlisted\.person|firstname\.lastname|loopback\.tester|oracles|you)@'
+          allowed='^(first\.person|second\.person|existing\.person|unlisted\.person|firstname\.lastname|loopback\.tester|oracles|you|stranger)@'
           found=$(git grep -hEio '[A-Za-z0-9._%+-]+@(haskell|openi-analytics)\.com' \
                     -- . ':(exclude).github/workflows/ci.yml' \
                   | sort -u | grep -Ev "$allowed" || true)
@@ -403,17 +409,65 @@ jobs:
       # Invite-only, in the interface as well as in the database. Migration 0016
       # refuses an uninvited account and the project has signups disabled; a
       # registration form would still be a door with a sign on it.
+      # SELF-REGISTRATION IS STILL IMPOSSIBLE. WHAT CHANGED IS ONE SIGN-IN PATH.
+      #
+      # `signInWithOAuth` used to sit in this list beside `signUp`, because when
+      # the list was written a password was the only approved way in and every
+      # other call was an unapproved alternative. Microsoft Entra ID sign-in is
+      # now an approved way for an ALREADY-AUTHORIZED reviewer to prove who they
+      # are, so the call is permitted -- in one file, once, for one provider.
+      #
+      # NOTHING ABOUT ACCOUNT CREATION CHANGED, and this step still says so. A
+      # Microsoft sign-in by somebody who is not on `auth_invite_allowlist`
+      # cannot produce an account: migration 0016's trigger refuses the insert,
+      # and 0020 refuses a second account for an address that already has one.
+      # Authenticating is not being admitted, and it is not being registered
+      # either.
       - name: The application offers no way to create an account
         run: |
-          # Actual CALLS only. Both files excluded below necessarily name the
-          # thing they forbid: one is the rule, the other is the comment that
-          # explains why there is no such call.
-          if grep -rnE '\.(signUp|signInWithOAuth|signInWithOtp|signInAnonymously)[[:space:]]*\(' \
+          # 1. The calls that CREATE accounts remain forbidden everywhere.
+          #    `signInWithOtp` belongs here because it creates a user by
+          #    default, not because it is a password alternative.
+          #
+          #    Both excluded files necessarily name what they forbid: one is the
+          #    rule, the other is the comment explaining why there is no call.
+          if grep -rnE '\.(signUp|signInWithOtp|signInAnonymously)[[:space:]]*\(' \
                app/src app/netlify \
                --exclude=boundaries.test.ts --exclude=supabaseClient.ts; then
-            echo "A self-registration or alternative sign-in path exists."
+            echo "A self-registration path exists."
             exit 1
           fi
+
+          # 2. An OAuth sign-in may be started in the authentication port and
+          #    nowhere else. Scoped by PATH rather than by --exclude, so this
+          #    exemption cannot silently widen to the three calls above in the
+          #    same file.
+          stray=$(grep -rlE '\.signInWithOAuth[[:space:]]*\(' app/src app/netlify \
+                    --exclude=boundaries.test.ts --exclude=supabaseClient.ts \
+                  | grep -v '^app/src/auth/authPort\.ts$' || true)
+          if [ -n "$stray" ]; then
+            echo "An OAuth sign-in is started outside the authentication port:"
+            echo "$stray"
+            exit 1
+          fi
+
+          # 3. And it starts exactly ONE flow, naming the one approved provider
+          #    through the constant rather than an inline string a rename could
+          #    quietly change.
+          count=$(grep -cE '\.signInWithOAuth[[:space:]]*\(' app/src/auth/authPort.ts)
+          if [ "$count" != "1" ]; then
+            echo "Expected exactly one OAuth sign-in call in the port, found $count."
+            exit 1
+          fi
+          if ! grep -q 'provider: MICROSOFT_PROVIDER' app/src/auth/authPort.ts; then
+            echo "The OAuth call does not name the approved provider constant."
+            exit 1
+          fi
+          if ! grep -qE "^export const MICROSOFT_PROVIDER = 'azure'$" app/src/auth/microsoftSignIn.ts; then
+            echo "MICROSOFT_PROVIDER is not the Azure social-login provider."
+            exit 1
+          fi
+          echo "ok    no account creation; one OAuth path, azure only"
 
       # A credential in the URL is a credential in browser history, in the
       # referrer of the next request, and in anything the user copies out of the

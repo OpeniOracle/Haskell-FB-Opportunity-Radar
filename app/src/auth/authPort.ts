@@ -22,7 +22,8 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSession as getServerSession } from '@/lib/apiClient'
-import { supabaseBrowser } from '@/lib/supabaseClient'
+import { MICROSOFT_PROVIDER, MICROSOFT_SCOPES } from '@/auth/microsoftSignIn'
+import { microsoftSignInEnabled, supabaseBrowser } from '@/lib/supabaseClient'
 import { classifyFailure, type RedeemFailure, type UrlCredential } from '@/auth/urlCredentials'
 
 export interface AuthUser {
@@ -62,6 +63,15 @@ export type InvitationStanding = 'invited' | 'not_invited' | 'unknown'
 export interface AuthPort {
   /** False when the build was never pointed at a project. */
   readonly configured: boolean
+  /**
+   * Whether this deployment offers "Continue with Microsoft".
+   *
+   * On the PORT rather than read from configuration at the point of use, so
+   * that the login page has no build-time dependency and a test can render both
+   * states without rebuilding. See `microsoftSignInEnabled` for the two things
+   * that have to be true in production.
+   */
+  readonly microsoftEnabled: boolean
   getSession(): Promise<AuthSession | null>
   /** Returns an unsubscribe function. */
   onAuthStateChange(
@@ -71,6 +81,21 @@ export interface AuthPort {
     email: string,
     password: string,
   ): Promise<{ ok: true; session: AuthSession } | { ok: false; failure: SignInFailure }>
+  /**
+   * Begin a Microsoft Entra ID sign-in.
+   *
+   * On success THE PAGE NAVIGATES AWAY — `{ ok: true }` means "the redirect was
+   * started", not "somebody is signed in". Everything that decides whether they
+   * may be here happens when they come back to `/auth/callback`, and none of it
+   * is decided by this call.
+   *
+   * `redirectTo` is passed in, already sanitised, rather than built here: an
+   * open redirect is a URL problem and it belongs with the other URL rules in
+   * `microsoftSignIn.ts` where it is tested as a pure function.
+   */
+  signInWithMicrosoft(
+    redirectTo: string,
+  ): Promise<{ ok: true } | { ok: false; failure: SignInFailure }>
   signOut(): Promise<void>
   updatePassword(password: string): Promise<{ ok: true } | { ok: false; message: string }>
   sendRecoveryEmail(email: string, redirectTo: string): Promise<void>
@@ -161,6 +186,7 @@ function classifySignInError(message: string, status?: number): SignInFailure {
 export function supabaseAuthPort(client: SupabaseClient): AuthPort {
   return {
     configured: true,
+    microsoftEnabled: microsoftSignInEnabled(),
 
     async getSession() {
       const { data } = await client.auth.getSession()
@@ -185,6 +211,33 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
       const session = toAuthSession(data.session as SupabaseSessionShape | null)
       if (!session) return { ok: false, failure: { code: 'unknown' } }
       return { ok: true, session }
+    },
+
+    async signInWithMicrosoft(redirectTo) {
+      /*
+         `signInWithOAuth` starts PKCE and redirects. The client was created
+         with `flowType: 'pkce'`, so the code verifier is stored locally and the
+         authorization code that comes back is worthless to anybody who did not
+         start the flow in this browser.
+
+         `scopes` is the narrow set in `microsoftSignIn.ts` — enough to learn
+         who is signing in and nothing more. No Microsoft Graph permission is
+         requested, because the application reads nothing from Microsoft.
+
+         NOTHING IS LOGGED HERE. Not the redirect URL, not the provider's
+         response, not the URL the provider sends back.
+      */
+      const { error } = await client.auth.signInWithOAuth({
+        provider: MICROSOFT_PROVIDER,
+        options: { scopes: MICROSOFT_SCOPES, redirectTo },
+      })
+      if (error) {
+        return {
+          ok: false,
+          failure: classifySignInError(error.message, (error as { status?: number }).status),
+        }
+      }
+      return { ok: true }
     },
 
     async signOut() {
@@ -297,9 +350,11 @@ export function supabaseAuthPort(client: SupabaseClient): AuthPort {
  */
 export const unconfiguredAuthPort: AuthPort = {
   configured: false,
+  microsoftEnabled: false,
   getSession: async () => null,
   onAuthStateChange: () => () => {},
   signInWithPassword: async () => ({ ok: false, failure: { code: 'unavailable' } }),
+  signInWithMicrosoft: async () => ({ ok: false, failure: { code: 'unavailable' } }),
   signOut: async () => {},
   updatePassword: async () => ({ ok: false, message: 'Authentication is not configured.' }),
   sendRecoveryEmail: async () => {},

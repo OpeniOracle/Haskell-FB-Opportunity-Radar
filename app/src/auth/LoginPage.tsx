@@ -2,7 +2,54 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthLayout, FormError } from '@/auth/AuthLayout'
 import { useAuth } from '@/auth/authContext'
+import { markMicrosoftFlowStarted, microsoftRedirectUrl } from '@/auth/microsoftSignIn'
 import { returnPathFromSearch } from '@/auth/returnPath'
+
+/**
+ * Microsoft's brand mark: four squares, in their four fixed colours.
+ *
+ * Drawn inline rather than fetched. A remote image on a sign-in page is a
+ * third-party request made before anybody has signed in, it would need a
+ * `img-src` grant in a content-security policy that currently needs none, and
+ * it puts the page's appearance in somebody else's hands.
+ *
+ * The colours are Microsoft's and are not themed. Their brand guidance requires
+ * the mark to sit on a neutral surface, which is why the button below is a
+ * surface-coloured button with a strong border rather than an accent-filled
+ * one — the accent fill would put the logo on a background it may not be shown
+ * on, and would hurt its contrast in both themes.
+ *
+ * `aria-hidden`, because the button already says "Continue with Microsoft" in
+ * text. A screen reader announcing a logo as well would say it twice.
+ */
+function MicrosoftMark() {
+  return (
+    <svg
+      className="auth-provider__mark"
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+      <rect x="13" y="1" width="10" height="10" fill="#7FBA00" />
+      <rect x="1" y="13" width="10" height="10" fill="#00A4EF" />
+      <rect x="13" y="13" width="10" height="10" fill="#FFB900" />
+    </svg>
+  )
+}
+
+/**
+ * One message for every way starting a Microsoft sign-in can fail.
+ *
+ * The provider being unreachable, the project having no Azure credentials, and
+ * a refused redirect are the same answer to somebody standing at a sign-in
+ * page: it did not start, and it is not their fault. What they need is the
+ * password form immediately below, which is why the sentence points at it.
+ */
+const MICROSOFT_START_FAILED =
+  'Microsoft sign-in could not be started. This is not a problem with your account — you can use your password below, or try again shortly.'
 
 /**
  * Email and password. No third option, and no way to make an account.
@@ -26,30 +73,69 @@ import { returnPathFromSearch } from '@/auth/returnPath'
 const GENERIC_FAILURE = 'That email address and password combination was not accepted.'
 
 export function LoginPage() {
-  const { status, signIn } = useAuth()
+  const { status, signIn, port } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
   const emailId = useId()
   const passwordId = useId()
   const errorId = useId()
+  const providerErrorId = useId()
   const emailRef = useRef<HTMLInputElement>(null)
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [providerError, setProviderError] = useState<string | null>(null)
+  const [redirecting, setRedirecting] = useState(false)
 
   const returnTo = returnPathFromSearch(location.search)
   const sessionEnded = (location.state as { from?: string } | null)?.from === 'expired'
 
   useEffect(() => {
+    /*
+       Focus stays on the email field even when the Microsoft button is present
+       and comes first.
+
+       Moving it to the button would mean that somebody who types their address
+       out of habit -- which is what everybody with a password does -- types it
+       into nothing. The button is first in the DOM, so it is first in the tab
+       order and one Shift+Tab away; the field that is focused is the one people
+       are about to use.
+    */
     emailRef.current?.focus()
   }, [])
 
   // Someone who is already signed in has no business on this page; bouncing
   // them keeps a stale bookmark from looking like a sign-out.
   if (status === 'authenticated') return <Navigate to={returnTo} replace />
+
+  async function onMicrosoft() {
+    if (busy || redirecting) return
+    setProviderError(null)
+    setRedirecting(true)
+
+    /*
+       The marker goes down BEFORE the redirect, because after it there is no
+       "after" -- the page is gone. It records one fact, "a Microsoft sign-in
+       left from this tab", so that the callback can say so positively instead
+       of inferring it from a `?code=` that a password-recovery link produces
+       just as readily.
+    */
+    markMicrosoftFlowStarted()
+
+    const result = await port.signInWithMicrosoft(
+      microsoftRedirectUrl(window.location.origin, returnTo),
+    )
+
+    // Reached only when the redirect never happened; otherwise the browser has
+    // already left this page.
+    if (!result.ok) {
+      setRedirecting(false)
+      setProviderError(MICROSOFT_START_FAILED)
+    }
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -120,6 +206,54 @@ export function LoginPage() {
         </Link>
       }
     >
+      {port.microsoftEnabled ? (
+        <section className="auth-provider" aria-labelledby={`${providerErrorId}-heading`}>
+          {/*
+            A heading a screen reader can land on, so the two ways of signing in
+            are two named regions rather than one undifferentiated pile of
+            controls. Visually hidden: sighted users get the same structure from
+            the button, the note and the divider.
+          */}
+          <h2 className="visually-hidden" id={`${providerErrorId}-heading`}>
+            Sign in with your organization account
+          </h2>
+
+          <button
+            className="btn auth-provider__button"
+            type="button"
+            onClick={onMicrosoft}
+            disabled={busy || redirecting}
+            aria-describedby={providerError ? providerErrorId : undefined}
+          >
+            <MicrosoftMark />
+            <span>{redirecting ? 'Opening Microsoft…' : 'Continue with Microsoft'}</span>
+          </button>
+
+          {providerError ? <FormError id={providerErrorId}>{providerError}</FormError> : null}
+
+          {/*
+            THE SECOND SENTENCE IS THE IMPORTANT ONE.
+
+            Somebody at Haskell with a working Microsoft account will reasonably
+            assume that a "Continue with Microsoft" button means their Microsoft
+            account is what grants access. It is not, and finding that out from
+            a refusal after signing in is a worse way to learn it than reading
+            it here first.
+          */}
+          <p className="auth-card__note auth-provider__note">
+            Approved Haskell and Openi reviewers can use their organizational Microsoft account.
+            Access stays limited to individually authorized reviewers — a Microsoft account on its
+            own does not grant it.
+          </p>
+
+          <p className="auth-provider__divider">
+            <span className="auth-provider__divider-label">
+              or sign in with a password
+            </span>
+          </p>
+        </section>
+      ) : null}
+
       <form className="auth-form" onSubmit={onSubmit} noValidate>
         <div className="auth-form__field">
           <label className="auth-form__label" htmlFor={emailId}>
