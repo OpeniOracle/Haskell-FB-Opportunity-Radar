@@ -118,9 +118,17 @@
 [context.production.environment]
   VITE_RADAR_ENV = "production"
   RADAR_ENV = "production"
-  # Production stays off until the Openi and Haskell hosted tests have passed
-  # and the Azure provider is enabled deliberately.
-  VITE_AUTH_MICROSOFT_ENABLED = "false"
+  # ON. Microsoft sign-in was hosted-tested on the PR 13 deploy preview with an
+  # existing allowlisted Openi account: the identity linked to the EXISTING
+  # Supabase user, no duplicate was created, and password sign-in and recovery
+  # by code both still worked afterwards.
+  #
+  # A Haskell account was not available to test before release, so Haskell
+  # tenant consent and Haskell first-login identity linking are PENDING
+  # OPERATIONAL VALIDATION in production. See docs/MICROSOFT_ENTRA_SETUP.md.
+  # If Haskell's tenant refuses, the fix is on Microsoft's side or is this flag
+  # going back to "false" -- never a relaxed authorization control here.
+  VITE_AUTH_MICROSOFT_ENABLED = "true"
 
 [context.deploy-preview.environment]
   VITE_RADAR_ENV = "preview"

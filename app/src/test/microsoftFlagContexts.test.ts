@@ -124,8 +124,12 @@ describe('the Microsoft flag is declared per context, never globally', () => {
            "off" only if you already know what the global block does.
      */
     expect(declaredValue('build.environment', FLAG)).toBeNull()
-    expect(declaredValue('context.production.environment', FLAG)).toBe('false')
+    expect(declaredValue('context.production.environment', FLAG)).toBe('true')
     expect(declaredValue('context.deploy-preview.environment', FLAG)).toBe('true')
+    // Branch deploys stay OFF, and that is what keeps this assertion honest:
+    // with production and previews both on, branch-deploy is the only context
+    // left that can prove the three declarations are still read separately
+    // rather than collapsed into one value.
     expect(declaredValue('context.branch-deploy.environment', FLAG)).toBe('false')
   })
 })
@@ -135,9 +139,10 @@ describe('the Microsoft flag is declared per context, never globally', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolving the committed value, per context', () => {
-  it('production resolves to disabled', () => {
+  it('production resolves to ENABLED', () => {
+    // Flipped deliberately after the hosted Openi test on the PR 13 preview.
     expect(microsoftFlagEnabled(declaredValue('context.production.environment', FLAG) ?? undefined))
-      .toBe(false)
+      .toBe(true)
   })
 
   it('deploy previews resolve to enabled', () => {
@@ -171,21 +176,32 @@ describe('resolving the committed value, per context', () => {
 // ---------------------------------------------------------------------------
 
 /*
-   Two real Vite builds, one per context, into their own output directories so
-   nothing collides with `dist/` or with the concurrent bundle-secret scan.
+   THREE real Vite builds, one per declared context, each into its own output
+   directory so nothing collides with `dist/` or with the concurrent
+   bundle-secret scan.
 
-   A secret-shaped Entra value is planted in the environment of both, so the
+   Three rather than two because production and deploy previews are now BOTH
+   enabled. If this suite only built those, every assertion would pass equally
+   well against a single global "true" -- which is the exact shape the whole
+   file exists to forbid. Branch-deploy is the context that still differs, so it
+   is the one that proves the declarations are read separately.
+
+   A secret-shaped Entra value is planted in every build's environment, so the
    leak assertions are testing a build that had something to leak.
 */
 const PLANTED_ENTRA_SECRET = 'PLANTEDentraClientSecretValue~doNotShip'
 const PLANTED_SUPABASE_SECRET = 'sb_secret_PLANTEDflagContextCanary'
 
-const OUT = {
+const CONTEXTS = ['production', 'deploy-preview', 'branch-deploy'] as const
+type Context = (typeof CONTEXTS)[number]
+
+const OUT: Record<Context, string> = {
   production: join(APP_ROOT, 'dist-flagcheck-production'),
   'deploy-preview': join(APP_ROOT, 'dist-flagcheck-preview'),
-} as const
+  'branch-deploy': join(APP_ROOT, 'dist-flagcheck-branch'),
+}
 
-function build(context: keyof typeof OUT): { path: string; text: string }[] {
+function build(context: Context): { path: string; text: string }[] {
   execFileSync('npx', ['vite', 'build', '--logLevel', 'error', '--outDir', OUT[context]], {
     cwd: APP_ROOT,
     env: {
@@ -195,10 +211,7 @@ function build(context: keyof typeof OUT): { path: string; text: string }[] {
       VITE_RADAR_ENV: context === 'production' ? 'production' : 'preview',
       // THE VALUE UNDER TEST, taken from the committed file rather than typed
       // here, so the build is driven by the contract and not by a copy of it.
-      VITE_AUTH_MICROSOFT_ENABLED: declaredValue(
-        `context.${context}.environment`,
-        FLAG,
-      ) as string,
+      VITE_AUTH_MICROSOFT_ENABLED: declaredValue(`context.${context}.environment`, FLAG) as string,
       AZURE_CLIENT_SECRET: PLANTED_ENTRA_SECRET,
       VITE_AZURE_CLIENT_SECRET: PLANTED_ENTRA_SECRET,
       SUPABASE_SECRET_KEY: PLANTED_SUPABASE_SECRET,
@@ -218,7 +231,7 @@ function build(context: keyof typeof OUT): { path: string; text: string }[] {
 }
 
 describe('the shipped bundle carries the right flag for its context', () => {
-  const built: Partial<Record<keyof typeof OUT, { path: string; text: string }[]>> = {}
+  const built = {} as Record<Context, { path: string; text: string }[]>
 
   afterAll(() => {
     for (const dir of Object.values(OUT)) rmSync(dir, { recursive: true, force: true })
@@ -230,8 +243,8 @@ describe('the shipped bundle carries the right flag for its context', () => {
    * Vite inlines `import.meta.env.VITE_AUTH_MICROSOFT_ENABLED` at build time, so
    * the CONTEXT'S VALUE ends up as a string literal at the call site:
    *
-   *     microsoftSignIn:Cb("false")      production
-   *     microsoftSignIn:Cb("true")       deploy preview
+   *     microsoftSignIn:Cb("true")       production, deploy preview
+   *     microsoftSignIn:Cb("false")      branch deploy
    *
    * That literal is the thing worth asserting. It proves the value from
    * netlify.toml reached this build — which is the contract — while whether the
@@ -255,10 +268,10 @@ describe('the shipped bundle carries the right flag for its context', () => {
     return null
   }
 
-  it('builds a production-context bundle with the control disabled', () => {
+  it('builds a production-context bundle with the control ENABLED', () => {
     built.production = build('production')
     expect(existsSync(OUT.production)).toBe(true)
-    expect(shippedFlag(built.production)).toBe(false)
+    expect(shippedFlag(built.production)).toBe(true)
   }, 180_000)
 
   it('builds a deploy-preview-context bundle with the control enabled', () => {
@@ -266,35 +279,49 @@ describe('the shipped bundle carries the right flag for its context', () => {
     expect(shippedFlag(built['deploy-preview'])).toBe(true)
   }, 180_000)
 
-  it('differs between the two contexts, from the same source', () => {
-    // The one assertion that would catch "both contexts got the same value",
-    // which is what a single global declaration produces.
-    expect(shippedFlag(built.production!)).not.toBe(shippedFlag(built['deploy-preview']!))
+  it('builds a branch-deploy-context bundle with the control disabled', () => {
+    built['branch-deploy'] = build('branch-deploy')
+    expect(shippedFlag(built['branch-deploy'])).toBe(false)
+  }, 180_000)
+
+  it('still resolves per context rather than from one global value', () => {
+    /*
+       The assertion that would catch the flag collapsing back into
+       `[build.environment]`. With production and previews both enabled, a single
+       global "true" would satisfy every other build assertion in this file --
+       and this one would fail, because branch-deploy would come out enabled too.
+    */
+    expect(shippedFlag(built.production)).toBe(true)
+    expect(shippedFlag(built['branch-deploy'])).toBe(false)
+    expect(shippedFlag(built.production)).not.toBe(shippedFlag(built['branch-deploy']))
   })
 
   /*
      THE TRAP, ASSERTED SO NOBODY LATER "FIXES" THIS SUITE BY SEARCHING STRINGS.
 
-     The markup is compiled in for both contexts and gated at runtime. If a
-     future change ever makes the string genuinely absent from the production
-     build that is fine and this test should be revisited -- but until then, a
-     string search is not evidence and this records why.
+     The markup is compiled in for every context and gated at runtime. If a
+     future change ever makes the string genuinely absent from a disabled build
+     that is fine and this test should be revisited -- but until then, a string
+     search is not evidence and this records why.
   */
-  it('proves a string search could not have told the two apart', () => {
-    const inProduction = built.production!.some((f) => f.text.includes('Continue with Microsoft'))
-    const inPreview = built['deploy-preview']!.some((f) =>
-      f.text.includes('Continue with Microsoft'),
-    )
-    expect(inPreview).toBe(true)
-    expect(inProduction).toBe(true)
+  it('proves a string search could not have told the contexts apart', () => {
+    for (const context of CONTEXTS) {
+      const present = built[context].some((f) => f.text.includes('Continue with Microsoft'))
+      expect(present, `${context} contains the string regardless of the flag`).toBe(true)
+    }
   })
 
-  it('keeps password sign-in and recovery-code entry in BOTH builds', () => {
+  it('keeps password sign-in and recovery-code entry in EVERY context', () => {
     // Microsoft is an addition, never a replacement. The fallback has to ship
-    // in the context where the button is off, which is the one that matters.
-    for (const [context, files] of Object.entries(built)) {
-      const all = files!.map((f) => f.text).join('')
-      for (const needle of ['Email address', 'Sign in', 'Enter your recovery code']) {
+    // wherever the button does, and wherever it does not.
+    for (const context of CONTEXTS) {
+      const all = built[context].map((f) => f.text).join('')
+      for (const needle of [
+        'Email address',
+        'Sign in',
+        'Set or reset your password',
+        'Enter your recovery code',
+      ]) {
         expect(all.includes(needle), `${context} must still ship ${JSON.stringify(needle)}`).toBe(
           true,
         )
@@ -303,37 +330,37 @@ describe('the shipped bundle carries the right flag for its context', () => {
   })
 
   it('carries the allowlist explanation wherever the button can appear', () => {
-    const preview = built['deploy-preview']!.map((f) => f.text).join('')
-    expect(preview).toContain('individually authorized reviewers')
+    for (const context of ['production', 'deploy-preview'] as const) {
+      const all = built[context].map((f) => f.text).join('')
+      expect(all, context).toContain('individually authorized reviewers')
+      expect(all, context).toContain('does not grant it')
+    }
   })
 
-  it('ships no provider credential, in either context', () => {
-    for (const [context, files] of Object.entries(built)) {
+  it('ships no credential, token or account, in ANY context', () => {
+    for (const context of CONTEXTS) {
       for (const [label, pattern] of [
         ['planted Entra client secret', PLANTED_ENTRA_SECRET],
         ['planted Supabase secret key', PLANTED_SUPABASE_SECRET],
         ['any sb_secret_ key', /sb_secret_[A-Za-z0-9_-]{8,}/],
+        ['a service_role reference', /service_role/],
         ['a Microsoft authority URL', /login\.microsoftonline\.com/],
         ['a Microsoft Graph endpoint', /graph\.microsoft\.com/],
-        ['a service_role reference', /service_role/],
+        // A JWT: an access or refresh token, however it got there.
         ['a bearer token literal', /eyJ[A-Za-z0-9_-]{20,}\./],
+        // An OAuth authorization code or PKCE verifier baked into the bundle.
+        ['an authorization code parameter', /[?&]code=[A-Za-z0-9._-]{8,}/],
+        ['a code verifier literal', /code_verifier["']?\s*[:=]\s*["'][A-Za-z0-9._-]{20,}/],
+        // A real reviewer, on either approved organization domain.
+        ['a reviewer address', /[A-Za-z0-9._%+-]+@(haskell|openi-analytics)\.com/],
       ] as const) {
-        const offenders = files!
+        const offenders = built[context]
           .filter((f) =>
             typeof pattern === 'string' ? f.text.includes(pattern) : pattern.test(f.text),
           )
           .map((f) => f.path)
         expect(offenders, `${context}: ${label}`).toEqual([])
       }
-    }
-  })
-
-  it('names no reviewer and no account', () => {
-    for (const [context, files] of Object.entries(built)) {
-      const all = files!.map((f) => f.text).join('')
-      // The two real organization domains must not appear as addresses in
-      // anything that ships to a browser.
-      expect(all, context).not.toMatch(/[A-Za-z0-9._%+-]+@(haskell|openi-analytics)\.com/)
     }
   })
 })

@@ -5,8 +5,73 @@ Supabase dashboard. None of it can be set from code, and none of it is in this
 repository, because all of it is either a credential or a property of somebody
 else's tenant.
 
-The code half is finished and merged behind a flag that is **off**. Nothing in
-this document takes effect until the last step, and the last step is deliberate.
+**Status: Microsoft sign-in is ENABLED in production.**
+
+It was hosted-tested on the PR 13 deploy preview with an existing, allowlisted
+**Openi** account. What that test established, and what it did not, is in
+"Rollout status" immediately below — read it before treating this feature as
+validated for Haskell, because it is not.
+
+---
+
+## Rollout status
+
+### Verified — hosted test, PR 13 deploy preview, existing Openi account
+
+| Checked | Result |
+| --- | --- |
+| The Microsoft control rendered on the preview | yes |
+| Microsoft authentication completed | yes |
+| The callback returned to the application | yes |
+| Supabase user id (compared by fingerprint) | **unchanged** |
+| `has_password` | `true` |
+| `email_confirmed` | `true` |
+| `identity_count` | `1` → **`2`** |
+| `providers` | **`azure,email`** |
+| Total users | `5` → **`5`** (no duplicate created) |
+| Total identities | `5` → **`6`** |
+| Azure identities | `0` → **`1`** |
+| Duplicate normalized-address groups | `0` |
+| Password sign-in afterwards | still available |
+| Recovery by six-digit code | still available |
+| Migration 0020 | applied and verified |
+| Production `/auth/callback` in the Supabase redirect allowlist | confirmed |
+
+The Microsoft identity **linked to the existing Supabase user**. It did not
+create a second account. `auth_invite_allowlist` remained the thing that granted
+access, re-read by the server on every request.
+
+### NOT verified — Haskell tenant, pending operational validation
+
+**No Haskell Microsoft account was available before release.** This was an
+accepted, explicit risk taken by the project owner, not an oversight and not
+something the tests cover. The following are **unknown** and must not be
+described as working:
+
+- Whether Haskell's Entra tenant permits user consent to this multitenant
+  application, or requires **administrator** consent.
+- Whether a Haskell sign-in produces an `AADSTS` tenant-policy error.
+- Whether Haskell's specific identity claims — `xms_edov` in particular — pass
+  migration 0020's checks.
+- Whether each pre-provisioned Haskell reviewer links to their **existing**
+  Supabase user on first production login, rather than being refused.
+
+The first Haskell login in production **is** that test. Until it has happened
+and been verified with the query in "The hosted test" below, Haskell coverage
+is pending.
+
+### If Haskell's tenant refuses
+
+**Do not relax any authorization control to compensate.** Not the allowlist, not
+the verified-email requirement, not the identity-linking guard, not `xms_edov`
+validation. A tenant-consent failure is a fact about Haskell's directory
+settings; loosening a check here would not fix it, and would remove a control
+that is doing its job.
+
+The fallback for an affected Haskell reviewer is the one that already exists and
+already works: **"Set or reset your password" and the emailed six-digit recovery
+code.** Not a shared password, not an administrator-generated temporary
+password, not a password communicated out of band.
 
 ---
 
@@ -262,7 +327,7 @@ controlled piece of work that has not been started.
 
 | Context | Value | Effect |
 | --- | --- | --- |
-| `[context.production.environment]` | `"false"` | production never shows the button |
+| `[context.production.environment]` | `"true"` | production shows the button |
 | `[context.deploy-preview.environment]` | `"true"` | pull-request previews show it |
 | `[context.branch-deploy.environment]` | `"false"` | branch deploys do not |
 | anything else (a named branch context, `netlify dev`, a laptop) | unset | disabled |
@@ -303,24 +368,28 @@ touch entirely disjoint objects and the order between them does not matter.
 
 ---
 
-## 7. Order of operations
+## 7. Order of operations — completed
 
-The flag is last, and that is the point.
+This is the order that was followed, kept as the record and as the recipe for
+any future project. **The flag was last, and that was the point.**
 
-1. Apply migration 0020.
-2. Complete the Azure registration (steps 1–2), including `xms_edov`.
-3. Configure the Supabase provider and redirect URLs (step 3).
-4. Obtain administrator consent if the tenant requires it (step 4).
-5. Confirm the allowlist row exists for the **one** reviewer doing the hosted
-   test.
-6. Deploy previews already build with the button on. To enable PRODUCTION,
-   change `[context.production.environment]` in `netlify.toml` to `"true"` and
-   merge; that redeploys production with the flag set.
-7. Run the hosted test with that one reviewer.
-8. Only then tell the other three.
+1. ~~Apply migration 0020.~~ Applied and verified.
+2. ~~Complete the Azure registration, including `xms_edov`.~~ Done.
+3. ~~Configure the Supabase provider and redirect URLs.~~ Done; the production
+   callback is confirmed in the redirect allowlist.
+4. Administrator consent — obtained for Openi by the sign-in itself.
+   **Haskell's tenant is untested; see "Rollout status".**
+5. ~~Confirm the allowlist row for the one reviewer doing the hosted test.~~ Done.
+6. ~~Enable deploy previews and run the hosted test there.~~ Passed, with an
+   existing Openi account.
+7. ~~Enable PRODUCTION by setting `[context.production.environment]` to `"true"`
+   and merging.~~ Done — that is what this release is.
+8. Tell the four Haskell reviewers. Their first production sign-in is the
+   remaining validation, not a formality.
 
-Doing 6 before 2–4 shows every reviewer a button that cannot work. Doing 6
-before 1 removes the database guards from a live sign-in path.
+Doing 7 before 2–4 would have shown every reviewer a button that could not work.
+Doing 7 before 1 would have removed the database guards from a live sign-in
+path.
 
 ---
 
@@ -377,26 +446,38 @@ Check in this order:
 
 ## 9. Rollback
 
-**To switch it off immediately:** set `VITE_AUTH_MICROSOFT_ENABLED = "false"`
-in `[context.production.environment]` and deploy. The button disappears.
-Password sign-in and recovery are untouched — they never depended on any of
-this.
+**Flag only. Four lines of intent, and nothing else changes.**
 
-That is a commit rather than a dashboard toggle, which is slower by a few
-minutes and worth it: the flag's history is then in the repository, and a
-dashboard value could not have overridden the committed one anyway.
+1. In `netlify.toml`, change **only** the production context back:
 
-That is the whole rollback for the interface. Beyond it:
+   ```toml
+   [context.production.environment]
+     VITE_AUTH_MICROSOFT_ENABLED = "false"
+   ```
 
-- **Disable the Supabase Azure provider** to refuse sign-ins already in flight.
-  Sessions already established stay valid until they expire; to end one now,
-  remove the allowlist row, which takes effect on the person's next request.
-- **Do not roll back migration 0020** as part of an interface rollback. Its
-  guards are protective, they cost nothing when Microsoft sign-in is off, and
-  rolling them back would remove the one-account-per-address rule from a live
-  project. `0020_microsoft_identity_guard.down.sql` exists and restores
-  migration 0016's trigger intact, but it is for a schema rollback, not for
-  turning a button off.
-- **Do not delete the linked `azure` identities.** They are attached to the
-  reviewers' existing accounts and removing them is a data operation with no
-  benefit; the provider being disabled already stops them being usable.
+   Leave `[context.deploy-preview.environment]` at `"true"` and
+   `[context.branch-deploy.environment]` at `"false"`.
+
+2. Deploy that as a reviewed hotfix to `main`. Production rebuilds and the
+   button disappears. The flag is read at build time, so a deploy is required —
+   there is no dashboard toggle, and a Netlify UI variable could not override
+   the committed value anyway.
+
+3. **Password sign-in and recovery by code keep working throughout.** They never
+   depended on any of this, and the rollback must not touch them.
+
+4. **The Supabase Azure provider may stay enabled.** With the control gone the
+   application never starts an OAuth flow, so leaving the provider on changes
+   nothing a user can reach. Disable it only if you want sign-ins already in
+   flight to fail too.
+
+5. **Do not delete identities or users.** A linked `azure` identity is attached
+   to a reviewer's existing account; removing it is a data operation with no
+   benefit, and it would have to be redone. **Do not roll back migration 0020**
+   either — its guards are protective, cost nothing while the button is off, and
+   rolling them back would remove the one-account-per-address rule from a live
+   project.
+
+To end one person's access immediately, remove their `auth_invite_allowlist`
+row. That takes effect on their next request regardless of which method they
+signed in with, and it is the correct lever — not the feature flag.

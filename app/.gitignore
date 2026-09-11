@@ -10,5 +10,6 @@ dist-harness/
 # removes them itself; this is for the run that is interrupted.
 dist-flagcheck-production/
 dist-flagcheck-preview/
+dist-flagcheck-branch/
 
 browser-screenshots/
