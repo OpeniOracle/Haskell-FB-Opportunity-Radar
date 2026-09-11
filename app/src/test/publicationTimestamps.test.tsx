@@ -64,7 +64,7 @@ describe('1. equal timestamps are accepted, not discarded', () => {
 
   it('is not forbidden by the schema either', () => {
     const migration = readFileSync(
-      join(APP_ROOT, '..', 'db/migrations/0019_live_source_ingestion.up.sql'),
+      join(APP_ROOT, '..', 'db/migrations/0021_live_source_ingestion.up.sql'),
       'utf8',
     )
     // Comments are stripped first. The migration EXPLAINS why the rule was

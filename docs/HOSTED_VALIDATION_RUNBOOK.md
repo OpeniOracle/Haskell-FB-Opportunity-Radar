@@ -549,24 +549,114 @@ modify a document it already holds, and will not send any email.
 nothing about a facility in the last year, the correct result is zero. Do not
 fill that in.
 
-## F1. Apply the migration
+## F1. Apply migration 0021, after the already-applied 0020
+
+**Read the ordering note first.** This migration was drafted as `0019` and never
+applied. While it sat unapplied, `0020` (the Microsoft identity guard) was
+merged and **applied** to the hosted database. It has been renumbered to `0021`
+so that version order and application order agree.
+
+The hosted path is therefore **0018 → 0020 → 0021**. A clean replay in filename
+order reaches the same schema; `db/verify.sh` proves both, and the two dumps are
+byte-identical. **Do not reapply or modify 0020.**
 
 Backward compatible: every column is nullable or defaulted, every index is
-partial or on a new column, and a pre-0019 application keeps working against the
+partial or on a new column, and a pre-0021 application keeps working against the
 migrated database.
 
+### If you have `psql` and the pooler URL
+
 ```bash
-# Against the hosted database, from a machine with psql and the pooler URL.
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/migrations/0019_live_source_ingestion.up.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/migrations/0021_live_source_ingestion.up.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "insert into public.schema_migrations (version, name, checksum, stamped)
+  values ('0021','live_source_ingestion','fd15cdc30a526e9575fe9c0644d8055e4346290ea8d7596048f78b9e7afc53b7', false);"
+```
+
+### If you are using the Supabase SQL Editor
+
+**The SQL Editor does not keep one session across the statements of a script.**
+This was learned the hard way applying 0020: a temporary table created by one
+statement was already gone by the next, and — far worse — an explicit
+`begin; … commit;` therefore does not wrap the script either. **A multi-statement
+script that looks atomic can commit its first half and fail on its second.**
+
+So wrap the whole thing in a single `DO` block, which is one statement and runs
+in one transaction whatever the client does with it:
+
+```sql
+do $apply0021$
+declare
+    n bigint;
+begin
+    if exists (select 1 from public.schema_migrations where version = '0021') then
+        raise exception 'ABORT: migration 0021 is already recorded. Nothing to do.';
+    end if;
+    if not exists (select 1 from public.schema_migrations where version = '0020') then
+        raise exception 'ABORT: migration 0020 is not present. Apply it first.';
+    end if;
+    if not exists (select 1 from public.schema_migrations where version = '0018') then
+        raise exception 'ABORT: migration 0018 is not present.';
+    end if;
+
+    execute $mig$
+-- >>> paste the ENTIRE contents of
+-- >>> db/migrations/0021_live_source_ingestion.up.sql here, verbatim
+    $mig$;
+
+    insert into public.schema_migrations (version, name, checksum, stamped)
+    values ('0021', 'live_source_ingestion',
+            'fd15cdc30a526e9575fe9c0644d8055e4346290ea8d7596048f78b9e7afc53b7', false);
+
+    select count(*) into n from public.schema_migrations where version = '0021';
+    if n <> 1 then raise exception 'ABORT: 0021 is not recorded exactly once.'; end if;
+
+    raise notice 'Migration 0021 applied and recorded.';
+end
+$apply0021$;
+```
+
+Any line containing `ABORT:` means **nothing was committed**.
+
+**Rollback**, if you need it: `db/migrations/0021_live_source_ingestion.down.sql`,
+then `delete from public.schema_migrations where version = '0021';`. It drops
+only what 0021 added, and it will **refuse** rather than invent or delete data if
+any opportunity row is unscored. Evidence rows written by a live run would lose
+their `source_document_id`, so roll back **before** collecting, not after.
+
+## F1b. Verify the ledger and the schema
+
+Read-only. Run before going any further.
+
+```sql
+select version, name, checksum, stamped
+from public.schema_migrations
+where version in ('0018','0020','0021')
+order by version;
+
+select to_regclass('public.source_document_cache')                     as cache_table,
+       to_regclass('public.evidence_current_document_uidx')            as current_doc_index,
+       to_regclass('public.source_runs_single_active_uidx')            as single_active_run,
+       to_regproc('public.auth_guard_microsoft_identity') is not null  as microsoft_guard_intact,
+       (select count(*) from public.schema_migrations)                 as migrations_applied;
+```
+
+**Expected:** three rows — `0018`, `0020` (checksum
+`55514d77a1e92019598127d733df47f1895eb6166c5ddf003df10a1ebb968832`, untouched),
+and `0021` (checksum `fd15cdc30a526e9575fe9c0644d8055e4346290ea8d7596048f78b9e7afc53b7`),
+all `stamped = false`. The second query: all four object checks non-null/true,
+and `migrations_applied` = **20**.
+
+`microsoft_guard_intact` is there on purpose. 0021 touches none of the auth
+objects, and this is the cheapest way to prove it did not.
+
+## F1c. Apply the live-cohort source seed
+
+```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/seed/0006_live_cohort_sources.sql
 ```
 
-**Expected:** `COMMIT`, then two `INSERT 0 1`. The seed is idempotent — running
-it twice updates the rows and never resets `enabled` or `health_status`.
-
-**Rollback**, if you need it: `db/migrations/0019_live_source_ingestion.down.sql`.
-It drops only what 0019 added. Evidence rows written by a live run would lose
-their `source_document_id`, so roll back before collecting, not after.
+**Expected:** two `INSERT 0 1`. The seed is idempotent — running it twice updates
+the rows and never resets `enabled` or `health_status`.
 
 ## F2. Confirm the sources exist and are still disabled
 
@@ -618,6 +708,45 @@ EGRESS_ALLOWLIST = sec.gov,data.sec.gov,www.sec.gov,mars.com,www.mars.com
 `SEC_EDGAR_USER_AGENT` must name the organisation and a monitored address, e.g.
 `Openi-Haskell-FB-Radar/1.0 (oracles@openi-analytics.com)`. SEC's fair-access
 guidance asks for a contact; an anonymous agent is the one that gets blocked.
+
+### Exact scopes and contexts
+
+| Variable | Scope | Contexts | Notes |
+| --- | --- | --- | --- |
+| `SUPABASE_URL` | Functions | all | already set; committed in `netlify.toml` |
+| `SUPABASE_SECRET_KEY` | Functions | all | **secret**, Netlify UI only, never committed |
+| `INGEST_SHARED_SECRET` | Functions | all | **secret**, Netlify UI only |
+| `SEC_EDGAR_USER_AGENT` | Functions | all | committed in `netlify.toml` |
+| `EGRESS_ALLOWLIST` | Functions | all | **must be extended** — see below |
+
+`netlify.toml` currently commits
+`EGRESS_ALLOWLIST = "sec.gov,data.sec.gov,www.sec.gov,fsis.usda.gov,www.fsis.usda.gov"`.
+That does **not** include the Mars hosts. Because `netlify.toml` overrides the
+Netlify UI, extending it for this run means editing the committed value — a
+reviewed change — rather than adding a dashboard variable that would be silently
+ignored. The value the live cohort needs is:
+
+```
+sec.gov,data.sec.gov,www.sec.gov,mars.com,www.mars.com
+```
+
+Keep `fsis.usda.gov` only if a connector still uses it.
+
+### Supabase redirect allowlist — the PR 10 preview
+
+The preview now carries Microsoft sign-in, so its callback must be allowlisted
+before you sign in to it. **Supabase Dashboard → Authentication → URL
+Configuration → Redirect URLs** must contain, exactly:
+
+```
+https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/auth/callback
+https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/auth/reset-password
+```
+
+Assume they are absent until you have seen them. Without the first, Microsoft
+authenticates you and Supabase then refuses the redirect — which fails *after*
+the identity provider has already succeeded, and reads like a broken
+application rather than a missing configuration line.
 
 ## F5. Enable the sources
 
@@ -707,9 +836,21 @@ select source_id, run_status, items_seen, items_stored, duplicate_count,
 **Expected:** `missing_document_id = 0`. Every live document has a stable source
 identity — that is what makes the second run a no-op.
 
-## F9. Verify in the preview
+## F9. Verify in the authenticated preview
 
-Sign in as a pre-provisioned reviewer, then check:
+**Sign in first**, at
+`https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app`. Either
+method works and both should be exercised once:
+
+- **Continue with Microsoft** — the preview context builds with the button on.
+  Requires the redirect URL from F4.
+- **Email and password**, or **Set or reset your password** and the emailed
+  six-digit code.
+
+Neither is affected by anything in this section: live data changes what the
+application shows, never who may see it.
+
+Then check:
 
 1. **Sign-in is still required.** Open the preview in a private window; every
    protected route redirects to `/login` with no data visible.

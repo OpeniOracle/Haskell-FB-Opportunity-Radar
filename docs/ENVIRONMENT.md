@@ -215,7 +215,7 @@ configured — by **name**, never by value:
   "radarEnv": "preview",
   "caller":  { "userId": "…", "invited": true },
   "database": { "reachable": true, "organizationsVisible": 15 },
-  "schema":   { "version": "0018" },
+  "schema":   { "version": "0021" },
   "storage":  { "bucket": "evidence-raw", "configured": true, "private": true },
   "model":    { "configured": false, "describe": "unavailable" },
   "auth":     {

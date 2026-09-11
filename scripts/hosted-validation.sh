@@ -289,7 +289,17 @@ printf '%s\n' "$(redact "$HTTP_BODY")" | python3 -m json.tool 2>/dev/null || tru
 
 check "foundation ok"                    "$(bool "$(jfield ok)")"
 check "database reachable as the caller" "$(bool "$(jfield database.reachable)")"
-check "schema version is 0018"           "$([ "$(jfield schema.version)" = "0018" ] && echo 1 || echo 0)" "got '$(jfield schema.version)'"
+# A FLOOR, NOT AN EXACT MATCH. The schema version only moves forward, so
+# pinning it exactly means every migration silently breaks this validator --
+# which is what had happened: it demanded 0018 while the project was at 0020.
+# The floor is the highest migration whose behaviour this script actually
+# checks. That a LATER migration is applied is verified by the runbook step
+# that applies it, not by a tripwire here that nobody remembers to bump.
+SCHEMA_FLOOR=20
+_schema_version="$(jfield schema.version)"
+check "schema version is at least 00$SCHEMA_FLOOR" \
+  "$([ -n "$_schema_version" ] && [ "$((10#$_schema_version))" -ge "$SCHEMA_FLOOR" ] && echo 1 || echo 0)" \
+  "got '$_schema_version'"
 check "evidence bucket is private"       "$(bool "$(jfield storage.private)")"
 check "model credential configured"      "$(bool "$(jfield modelConfigured)")"
 check "SEC contact confirmed"            "$(bool "$(jfield sec.contactConfirmed)")"

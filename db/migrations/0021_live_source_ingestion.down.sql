@@ -24,7 +24,7 @@ drop index if exists signals_organization_cluster_uidx;
 
 -- RESTORING NOT NULL IS NOT ALWAYS POSSIBLE, AND MUST NOT BE FAKED.
 --
--- 0019 made the scoring columns nullable so a signal-derived opportunity could
+-- 0021 made the scoring columns nullable so a signal-derived opportunity could
 -- exist before anyone had scored it. Rolling that back requires every row to
 -- carry a number again. There are only three ways to get there and two of them
 -- are unacceptable: inventing a score puts a fabricated number in the column an
@@ -44,7 +44,7 @@ begin
     if unscored > 0 then
         raise exception using
             errcode = 'check_violation',
-            message = format('Cannot roll back 0019: %s opportunity row(s) have no score.', unscored),
+            message = format('Cannot roll back 0021: %s opportunity row(s) have no score.', unscored),
             detail  = 'These were derived from collected evidence and have not been scored yet.',
             hint    = 'Score them, or delete them deliberately, then run this rollback again. '
                       'This migration will not invent a score and will not delete your rows.';

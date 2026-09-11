@@ -1613,7 +1613,7 @@ $$;`,
 insert into change_events (object_type, object_id, change_type, materiality, dedupe_key)
 values ('organization', ${ORG_A}, 'renamed', 'material', '');`,
   },
-  // ---- Live ingestion (0019) --------------------------------------------
+  // ---- Live ingestion (0021) --------------------------------------------
   //
   // The contracts that make a repeated run a no-op. Every one of these is a
   // DATABASE guarantee rather than an application convention, because the
@@ -1658,7 +1658,7 @@ update evidence set superseded_by_evidence_id = '00000000-0000-4000-8000-0000000
   // They are NOT required to differ. A feed polled seconds after publication, a
   // source stating times only to the minute, and historical metadata normalised
   // to the retrieval precision all produce legitimate equality. An earlier
-  // draft of 0019 forbade it and would have rejected real documents.
+  // draft of this migration forbade it and would have rejected real documents.
   //
   // What IS required: the publication time comes from the source or is null,
   // and the retrieval time is always recorded.

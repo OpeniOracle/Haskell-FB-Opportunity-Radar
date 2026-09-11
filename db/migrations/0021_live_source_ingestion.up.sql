@@ -1,5 +1,18 @@
--- 0019 — Live source ingestion: document identity, connector provenance, and
+-- 0021 — Live source ingestion: document identity, connector provenance, and
 --        the uniqueness that makes a repeated run a no-op.
+--
+-- NUMBERED 0021, NOT 0019, AND THE DIFFERENCE MATTERS.
+--
+-- This migration was written as 0019 and never applied anywhere. While it sat
+-- unapplied, 0020 (the Microsoft identity guard) was written, merged and
+-- APPLIED to the hosted database. Keeping this at 0019 would have left the
+-- project with an applied 0020 and a pending 0019 -- a ledger whose version
+-- order and application order disagree, which is the state every later
+-- question about "what ran, and in what order" has to be answered against.
+--
+-- So it moves to the next free number. The hosted path is 0018, then 0020,
+-- then 0021, in that order; a clean replay in filename order reaches the same
+-- schema, and db/verify.sh proves both. 0020 is not touched or reapplied.
 --
 -- WHAT WAS ALREADY HERE, AND IS NOT REBUILT.
 --
@@ -42,7 +55,7 @@
 --
 -- Additive: every new column is nullable or carries a default, every new index
 -- is partial or on new columns, and every new constraint admits all existing
--- rows. An existing row remains valid and the pre-0019 application keeps
+-- rows. An existing row remains valid and the pre-0021 application keeps
 -- working against it.
 --
 -- NOT additive: this migration RELAXES seven NOT NULL constraints on
