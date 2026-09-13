@@ -178,8 +178,8 @@ application can reach nothing but its own functions.
 | `SUPABASE_EVIDENCE_BUCKET` | `evidence-raw` | Private Storage bucket for preserved evidence |
 | `EGRESS_ALLOWLIST` | *(empty — denies everything)* | Comma-separated hostnames the egress gateway may reach |
 | `MODEL_PROVIDER` | `anthropic` | `anthropic` \| `bedrock` \| `vertex` |
-| `MODEL_API_KEY` | — | **Absent means classification fails closed.** Nothing is fabricated. |
-| `MODEL_ID` | — | Required when `MODEL_API_KEY` is set |
+| `MODEL_API_KEY` | — | **Currently read by nothing but `/api/status`.** No ingestion path calls a model — see *The model is not wired into the pipeline*. |
+| `MODEL_ID` | — | **Required** once `MODEL_API_KEY` is set; a key without it throws |
 | `MODEL_PROMPT_VERSION` | `v0` | Folded into the replay-cache key |
 | `SEC_CONTACT_CONFIRMED` | `false` | Exactly `true` or `false`. Not a secret, but **Netlify UI, Functions scope** — see below. |
 | `RADAR_ENV` | `development` | `development` \| `preview` \| `production` |
@@ -331,7 +331,7 @@ configured — by **name**, never by value:
   "database": { "reachable": true, "organizationsVisible": 15 },
   "schema":   { "version": "0021" },
   "storage":  { "bucket": "evidence-raw", "configured": true, "private": true },
-  "model":    { "configured": false, "describe": "unavailable" },
+  "model":    { "configured": false, "describe": "unavailable", "detail": null },
   "auth":     {
     "inviteOnlyEnforced": true,
     "evidenceSessionCheckInstalled": true,
@@ -483,10 +483,8 @@ throws if either name is set, and CI fails if either name is referenced outside
 the code that forbids it. If some library turns out to require the legacy pair,
 report the specific failure rather than reverting quietly.
 
-`MODEL_API_KEY` being absent is a supported state: `/api/status` reports the
-model as unconfigured and every other check still passes. Collection,
-preservation and resolution all run; only classification refuses, and it refuses
-rather than inventing an answer.
+`MODEL_API_KEY` being absent is a supported state, and the reason is stronger
+than "supported" — see the next section.
 
 `SUPABASE_DB_URL` is optional and only needed if migrations are ever run from a
 machine rather than through the Supabase API. It is Supabase → Project Settings
@@ -502,6 +500,51 @@ is read by a function so that it can query *as the caller*. Netlify scopes are
 not a fallback chain — a Builds-scope value is simply not in the function's
 environment — so one entry cannot serve both. Giving the pair distinct names also
 keeps `assertKeyShapes` able to tell a misplaced key from a correctly placed one.
+
+## The model is not wired into the pipeline
+
+This document used to say that without `MODEL_API_KEY` "only classification
+refuses". That reads as: no key, no classification, no opportunities. **It is
+not what the code does**, and the difference decides whether a model credential
+is a precondition for the first cohort.
+
+`modelGateway` is imported by exactly one file — `netlify/functions/status.ts` —
+and only to report whether it is configured. **No ingestion code path calls it.**
+Classification is `connectors/classify.ts`: deterministic, regex-based,
+requiring a project action, a physical asset and a corroborating fact to
+co-occur in one window.
+
+So with no model configured, every stage still writes its rows: `evidence` for
+each retrieved document, `signals` for each qualifying passage, `opportunities`
+wherever the confidence bar is met. A document that carries no signal is
+**retained** as `not_relevant` — evaluated and found to carry nothing. There is
+no `failed` state and nothing is discarded, so reprocessing later is a re-read
+of `evidence` rather than a re-fetch from the source.
+
+`app/src/test/modelDependency.test.ts` runs the pipeline under four permutations
+of the four `MODEL_` variables and asserts the written rows are identical, with
+no outbound request in any of them.
+
+### If one is configured anyway
+
+- **Endpoint:** `https://api.anthropic.com/v1/messages`, a literal argument to
+  `fetch`. Not from the environment, not from `connector_config`, not a
+  template. A retrieved document cannot redirect a model request.
+- **Not on `EGRESS_ALLOWLIST`,** and adding it would have no effect.
+- **`MODEL_ID` is required** once a key is set; `bedrock` and `vertex` have no
+  adapter and refuse rather than falling back.
+- **No timeout, retry or rate limit in the adapter.** The egress gateway has all
+  three; the model adapter has none. Stated because it is a real gap.
+- **Prompts and responses are not stored** — only the replay key, a digest over
+  every input that can change the answer.
+
+### A half-configured model no longer breaks `/api/status`
+
+`modelEnv()` correctly throws for a key with no `MODEL_ID` and for an unknown
+provider. `status.ts` called it outside its error handler, so either one escaped
+and the endpoint answered 500 with HTML — on the one endpoint an operator runs
+*because* something is wrong. It now reports `model.configured: false` with
+`model.detail` naming what is missing, and every other component still answers.
 
 ## Supabase dashboard settings that cannot be set from code
 

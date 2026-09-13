@@ -616,6 +616,33 @@ jobs:
           done
           echo "all operator scripts are pure ASCII"
 
+      # The operator file is generated from the canonical migration. If someone
+      # edits one and not the other, the file an operator pastes into the
+      # Supabase dashboard stops being the migration this repository tests --
+      # and nothing else would notice, because the operator file is not on any
+      # code path CI otherwise runs.
+      - name: The 0021 operator file matches the canonical migration
+        run: node db/tools/build-operator-sql.mjs --check
+
+      - name: The operator file asks the operator to supply nothing
+        run: |
+          f=db/operator/0021_live_source_ingestion.operator.sql
+          # The payload between the markers must be the migration body itself.
+          sed -n '/CANONICAL PAYLOAD BEGINS/,/CANONICAL PAYLOAD ENDS/p' "$f" \
+            | sed '1,3d' | sed '$d' > /tmp/payload.sql
+          sed -n '/^begin;$/,/^commit;$/p' db/migrations/0021_live_source_ingestion.up.sql \
+            | sed '1d' | sed '$d' > /tmp/canonical.sql
+          diff -u /tmp/canonical.sql /tmp/payload.sql
+          # One statement, so one transaction, whatever the SQL Editor does.
+          test "$(grep -c '^do \$operator_0021\$' "$f")" = 1
+          test "$(grep -c '^\$operator_0021\$;' "$f")" = 1
+          # No dynamic SQL: the payload is inlined, never re-quoted.
+          if grep -qiE 'execute[[:space:]]*(\$|'"'"')' "$f"; then
+            echo "The operator file uses dynamic SQL."
+            exit 1
+          fi
+          echo "operator file is complete, atomic, and free of dynamic SQL"
+
       - name: Netlify configuration is present and points at the app
         run: |
           grep -q 'base = "app"' netlify.toml
@@ -683,14 +710,17 @@ jobs:
       - name: Every operator PowerShell file parses under 5.1
         shell: powershell
         run: |
-          $files = @(
-            'scripts\OperatorGuards.psm1',
-            'scripts\Send-BootstrapInvitation.ps1',
-            'scripts\Invoke-HostedValidation.ps1',
-            'scripts\New-PreprovisionedAccounts.ps1',
-            'scripts\tests\Test-InvitationRequest.ps1',
-            'scripts\tests\Test-PreprovisionRequest.ps1'
-          )
+          # EVERY PowerShell file under scripts/, found rather than listed. The
+          # list this replaced named six files and the directory held more, so
+          # a new operator script could ship without ever being parsed by the
+          # only job that runs Windows PowerShell 5.1.
+          $files = @(Get-ChildItem -Path 'scripts' -Recurse -Include '*.ps1','*.psm1' |
+                     ForEach-Object { $_.FullName } | Sort-Object)
+          if ($files.Count -lt 6) {
+            Write-Host "Expected at least six PowerShell files under scripts/, found $($files.Count)."
+            exit 1
+          }
+          Write-Host "parsing $($files.Count) file(s)"
           $failed = 0
           foreach ($file in $files) {
             $errors = $null

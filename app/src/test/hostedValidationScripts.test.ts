@@ -717,3 +717,142 @@ describe('the operator scripts are readable by Windows PowerShell 5.1', () => {
     }
   })
 })
+
+/* ==========================================================================
+   The readiness check, which is the one operator script that has a
+   CREDENTIAL-FREE answer worth protecting.
+   ========================================================================== */
+
+const readinessPs = read('scripts/Test-DeploymentReadiness.ps1')
+const readinessSh = read('scripts/test-deployment-readiness.sh')
+const statusHandler = read('app/netlify/functions/status.ts')
+
+const readinessScripts: [string, string][] = [
+  ['Test-DeploymentReadiness.ps1', readinessPs],
+  ['test-deployment-readiness.sh', readinessSh],
+]
+
+describe('the readiness check answers the configuration question without a credential', () => {
+  /*
+     THE PROPERTY THE WHOLE DESIGN RESTS ON.
+
+     `/api/status` validates its environment BEFORE it reads the Authorization
+     header. That ordering is what lets an UNAUTHENTICATED request separate
+     "the function cannot see its variables" (503, which names them) from "the
+     function ran" (401) -- so the question an operator actually has after
+     entering Netlify variables can be answered with nothing secret in flight.
+
+     If someone ever moves the auth check above the env check, stage 1 silently
+     becomes a test of authentication instead, and this fails.
+  */
+  it('/api/status validates its environment before reading the Authorization header', () => {
+    const envCheck = statusHandler.indexOf("serverEnv('status')")
+    const authRead = statusHandler.indexOf('event.headers.authorization')
+    expect(envCheck).toBeGreaterThan(-1)
+    expect(authRead).toBeGreaterThan(-1)
+    expect(envCheck).toBeLessThan(authRead)
+  })
+
+  it('names the missing variables in the 503, so the check is actionable', () => {
+    expect(statusHandler).toContain('Deployment is incomplete. Missing:')
+    expect(statusHandler).toContain('error.names.join')
+  })
+
+  for (const [name, text] of readinessScripts) {
+    it(`${name} treats 401 as the pass and 503 as the failure`, () => {
+      expect(text).toMatch(/401/)
+      expect(text).toMatch(/503/)
+      expect(text).toMatch(/Functions/)
+      // A 200 without a credential would mean the endpoint is open, which is a
+      // finding in its own right and must not read as success.
+      expect(text).toMatch(/UNEXPECTED/)
+    })
+
+    it(`${name} sends no credential in stage 1`, () => {
+      const code = codeOnly(text)
+      const stage1 = code.slice(0, code.indexOf('Stage 2: the full report'))
+      expect(stage1.length).toBeGreaterThan(200)
+      expect(stage1).not.toMatch(/Authorization/i)
+      expect(stage1).not.toMatch(/Bearer/i)
+    })
+
+    it(`${name} takes no credential as a parameter or an environment variable`, () => {
+      // A parameter lands in `ps` and in shell history; an environment variable
+      // is inherited by every child process. The base URI is the only input,
+      // and it is not secret.
+      expect(text).not.toMatch(/\$\{?TOKEN\}?\s*=\s*\$[0-9]/)
+      expect(text).not.toMatch(/export\s+\w*TOKEN/i)
+      expect(text).not.toMatch(/\[string\]\s*\$(Token|AccessToken|Bearer)/i)
+      expect(text).not.toMatch(/param\([^)]*Token/is)
+    })
+
+    it(`${name} never writes a credential to a file`, () => {
+      expect(text).not.toMatch(/>\s*\S*token/i)
+      expect(text).not.toMatch(/Out-File|Set-Content|Add-Content/)
+      expect(text).not.toMatch(/tee\b/)
+    })
+
+    it(`${name} never echoes the credential`, () => {
+      expect(text).not.toMatch(/echo\s+"?\$TOKEN/)
+      expect(text).not.toMatch(/Write-Host\s+.*\$plain/)
+      expect(text).not.toMatch(/print[a-z]*\s+.*\$TOKEN/i)
+    })
+
+    it(`${name} requires https`, () => {
+      expect(text).toMatch(/https/)
+      expect(text).toMatch(/[Rr]efusing a non-https/)
+    })
+  }
+
+  it('the bash script hides the typed characters and never puts the header in argv', () => {
+    // `read -rs` keeps it off the terminal. `curl --config -` takes the header
+    // on STDIN, which is the one channel that is neither the argument vector
+    // (readable by `ps`) nor the environment (inherited by children).
+    expect(readinessSh).toMatch(/read -rs TOKEN/)
+    expect(readinessSh).toContain('curl --config -')
+    expect(readinessSh).not.toMatch(/curl[^\n]*-H\s+["']?Authorization/)
+    expect(readinessSh).toContain('unset TOKEN')
+  })
+
+  it('the PowerShell script reuses the guard primitives instead of a second copy', () => {
+    // Re-implementing SecureString handling per script is how one copy drifts.
+    expect(readinessPs).toContain("Import-Module (Join-Path $PSScriptRoot 'OperatorGuards.psm1')")
+    expect(readinessPs).toContain('Read-SecretValue')
+    expect(readinessPs).toContain('Use-Plain')
+    expect(readinessPs).not.toContain('Read-Host -Prompt')
+    expect(guards).toContain('Read-SecretValue')
+    expect(guards).toContain('Use-Plain')
+  })
+
+  it('the PowerShell script refuses to run where the console is being recorded', () => {
+    const code = codeOnly(readinessPs)
+    expect(code).toContain('Assert-NoObservation')
+    // Before the prompt, or it is protecting nothing.
+    expect(code.indexOf('Assert-NoObservation')).toBeLessThan(code.indexOf('Read-SecretValue'))
+  })
+
+  it('neither script instructs the operator to export a credential', () => {
+    for (const [name, text] of readinessScripts) {
+      expect(text, name).not.toMatch(/export\s+[A-Z_]*(TOKEN|KEY|SECRET)/)
+      expect(text, name).not.toMatch(/\$env:[A-Z_]*(TOKEN|KEY|SECRET)\s*=/i)
+    }
+  })
+
+  it('both say the token stays valid until it expires', () => {
+    // Because it does. A reader who thinks closing the tab revoked it will
+    // treat the value more casually than it deserves.
+    for (const [name, text] of readinessScripts) {
+      expect(text, name).toMatch(/expir/i)
+      expect(text, name).toMatch(/[Cc]lose (this|the) (terminal|window)/)
+    }
+  })
+
+  it('every PowerShell file under scripts/ is parsed by CI, by discovery not by list', () => {
+    // The list this replaced named six files while the directory held more, so
+    // a new operator script could ship without ever meeting a 5.1 parser.
+    const block = workflow.slice(workflow.indexOf('Every operator PowerShell file parses'))
+    expect(block).toContain('Get-ChildItem')
+    expect(block).toMatch(/-Recurse/)
+    expect(block).toMatch(/'\*\.ps1','\*\.psm1'/)
+  })
+})

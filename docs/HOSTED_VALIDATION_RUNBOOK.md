@@ -610,6 +610,149 @@ modify a document it already holds, and will not send any email.
 nothing about a facility in the last year, the correct result is zero. Do not
 fill that in.
 
+## F0a. Runtime readiness, before anything is applied
+
+**Nothing below F0a is worth starting until it passes.** Migration 0021, the
+seed, source enablement and the backfill all assume a deployment whose
+functions can actually run, and a Netlify deploy marked `ready` is not evidence
+of that: every variable a function needs is read at *request* time, so a deploy
+with none of them configured is equally `ready`.
+
+### The order
+
+1. Enter the Functions-scope variables in Netlify (§ C).
+2. Force a **new** Deploy Preview for PR #10 — a deploy is frozen at the values
+   it was built with, so an existing one still serves the old ones.
+3. Run the readiness check below.
+4. It must reach **HTTP 200** at stage 2 (**401** at stage 1 is the minimum).
+5. Only then run `db/operator/0021_live_source_ingestion.operator.sql` (F1).
+6. Only after F1b verification: the seed (F1c), enablement (F5), dry run and
+   backfill (F7).
+
+### The check
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-DeploymentReadiness.ps1 `
+  -BaseUri 'https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app'
+```
+
+```bash
+bash scripts/test-deployment-readiness.sh https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app
+```
+
+### Stage 1 sends no credential at all
+
+`/api/status` validates its environment **before** it reads the `Authorization`
+header. That ordering is what makes the configuration question answerable with
+nothing secret in flight:
+
+| Response | What it means |
+| --- | --- |
+| **401** | **PASS.** The function ran. `SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` are all present at Functions scope. |
+| **503** | The function ran and refused. The body **names** the variables it cannot see. Set them, redeploy, run again. |
+| 200 | The endpoint answered without authentication. That is a finding — stop and report it. |
+| 404 | `/api/status` did not reach a function. A `_redirects` file may be shadowing `netlify.toml`. |
+| no response | Your network, not the deployment. |
+
+A 401 is the answer to "did my Netlify variables land". No token is involved, so
+there is no token to mishandle.
+
+### Stage 2 is optional, and the token never leaves your machine's memory
+
+The full report — database reachable *as the caller*, schema version, storage
+posture, auth posture, `sec.contactConfirmed`, `egressAllowlistSize` — needs a
+signed-in user's access token. Sign in to the deployment, then take the access
+token from the Supabase session in browser storage.
+
+**Where the token must never go, and where these scripts do not put it:**
+
+| | |
+| --- | --- |
+| a command-line argument | visible in `ps` to every other process; PowerShell also records bound parameters in history |
+| an environment variable | inherited by every child process |
+| a file, or this repository | it would outlive the check |
+| shell history | `read -rs` and `Read-SecretValue` keep the characters off the terminal |
+| chat, a ticket, or a log | it is a bearer credential, not a reference |
+
+Bash hands the header to curl through `--config -` on **stdin** — the one
+channel that is neither the argument vector nor the environment — and unsets it
+afterwards. PowerShell uses `Read-SecretValue` and `Use-Plain` from
+`OperatorGuards.psm1`, the same primitives the hosted validator uses, and
+`Assert-NoObservation` refuses to run at all under a transcript, verbose or
+debug output, script tracing, or a debugger breakpoint.
+
+**The token stays valid until its own expiry**, on this project as on any
+Supabase project — signing out does not revoke it. Run the check and close the
+terminal.
+
+`app/src/test/hostedValidationScripts.test.ts` asserts every one of those
+properties, including the ordering inside `/api/status` that stage 1 depends on.
+
+### What a healthy report looks like
+
+`ok: true`, `schema.version` at least `"0020"` before F1 and `"0021"` after,
+`database.reachable: true`, `storage.private: true`,
+`auth.inviteOnlyEnforced: true`.
+
+`model.configured: false` is **expected and correct**, and affects nothing —
+see F0b. `sec.contactConfirmed` must be `true` before any SEC request, and
+`egressAllowlistSize` must be **3**.
+
+---
+
+## F0b. The model, and why it is not a precondition
+
+**No ingestion code path calls a model.** `modelGateway` is imported by exactly
+one file in this repository — `netlify/functions/status.ts` — and only to report
+whether it is configured. Classification is
+`netlify/functions/_shared/connectors/classify.ts`: deterministic, regex-based,
+requiring a project action, a physical asset and a corroborating fact to
+co-occur within one 420-character window.
+
+`app/src/test/modelDependency.test.ts` runs the pipeline against a recorded
+connector fixture under four permutations — no model variables at all; all four
+set; provider and id with no key; a key with nothing else — and asserts the
+written rows are **identical** in every case, with **zero** outbound requests.
+
+| Question | Answer |
+| --- | --- |
+| Without a model key, which rows are created? | **All of them.** `evidence` for every retrieved document, `signals` and `signal_evidence` for every qualifying passage, `opportunities` and `opportunity_signals` wherever the confidence bar is met. |
+| Can the application display real evidence, signals and opportunities? | **Yes.** Nothing on the read path consults a model. |
+| Does "classification fails closed" mean retained, failed, or discarded? | **Retained.** A document that carries no qualifying signal is stored with `classification_status = 'not_relevant'` — evaluated and found to carry nothing. There is no `failed` status and nothing is discarded. Its bytes hash, URLs, excerpt and timestamps are all kept. |
+| Can it be reprocessed later? | **Yes.** `classifyText` takes a string and returns a verdict — no network, no credential, no state. Reprocessing is a re-read of `evidence`, not a re-fetch from the source. |
+| Optional enrichment, or required? | **Neither — currently unused.** It is not wired into any stage that produces a user-visible row. |
+| Is there a deterministic non-model path? | **It is the only path.** |
+| Can a run succeed while every document fails classification? | **Yes**, and that is the correct outcome. `run_status` is derived from errors and evidence written, not from how many documents qualified. |
+| What does Source Health & Coverage show then? | The source is **healthy** and `last_success_at` advances — retrieval worked. The opportunity surfaces show the **empty** state, not an error: *"No qualifying opportunity has been found in the collected sources yet. Every document retrieved so far was evaluated and none carried a supported facility signal."* Each rejection is counted by reason in the run record. |
+
+**Zero opportunities is a finding, not a fault, and not a missing model.**
+
+### If a model is configured anyway
+
+It changes nothing about ingestion, and these are its properties:
+
+| | |
+| --- | --- |
+| Provider | Anthropic Direct (`MODEL_PROVIDER=anthropic`). `bedrock` and `vertex` are declared in the type and have **no adapter** — they refuse rather than falling back. |
+| Endpoint | `https://api.anthropic.com/v1/messages`, a **literal** argument to `fetch`. Not a variable, not a template, not from the environment, not from `connector_config`. A retrieved document cannot redirect a model request. Asserted by test. |
+| Not on the egress allowlist | and must not be added. `EGRESS_ALLOWLIST` governs **source retrieval**; the model gateway does not use it. |
+| Variables | `MODEL_API_KEY` (**secret**), `MODEL_ID` (**required once the key is set** — a key without it throws), `MODEL_PROVIDER` (defaults `anthropic`), `MODEL_PROMPT_VERSION` (defaults `v0`). All **Netlify UI, Functions scope**. |
+| Transmitted | `system` instructions, the `input` text, and `model`/`max_tokens`. Document text would be the payload. Nothing else — no URL, no database row, no account identifier. |
+| Retention | The **replay key** is stored: a sha256 over content hash, preprocessing version, task, provider, model id, prompt version, schema and taxonomy versions, resolved-context digest, and a hash of the instructions. **Prompts and responses are not stored.** Anthropic's own retention is governed by their terms, not by this repository. |
+| Request limits / timeout / retry | **None in the adapter.** No timeout, no retry, no rate limit — unlike the egress gateway, which has all three. A model call today would hang on the platform default. That is a gap, and it is stated rather than implied. |
+| Failure behaviour | `no_credential`, `provider_error`, `invalid_output`, `refused_by_model`. Every one is a refusal; none fabricates a classification. |
+| Cost for a 12-month, three-company backfill | **Not estimable, and no figure should be invented.** Nothing calls the gateway, so the number of calls is zero. Were a stage added, the inputs to an estimate — documents retrieved, tokens per document, calls per document — are unknown until the first backfill runs, because no source has been contacted from this environment. |
+
+**A half-configured model no longer breaks the diagnostic.** `modelEnv()`
+correctly throws for a key with no `MODEL_ID`, and for an unknown provider — but
+`status.ts` called it outside its error handler, so either one escaped and
+`/api/status` answered **500 with HTML**, on the endpoint an operator runs
+precisely because something is wrong. It now reports
+`model.configured: false` with `model.detail` naming what is missing, and every
+other component still answers.
+
+---
+
 ## F1. Apply migration 0021, after the already-applied 0020
 
 **Read the ordering note first.** This migration was drafted as `0019` and never
@@ -625,58 +768,94 @@ Backward compatible: every column is nullable or defaulted, every index is
 partial or on a new column, and a pre-0021 application keeps working against the
 migrated database.
 
-### If you have `psql` and the pooler URL
+### Run one file. There is nothing to assemble.
+
+```
+db/operator/0021_live_source_ingestion.operator.sql
+```
+
+**Supabase Dashboard → SQL Editor → paste the entire file → Run.**
+Or, if you have the pooler URL:
 
 ```bash
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/migrations/0021_live_source_ingestion.up.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "insert into public.schema_migrations (version, name, checksum, stamped)
-  values ('0021','live_source_ingestion','fd15cdc30a526e9575fe9c0644d8055e4346290ea8d7596048f78b9e7afc53b7', false);"
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/operator/0021_live_source_ingestion.operator.sql
 ```
 
-### If you are using the Supabase SQL Editor
+That file contains the complete migration and records the ledger row itself.
+Nothing is left out, nothing is substituted, and you are not asked to paste one
+file inside another. **It is the exact file CI tests**, on PostgreSQL 16 and 17,
+on every run.
 
-**The SQL Editor does not keep one session across the statements of a script.**
-This was learned the hard way applying 0020: a temporary table created by one
-statement was already gone by the next, and — far worse — an explicit
-`begin; … commit;` therefore does not wrap the script either. **A multi-statement
-script that looks atomic can commit its first half and fail on its second.**
+#### Why it is one `DO` block
 
-So wrap the whole thing in a single `DO` block, which is one statement and runs
-in one transaction whatever the client does with it:
+**The Supabase SQL Editor does not keep one session across the statements of a
+script.** That was learned applying 0020, when a temporary table created by one
+statement was already gone by the next. The consequence people miss is the
+second-order one: if the session does not survive, an explicit `begin; … commit;`
+does not wrap the script either — so a script that *looks* atomic can commit its
+first half and fail on its second, leaving migration objects with no ledger row.
 
-```sql
-do $apply0021$
-declare
-    n bigint;
-begin
-    if exists (select 1 from public.schema_migrations where version = '0021') then
-        raise exception 'ABORT: migration 0021 is already recorded. Nothing to do.';
-    end if;
-    if not exists (select 1 from public.schema_migrations where version = '0020') then
-        raise exception 'ABORT: migration 0020 is not present. Apply it first.';
-    end if;
-    if not exists (select 1 from public.schema_migrations where version = '0018') then
-        raise exception 'ABORT: migration 0018 is not present.';
-    end if;
+A `DO` block is a single statement, and a single statement is one transaction
+whatever the client does with the script around it. So either every object
+exists **and** the ledger row is recorded, or neither is.
 
-    execute $mig$
--- >>> paste the ENTIRE contents of
--- >>> db/migrations/0021_live_source_ingestion.up.sql here, verbatim
-    $mig$;
+There is no dynamic SQL in it. An earlier draft wrapped the migration in
+`execute $mig$ … $mig$`, which assumes one `EXECUTE` can run an arbitrary
+multi-statement migration. That assumption is not made: PL/pgSQL runs an
+ordinary SQL statement written directly in its body, utility statements
+included, so the migration's own statements are inlined **verbatim**. The
+payload in the operator file is byte-identical to
+`db/migrations/0021_live_source_ingestion.up.sql` between its `begin;` and
+`commit;`, and CI diffs the two.
 
-    insert into public.schema_migrations (version, name, checksum, stamped)
-    values ('0021', 'live_source_ingestion',
-            'fd15cdc30a526e9575fe9c0644d8055e4346290ea8d7596048f78b9e7afc53b7', false);
+#### What it refuses
 
-    select count(*) into n from public.schema_migrations where version = '0021';
-    if n <> 1 then raise exception 'ABORT: 0021 is not recorded exactly once.'; end if;
+Any line containing `ABORT:` means **nothing was committed**. It refuses if:
 
-    raise notice 'Migration 0021 applied and recorded.';
-end
-$apply0021$;
+| Condition | Message |
+| --- | --- |
+| no `schema_migrations` ledger | this database has never been migrated |
+| 0021 already recorded | `already recorded. Nothing to do.` |
+| 0018 missing | older than 0021 expects |
+| 0020 missing | apply it first; the order is 0018, 0020, 0021 |
+| the recorded 0020 checksum is not `55514d77a1e9…` | investigate the ledger first |
+| `auth_guard_microsoft_identity` absent | 0020 is recorded but its objects are not there |
+
+It also **asserts the result before returning** — all seven new objects, the
+nine evidence columns, the three opportunities columns, the three sources
+columns, that no scoring column is still `NOT NULL`, that 0021 is recorded
+exactly once, and that 0020 and the Microsoft guard are still intact afterwards.
+A silent partial application is not a state it can reach.
+
+#### What CI proves about it, every run, on PostgreSQL 16 and 17
+
+`db/tests/operator-0021.sh`, driven from `db/verify.sh`:
+
+| | |
+| --- | --- |
+| the payload is byte-identical to the canonical migration | 204 lines, diffed |
+| exactly one statement | one `DO`, one terminator |
+| no dynamic SQL | nothing re-quoted or reassembled |
+| applies from the exact pre-0021 schema | 0001–0018 then 0020 |
+| all seven objects, nine columns, nullable scoring columns | asserted |
+| `db/migrate.mjs verify` accepts the result | the parity proof — the repository's own checksum rule agrees |
+| 0020 checksum and the Microsoft guard unchanged | asserted |
+| a second run refuses | and the database is byte-identical afterwards |
+| a failure near the **beginning** | nothing committed, database byte-identical |
+| a failure in the **middle** | nothing committed, database byte-identical |
+| a failure at the **end**, after the ledger insert | no objects **and** no ledger row |
+
+The failures are injected mechanically into the committed file — a real runtime
+error, not a `raise` — so what is being tested is the transaction and not the
+error-reporting path.
+
+#### If you edit the migration
+
+Regenerate, or CI fails:
+
+```bash
+node db/tools/build-operator-sql.mjs
 ```
-
-Any line containing `ABORT:` means **nothing was committed**.
 
 **Rollback**, if you need it: `db/migrations/0021_live_source_ingestion.down.sql`,
 then `delete from public.schema_migrations where version = '0021';`. It drops
@@ -711,6 +890,8 @@ and `migrations_applied` = **20**.
 objects, and this is the cheapest way to prove it did not.
 
 ## F1c. Apply the live-cohort source seed
+
+**Only after F1b passes.** The seed writes rows into columns 0021 adds.
 
 ```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/seed/0006_live_cohort_sources.sql

@@ -17,7 +17,7 @@ import type { Handler } from '@netlify/functions'
 import { failure, json, methodNotAllowed } from './_shared/http.js'
 import { UnauthorizedError, requireUser } from './_shared/auth.js'
 import { supabaseAdmin, supabaseAsUser } from './_shared/supabaseAdmin.js'
-import { modelGateway } from './_shared/modelGateway.js'
+import { modelGateway, unavailableGateway } from './_shared/modelGateway.js'
 import {
   SessionRevokedError,
   productionGuardDeps,
@@ -88,7 +88,35 @@ export const handler: Handler = async (event) => {
   const { data: bucket } = await supabaseAdmin()
     .storage.getBucket(env.evidenceBucket)
 
-  const gateway = modelGateway()
+  /*
+     A HALF-CONFIGURED MODEL MUST NOT BREAK THE DIAGNOSTIC.
+
+     `modelEnv()` throws when MODEL_API_KEY is set and MODEL_ID is not, and
+     again when MODEL_PROVIDER is not one of the three it knows. Both are
+     correct refusals -- a model call with no model named is not something to
+     guess at -- but `modelGateway()` was called out here, outside the
+     MissingEnvError handler above, so either one escaped the handler entirely
+     and Netlify answered 500 with HTML from a JSON endpoint.
+
+     That is the wrong failure for THIS endpoint in particular. /api/status is
+     what an operator runs to find out what is wrong with a deployment; it has
+     to survive being pointed at a deployment that is wrong. So a model
+     misconfiguration is REPORTED as an unconfigured model with the reason
+     attached, exactly like a missing credential, and every other component
+     still answers.
+  */
+  let gateway
+  try {
+    gateway = modelGateway()
+  } catch (error) {
+    gateway = unavailableGateway(
+      error instanceof MissingEnvError
+        ? `Model configuration is incomplete. Missing: ${error.names.join(', ')}.`
+        : error instanceof Error
+          ? error.message
+          : 'Model configuration is invalid.',
+    )
+  }
 
   // Is the evidence proxy's session guard actually INSTALLED on this project?
   // Asked by calling it with an id pair that cannot exist: an installed function
@@ -114,9 +142,15 @@ export const handler: Handler = async (event) => {
   }
 
   // `ok` reflects the FOUNDATION: can we reach the database as the caller.
-  // The model is reported separately and deliberately does not affect it — an
-  // absent model key is a supported state in which collection, preservation and
-  // resolution all still run, and only classification refuses. SEC is reported
+  // The model is reported separately and deliberately does not affect it.
+  //
+  // AND IT IS WEAKER THAN "OPTIONAL": no ingestion code path calls the model
+  // gateway at all. Classification is `connectors/classify.ts`, which is
+  // deterministic and takes a string. An absent model key changes nothing about
+  // what is collected, preserved, classified, or shown --
+  // `app/src/test/modelDependency.test.ts` runs the pipeline under every
+  // permutation of the four MODEL_ variables and asserts the rows are
+  // identical. This field reports configuration, not capability. SEC is reported
   // the same way and for the same reason: an unconfigured collector is a
   // supported state, not a broken deployment, and it must never be able to
   // report the foundation as unhealthy.
@@ -141,6 +175,8 @@ export const handler: Handler = async (event) => {
     model: {
       configured: gateway.available,
       describe: gateway.describe,
+      // Names what is missing or wrong. Never a value.
+      detail: gateway.detail ?? null,
     },
     auth: {
       // Whether the invite guard is in force, not who is on the list.

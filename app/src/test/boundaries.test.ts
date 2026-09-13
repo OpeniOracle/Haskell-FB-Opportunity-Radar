@@ -117,6 +117,16 @@ const ENV_MODULES = [
  *                         right shape. Every value in it is fabricated — the URL
  *                         resolves to nothing and the keys are zeroes — and the
  *                         file asserts that none of them reaches the output
+ *   modelDependency.test.ts
+ *                         runs the ingestion pipeline under every permutation of
+ *                         the four MODEL_ variables to prove the model is not on
+ *                         any path that produces a user-visible row. That means
+ *                         setting those variables on `process.env`, stubbing
+ *                         `fetch` to assert nothing is requested, and naming the
+ *                         one model endpoint so it can assert the endpoint is a
+ *                         literal that no retrieved document or connector
+ *                         configuration can influence. The credential in it is
+ *                         the string `test-key-not-a-real-credential`
  *   runtimeConfiguration.test.ts
  *                         asserts that a deployed function's configuration can
  *                         only come from the Netlify UI, never from
@@ -148,6 +158,7 @@ const SELF_REFERENTIAL = [
   'publicationTimestamps.test.tsx',
   'liveDataMode.test.ts',
   'runtimeConfiguration.test.ts',
+  'modelDependency.test.ts',
 ]
 
 const files = walk(srcDir)
