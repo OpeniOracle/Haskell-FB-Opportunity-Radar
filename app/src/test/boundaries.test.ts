@@ -117,6 +117,18 @@ const ENV_MODULES = [
  *                         right shape. Every value in it is fabricated — the URL
  *                         resolves to nothing and the keys are zeroes — and the
  *                         file asserts that none of them reaches the output
+ *   runtimeConfiguration.test.ts
+ *                         asserts that a deployed function's configuration can
+ *                         only come from the Netlify UI, never from
+ *                         `netlify.toml`. Proving that means naming every
+ *                         server variable, setting them on `process.env` to
+ *                         watch each scope fail closed when one is removed, and
+ *                         driving the egress gateway against real source
+ *                         hostnames and attacker-shaped URLs. Every value in it
+ *                         is fabricated — `example-project.supabase.co`,
+ *                         `sb_secret_exampleValueForTests`,
+ *                         `ops@example.invalid` — and the file asserts that
+ *                         `describeServerVariables()` leaks none of them
  *
  * Excluded by exact name so the exemption stays auditable. Excluding all of
  * `test/` would hide a real leak in any future test file.
@@ -135,6 +147,7 @@ const SELF_REFERENTIAL = [
   'liveConnectors.test.ts',
   'publicationTimestamps.test.tsx',
   'liveDataMode.test.ts',
+  'runtimeConfiguration.test.ts',
 ]
 
 const files = walk(srcDir)

@@ -78,7 +78,9 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'OperatorGuards.psm1') -Force
 
-# Not secret. Committed in netlify.toml; it grants nothing on its own.
+# Not secret; it grants nothing on its own. Hard-coded here rather than read
+# from the environment: this script talks to the hosted project directly and
+# does not run inside a Netlify context.
 $SupabaseUrl = 'https://dutmdlbangsthclgtkhy.supabase.co'
 
 if ($SupabaseOriginForLoopbackTest) {

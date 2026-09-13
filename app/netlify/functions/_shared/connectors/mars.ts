@@ -54,7 +54,12 @@ import {
 
 export const MARS_CONNECTOR_VERSION = '1.0.0'
 export const MARS_SOURCE_ID = 'mars-newsroom'
-export const MARS_HOSTS = ['mars.com', 'www.mars.com'] as const
+/**
+ * The only host this connector requests. Bare `mars.com` is deliberately NOT
+ * listed: an allowlist entry covers every subdomain beneath it, and this
+ * connector builds no URL that needs one. See `SEC_HOSTS`.
+ */
+export const MARS_HOSTS = ['www.mars.com'] as const
 
 const MIN_REQUEST_INTERVAL_MS = 1_500
 const FETCH_CONCURRENCY = 2

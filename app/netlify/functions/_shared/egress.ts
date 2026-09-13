@@ -80,6 +80,20 @@ export function hostAllowed(host: string, allowlist: readonly string[]): boolean
   })
 }
 
+/**
+ * An IP literal, v4 or bracketed v6.
+ *
+ * Refused outright rather than left to the allowlist. An allowlist of NAMES
+ * cannot meaningfully authorise an address: the name is the thing that was
+ * reviewed, and a literal skips the resolution step that review was about. It
+ * is also the shape every SSRF attempt takes, so refusing it costs nothing a
+ * legitimate source needs.
+ */
+function isIpLiteral(hostname: string): boolean {
+  if (hostname.startsWith('[')) return true
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
+}
+
 function assertAllowed(rawUrl: string, allowlist: readonly string[]): URL {
   let url: URL
   try {
@@ -87,10 +101,44 @@ function assertAllowed(rawUrl: string, allowlist: readonly string[]): URL {
   } catch {
     throw new EgressDeniedError(rawUrl, allowlist)
   }
+
   // Only https. An http URL is a downgrade and a redirect target waiting to happen.
   if (url.protocol !== 'https:') {
     throw new EgressDeniedError(`${url.protocol}//${url.host}`, allowlist)
   }
+
+  /*
+     USERINFO IS REFUSED, and this is the one that is easy to get wrong.
+
+     `https://evil.example@sec.gov/` has hostname `sec.gov`, so it PASSES an
+     allowlist that checks only the host -- and the request really does go to
+     sec.gov, carrying credentials somebody embedded in the URL. That is a
+     credential being handed to an allowed host by a URL nobody inspected.
+     (The mirror image, `https://sec.gov@evil.example/`, has hostname
+     `evil.example` and was already denied.)
+
+     Nothing this project retrieves is authenticated by userinfo, so there is
+     no legitimate case to weigh against it. The value itself is never put in
+     the error.
+  */
+  if (url.username !== '' || url.password !== '') {
+    throw new EgressDeniedError(`${url.hostname} (URL carried credentials)`, allowlist)
+  }
+
+  /*
+     DEFAULT PORT ONLY. `https://sec.gov:8443/` also has hostname `sec.gov`
+     and would pass a host-only check while reaching a different service. An
+     allowlist entry names a host, and a host on its standard port is what was
+     reviewed.
+  */
+  if (url.port !== '') {
+    throw new EgressDeniedError(`${url.hostname}:${url.port}`, allowlist)
+  }
+
+  if (isIpLiteral(url.hostname)) {
+    throw new EgressDeniedError(`${url.hostname} (IP literal)`, allowlist)
+  }
+
   if (!hostAllowed(url.hostname, allowlist)) {
     throw new EgressDeniedError(url.hostname, allowlist)
   }

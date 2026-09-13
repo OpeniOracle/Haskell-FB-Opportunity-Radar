@@ -34,7 +34,18 @@ import { classifyRestriction, decodeUtf8, htmlToText } from './extract.js'
 
 export const SEC_CONNECTOR_VERSION = '1.0.0'
 
-export const SEC_HOSTS = ['sec.gov', 'data.sec.gov', 'www.sec.gov'] as const
+/**
+ * EXACT HOSTS, NOT THE PARENT DOMAIN. These are the only two names this
+ * connector builds a URL for, and they are what the operator puts in
+ * `EGRESS_ALLOWLIST`.
+ *
+ * Listing bare `sec.gov` would be shorter and worse: an allowlist entry permits
+ * the name and every subdomain beneath it, so `sec.gov` would silently
+ * authorise every host SEC ever publishes — including ones nobody reviewed.
+ * A redirect to an unlisted SEC host now fails with a message naming it, which
+ * is a decision an operator makes rather than one the allowlist makes for them.
+ */
+export const SEC_HOSTS = ['data.sec.gov', 'www.sec.gov'] as const
 
 /** SEC asks for no more than ten requests a second. We use a fraction of it. */
 const MIN_REQUEST_INTERVAL_MS = 220

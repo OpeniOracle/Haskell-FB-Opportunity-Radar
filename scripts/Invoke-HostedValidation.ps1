@@ -51,8 +51,9 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'OperatorGuards.psm1') -Force
 
 # --------------------------------------------------------------------------
-# Not secret. Committed in netlify.toml; it grants nothing on its own, and RLS
-# is what protects the data.
+# Not secret; it grants nothing on its own, and RLS is what protects the data.
+# Hard-coded here rather than read from the environment: this script talks to
+# the hosted project directly and does not run inside a Netlify context.
 $SupabaseUrl  = 'https://dutmdlbangsthclgtkhy.supabase.co'
 $Publishable  = 'sb_publishable_kE97uOb8HCo51uT_e0mxqg_So2Z0dwH'
 $Bucket       = 'evidence-raw'

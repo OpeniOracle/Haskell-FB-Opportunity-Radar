@@ -398,21 +398,72 @@ account therefore needs nothing that an invited one does not.
 
 ## C. Netlify variables
 
-Site configuration → Environment variables. **Three values now**, all for every
-deploy context (one development project currently serves all of them):
+### `netlify.toml` cannot configure a function
 
-| Key | Scope | Contexts | Secret |
-| --- | --- | --- | --- |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | **Builds** | all | no |
-| `SUPABASE_SECRET_KEY` | **Functions** | all | yes |
-| `INGEST_SHARED_SECRET` | **Functions** | all | yes |
+Netlify's documentation is explicit:
 
-`MODEL_API_KEY` (Functions, secret) is **optional** and may be left absent.
-`SEC_EDGAR_USER_AGENT` and `SEC_CONTACT_CONFIRMED` need no entry — both are
-committed in `netlify.toml`. Full reasoning in `docs/ENVIRONMENT.md`.
+> Environment variables declared in a Netlify configuration file
+> (`netlify.toml`) are not available to serverless functions.
+> — <https://docs.netlify.com/build/functions/environment-variables/>
 
-Then **Deploys → Trigger deploy → Clear cache and deploy site**, so the build
-picks up the new build-scope variable.
+So there are **four distinct places**, and only two of them reach a function:
+
+| Where it is set | Reaches the Vite **build** | Reaches a **Function** |
+| --- | --- | --- |
+| `netlify.toml` (`[build.environment]`, `[context.*.environment]`) | yes | **no** |
+| Netlify UI / CLI / API, scope **Builds** | yes | **no** |
+| Netlify UI / CLI / API, scope **Functions** | no | **yes** |
+| Netlify UI / CLI / API, scope **All** | yes | **yes** |
+
+Earlier revisions of this runbook said `SUPABASE_URL`, `SEC_EDGAR_USER_AGENT`,
+`SEC_CONTACT_CONFIRMED` and `EGRESS_ALLOWLIST` were "committed in
+`netlify.toml`" and therefore needed no entry. **That was wrong.** Those
+declarations never reached a function. They have been removed from the file, and
+the values must be entered in the dashboard like any other runtime value.
+
+`netlify.toml` now carries build settings and `VITE_`-prefixed values only.
+`app/src/test/runtimeConfiguration.test.ts` fails if a runtime variable
+reappears there.
+
+### A deploy is frozen at the values it was built with
+
+Netlify resolves environment values when a deploy is created and freezes them
+into it. Changing a variable in the dashboard changes nothing about an existing
+deploy, including one whose status is `ready`.
+
+**After every change below, redeploy the context you changed** — Deploys →
+Trigger deploy → **Clear cache and deploy site** for production, or *Retry
+deploy* / a fresh push for a Deploy Preview — and confirm afterwards with
+`/api/status`, which reports what the running function can actually see.
+
+### The values
+
+Site configuration → Environment variables. One development project currently
+serves every context, so *Same value for all deploy contexts* is correct today.
+
+**Builds scope** — read by Vite, inlined into the bundle:
+
+| Key | Secret |
+| --- | --- |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | no |
+
+**Functions scope** — read by a function at request time. None of these can be
+committed:
+
+| Key | Secret | Notes |
+| --- | --- | --- |
+| `SUPABASE_URL` | no | Already set — production `/api/session` works, which is only possible if it is present |
+| `SUPABASE_PUBLISHABLE_KEY` | no | Same value as the `VITE_` one; a Builds-scope value is not visible to a function |
+| `SUPABASE_SECRET_KEY` | **yes** | Already set, for the same reason as `SUPABASE_URL` |
+| `INGEST_SHARED_SECRET` | **yes** | Required by `admin-run` |
+| `SEC_EDGAR_USER_AGENT` | no | Required before any SEC request |
+| `SEC_CONTACT_CONFIRMED` | no | Exactly `true` or `false`; anything else throws |
+| `EGRESS_ALLOWLIST` | no | **Absent means every outbound request is denied** |
+| `RADAR_ENV` | no | Optional, per context; reporting only |
+| `MODEL_API_KEY` | **yes** | **Optional.** Absent means classification fails closed |
+
+Full reasoning, including why the publishable key is entered twice, is in
+`docs/ENVIRONMENT.md`.
 
 ---
 
@@ -519,9 +570,19 @@ Paste the whole output into PR #9.
 ## F. SEC contact — done
 
 `oracles@openi-analytics.com` was confirmed on 2026-08-26 as an active, monitored
-Openi mailbox. `SEC_CONTACT_CONFIRMED = "true"` is committed in `netlify.toml`,
-so there is nothing to enter and nothing to toggle. `/api/status` reports
-`sec.contactConfirmed: true`.
+Openi mailbox. **The confirmation is done; the configuration is not.**
+
+An earlier revision said `SEC_CONTACT_CONFIRMED = "true"` was committed in
+`netlify.toml` and there was nothing to enter. That declaration never reached a
+function, so set both values in the Netlify UI with **Functions** scope:
+
+```
+SEC_EDGAR_USER_AGENT  = Openi Analytics Haskell F&B Radar oracles@openi-analytics.com
+SEC_CONTACT_CONFIRMED = true
+```
+
+Then redeploy, and confirm `/api/status` reports `sec.contactConfirmed: true`.
+Until it does, the value is not set, whatever the repository says.
 
 The mailbox is reserved for automated-source identification and operational
 notices only, and `reserved_service_addresses` makes it impossible to allowlist
@@ -701,9 +762,13 @@ message naming the host. The connector will not grant itself egress.
 Required, Functions scope, all deploy contexts:
 
 ```
-SUPABASE_URL, SUPABASE_SECRET_KEY, INGEST_SHARED_SECRET, SEC_EDGAR_USER_AGENT
-EGRESS_ALLOWLIST = sec.gov,data.sec.gov,www.sec.gov,mars.com,www.mars.com
+SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY,
+INGEST_SHARED_SECRET, SEC_EDGAR_USER_AGENT, SEC_CONTACT_CONFIRMED
+EGRESS_ALLOWLIST = data.sec.gov,www.sec.gov,www.mars.com
 ```
+
+All of them are entered in the **Netlify UI with Functions scope**. None can be
+committed — see § C.
 
 `SEC_EDGAR_USER_AGENT` must name the organisation and a monitored address, e.g.
 `Openi-Haskell-FB-Radar/1.0 (oracles@openi-analytics.com)`. SEC's fair-access
@@ -711,26 +776,39 @@ guidance asks for a contact; an anonymous agent is the one that gets blocked.
 
 ### Exact scopes and contexts
 
-| Variable | Scope | Contexts | Notes |
-| --- | --- | --- | --- |
-| `SUPABASE_URL` | Functions | all | already set; committed in `netlify.toml` |
-| `SUPABASE_SECRET_KEY` | Functions | all | **secret**, Netlify UI only, never committed |
-| `INGEST_SHARED_SECRET` | Functions | all | **secret**, Netlify UI only |
-| `SEC_EDGAR_USER_AGENT` | Functions | all | committed in `netlify.toml` |
-| `EGRESS_ALLOWLIST` | Functions | all | **must be extended** — see below |
+Every row is **Netlify UI, Functions scope**. There is no committed alternative.
 
-`netlify.toml` currently commits
-`EGRESS_ALLOWLIST = "sec.gov,data.sec.gov,www.sec.gov,fsis.usda.gov,www.fsis.usda.gov"`.
-That does **not** include the Mars hosts. Because `netlify.toml` overrides the
-Netlify UI, extending it for this run means editing the committed value — a
-reviewed change — rather than adding a dashboard variable that would be silently
-ignored. The value the live cohort needs is:
+| Variable | Contexts | Notes |
+| --- | --- | --- |
+| `SUPABASE_URL` | all | already set — `/api/session` works in production |
+| `SUPABASE_PUBLISHABLE_KEY` | all | **verify** — was declared only in `netlify.toml`, so it may never have been delivered |
+| `SUPABASE_SECRET_KEY` | all | **secret**; already set |
+| `INGEST_SHARED_SECRET` | all | **secret**; required by `admin-run` |
+| `SEC_EDGAR_USER_AGENT` | all | **verify** — was declared only in `netlify.toml` |
+| `SEC_CONTACT_CONFIRMED` | all | **verify** — was declared only in `netlify.toml` |
+| `EGRESS_ALLOWLIST` | all | **verify and set** — see below |
+
+`EGRESS_ALLOWLIST` was previously declared in `netlify.toml` and therefore never
+reached the egress gateway. An absent allowlist parses to an empty array, and an
+empty allowlist **denies every outbound request**, so the first live run would
+have failed every source with `Egress to "…" is not on the allowlist. Permitted:
+(none configured).` rather than reaching SEC or Mars. That is the control failing
+closed, which is the correct direction, but it is not configured.
+
+The value for the first cohort is:
 
 ```
-sec.gov,data.sec.gov,www.sec.gov,mars.com,www.mars.com
+data.sec.gov,www.sec.gov,www.mars.com
 ```
 
-Keep `fsis.usda.gov` only if a connector still uses it.
+**Exact hosts, no bare parent domain.** An entry authorises every host beneath
+it, so `sec.gov` would grant every SEC subdomain in one keystroke. The
+connectors declare exactly these hosts, and the runner refuses to start a source
+whose declared hosts are not all permitted — it will not merge them in for you.
+
+Add `www.fsis.usda.gov` only if the FSIS connector is enabled. Nothing in the
+first cohort requests it, and `api.anthropic.com` does not belong here at all —
+the model gateway does not use the egress allowlist.
 
 ### Supabase redirect allowlist — the PR 10 preview
 
