@@ -64,6 +64,24 @@ export const FAILURE = {
     reason: 'Your access to the Radar has been withdrawn. Contact your administrator.',
     blockedBy: 'authorization',
   },
+  /*
+     A GRANT GAP IS NOT A WITHDRAWAL OF SOMEBODY'S ACCESS.
+
+     `42501` is insufficient_privilege, and privileges here are granted to the
+     `authenticated` ROLE -- identical for every signed-in user. It can never
+     mean that one person's standing changed. Removal from the allowlist is
+     enforced by `/api/session` and by row-level policies returning nothing; it
+     never revokes a grant.
+
+     So when migration 0021 added columns and did not grant them, every user saw
+     "your access has been withdrawn" and went looking at their own account. The
+     message now points where the fault actually is.
+  */
+  notPermitted: {
+    reason:
+      'The Radar is missing a database permission this view needs. Your access is unaffected; this is a deployment fault.',
+    blockedBy: 'configuration',
+  },
   requestFailed: {
     reason: 'The Radar could not be reached. Nothing below is current.',
     blockedBy: 'service',
@@ -86,9 +104,20 @@ function unavailable<T>(fail: Fail, checkedAt: string): SurfaceState<T> {
 function classifyError(error: { code?: string; message?: string } | null): Fail {
   if (!error) return FAILURE.requestFailed
   const code = error.code ?? ''
-  if (code === 'PGRST301' || code === '42501' || /jwt|permission denied/i.test(error.message ?? '')) {
-    return FAILURE.unauthorized
-  }
+  const message = error.message ?? ''
+
+  // A rejected or expired token. This IS about the caller.
+  if (code === 'PGRST301' || /jwt/i.test(message)) return FAILURE.unauthorized
+
+  /*
+     `42501` used to fall into the same branch, and that is how a missing column
+     grant was reported to a fully authorized user as "your access has been
+     withdrawn". PostgreSQL words a COLUMN-level denial as "permission denied
+     for table sources", so it is indistinguishable from a table denial by text
+     -- and neither is a statement about this person.
+  */
+  if (code === '42501' || /permission denied/i.test(message)) return FAILURE.notPermitted
+
   return FAILURE.requestFailed
 }
 
