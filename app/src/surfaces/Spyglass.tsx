@@ -94,6 +94,17 @@ export function Spyglass() {
         <StaleNotice notice={state.notice} asOf={state.asOf} checkedAt={state.checkedAt} />
       )}
 
+      {/*
+        A RELOAD AFTER SAVING, DELIBERATELY.
+
+        The surface reads its state once; there is no refetch hook, and adding
+        one for a control an administrator touches a few times a year would be
+        plumbing in search of a use. A reload also guarantees that what is on
+        screen afterwards is what the DATABASE holds rather than what the form
+        believes it sent — which matters here more than usual, because a write
+        this page cannot perform succeeds silently at the API and is caught by a
+        row count.
+      */}
       {hasData && <SpyglassBody snapshot={state.data} onSaved={() => window.location.reload()} />}
     </>
   )
