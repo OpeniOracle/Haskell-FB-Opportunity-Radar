@@ -36,6 +36,7 @@ function classify(error: { code?: string; message?: string } | null): string {
   const message = error.message ?? ''
   if (code === 'PGRST301' || /jwt/i.test(message)) return 'unauthorized'
   if (code === '42501' || /permission denied/i.test(message)) return 'notPermitted'
+  if (code === '42P01' || /does not exist/i.test(message)) return 'notMigrated'
   return 'requestFailed'
 }
 
@@ -199,5 +200,44 @@ describe('the grant migration names the columns the client reads', () => {
     )
     expect(down).toContain('revoke select')
     expect(down).toContain('last_success_at')
+  })
+})
+
+describe('a pending migration is reported as a pending migration', () => {
+  /*
+     THE SAME LESSON AS 42501, ONE ERROR CODE LATER.
+
+     PostgreSQL states the fault precisely and the interface used to throw that
+     away. `42P01` is undefined_table — the code is deployed and a migration has
+     not been applied — and it fell through to "The Radar could not be reached",
+     which points at the network, at Supabase, at anything except the one thing
+     that is true. Somebody would have spent an afternoon on connectivity.
+  */
+  it('names an undefined table rather than blaming the network', () => {
+    expect(classify({ code: '42P01', message: 'relation "spyglass_settings" does not exist' })).toBe(
+      'notMigrated',
+    )
+    expect(FAILURE.notMigrated.blockedBy).toBe('migration_pending')
+  })
+
+  it('the real source carries the branch this transcription mirrors', () => {
+    // The transcription above would drift on its own; this is what keeps it
+    // honest, exactly as the 42501 branch is checked below.
+    expect(source).toContain("code === '42P01'")
+    expect(source).toContain('FAILURE.notMigrated')
+  })
+
+  it('says the rest of the Radar is unaffected, because it is', () => {
+    expect(FAILURE.notMigrated.reason).toMatch(/nothing else on the Radar is affected/i)
+    expect(FAILURE.notMigrated.reason).not.toMatch(/could not be reached/i)
+  })
+
+  it('does not mistake it for a withdrawal of access', () => {
+    expect(classify({ code: '42P01', message: 'x does not exist' })).not.toBe('unauthorized')
+  })
+
+  it('leaves a genuine transport failure reported as one', () => {
+    expect(classify(null)).toBe('requestFailed')
+    expect(classify({ message: 'Failed to fetch' })).toBe('requestFailed')
   })
 })
