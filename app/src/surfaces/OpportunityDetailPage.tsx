@@ -11,9 +11,12 @@ import {
   UnavailableState,
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
-import { useLocalDecisions } from '@/hooks/useLocalDecisions'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { PRIORITY_SHORT, priorityBand } from '@/lib/opportunityFilters'
+import {
+  AWAITING_PRIORITISATION,
+  PRIORITY_SHORT,
+  priorityBand,
+} from '@/lib/opportunityFilters'
 import type { Opportunity } from '@/types/domain'
 
 /**
@@ -36,7 +39,6 @@ export function OpportunityDetailPage() {
   const { opportunityId } = useParams<{ opportunityId: string }>()
   const load = useCallback(() => source.getOpportunities(), [source])
   const state = useSurfaceData(load, [load])
-  const { decisions, decide } = useLocalDecisions()
 
   const hasData =
     state.kind === 'ready' || state.kind === 'degraded' || state.kind === 'stale'
@@ -113,7 +115,7 @@ export function OpportunityDetailPage() {
                   {' · '}
                   {(() => {
                     const band = priorityBand(opportunity.scores.finalScore)
-                    return band ? `${PRIORITY_SHORT[band]} priority` : 'Not scored yet'
+                    return band ? `${PRIORITY_SHORT[band]} priority` : AWAITING_PRIORITISATION
                   })()}
                 </span>
               </p>
@@ -127,8 +129,6 @@ export function OpportunityDetailPage() {
           <div className="detail__body">
             <OpportunityDetail
               opportunity={opportunity}
-              decision={decisions[opportunity.id]}
-              onDecide={decide}
               headingLevel={2}
             />
           </div>

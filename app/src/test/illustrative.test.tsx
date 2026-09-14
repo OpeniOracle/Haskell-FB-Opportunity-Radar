@@ -67,7 +67,7 @@ describe('illustrative marking on the record surfaces', () => {
     ['/facilities/fac-fixture-1', 'Example Beverage Southeast Plant'],
     ['/evidence/ev-fixture-1', 'Example Beverage Company announces Southeast plant investment'],
     ['/admin/health', 'Source Health & Coverage'],
-    ['/views', 'Saved Pursuits & Watches'],
+    ['/media', 'Spyglass media intelligence'],
   ])('marks %s beside its content', async (path, heading) => {
     renderApp(path)
     await screen.findByRole('heading', { level: 1, name: heading })

@@ -8,6 +8,12 @@ import type { IconName } from '@/components/Icon'
  *
  *   Seven surfaces = five primary navigation entries + two contextual surfaces.
  *
+ * THAT COUNT HAS CHANGED, DELIBERATELY, AND IN BOTH DIRECTIONS. Saved Pursuits
+ * & Watches left the navigation because nothing can write a saved pursuit, and
+ * Map joined it because it now reads live extracted locations. The rule the plan
+ * was protecting — a navigation entry is a promise that something is behind it —
+ * is the same rule that moved both. See the note under `SURFACES`.
+ *
  * The model here is SURFACE-oriented, not route-oriented, because that is the
  * distinction the plan draws and the one the previous inventory got wrong. A
  * surface may own more than one route: Opportunities owns `/opportunities` and
@@ -15,12 +21,12 @@ import type { IconName } from '@/components/Icon'
  * detail routes are part of their parent surface — counting them as separate
  * surfaces is what produced a seven that contained the wrong seven things.
  *
- * Market Trends, Map and Briefings are NOT Phase 1 surfaces. §11.4: all three
- * depend on signals, opportunities or alerting, and "the navigation reserves
- * their positions and renders them as explicitly unavailable rather than hiding
- * them, so the eventual shape is visible from the first preview." They are
- * modelled separately, as reserved destinations, so they can never be counted
- * among the seven again.
+ * Market Trends and Briefings remain reserved. §11.4: both depend on alerting or
+ * on corroborated cross-account patterns, and "the navigation reserves their
+ * positions and renders them as explicitly unavailable rather than hiding them,
+ * so the eventual shape is visible from the first preview." They are modelled
+ * separately, as reserved destinations, so they can never be counted among the
+ * built surfaces.
  */
 
 export type SurfaceStatus =
@@ -56,7 +62,7 @@ export const SURFACES: SurfaceDescriptor[] = [
     placement: 'primary',
     routes: ['/'],
     status: 'implemented',
-    summary: 'What changed across the monitored accounts since your last visit.',
+    summary: 'Live counts, the newest signals and evidence, and current source health.',
     scheduled: [],
   },
   {
@@ -67,7 +73,8 @@ export const SURFACES: SurfaceDescriptor[] = [
     placement: 'primary',
     routes: ['/opportunities', '/opportunities/:opportunityId'],
     status: 'implemented',
-    summary: 'Every live opportunity, ranked, with the reasoning behind each score.',
+    summary:
+      'Every live opportunity, with the filing behind it and the facts that filing stated.',
     scheduled: [],
   },
   {
@@ -118,17 +125,46 @@ export const SURFACES: SurfaceDescriptor[] = [
     scheduled: [],
   },
   {
-    id: 'views',
-    label: 'Saved Pursuits & Watches',
-    shortLabel: 'Saved',
-    icon: 'inbox',
+    id: 'media',
+    label: 'Spyglass media intelligence',
+    shortLabel: 'Spyglass',
+    icon: 'trend',
     placement: 'primary',
-    routes: ['/views'],
+    routes: ['/media'],
     status: 'implemented',
-    summary: 'Saved views, watch list, and action affordances.',
+    summary:
+      'The live Spyglass dashboard, and reviewed snapshots — which are snapshots, never live.',
+    scheduled: [],
+  },
+  {
+    id: 'map',
+    label: 'Map',
+    shortLabel: 'Map',
+    icon: 'pin',
+    placement: 'primary',
+    routes: ['/map'],
+    status: 'implemented',
+    summary:
+      'Where the collected projects are, drawn only where a document named a place.',
     scheduled: [],
   },
 ]
+
+/*
+ * SAVED PURSUITS & WATCHES IS NOT IN THIS LIST, AND THAT IS THE FIX.
+ *
+ * It was a primary navigation entry backed by nothing: `user_read_state` carries
+ * a SELECT grant and a per-user read policy, and no grant or policy admits a
+ * write, so the page could only ever render its empty state and the Pursue,
+ * Watch, Assign and Dismiss controls could only ever say "preview only". A
+ * navigation entry is a promise that there is something behind it. It returns
+ * when there is a table to write to.
+ *
+ * MAP MOVED THE OTHER WAY, from `RESERVED_DESTINATIONS` into the list above,
+ * because it now reads live locations extracted from collected filings. The
+ * rule that governs both moves is the same one: a destination is listed when it
+ * works, and only then.
+ */
 
 /**
  * Navigation positions reserved for later phases.
@@ -155,14 +191,6 @@ export const RESERVED_DESTINATIONS: ReservedDestination[] = [
     icon: 'trend',
     path: '/trends',
     dependsOn: 'signals and corroborated cross-account patterns',
-  },
-  {
-    id: 'map',
-    label: 'Map',
-    shortLabel: 'Map',
-    icon: 'pin',
-    path: '/map',
-    dependsOn: 'resolved facilities and opportunities to place on it',
   },
   {
     id: 'briefings',

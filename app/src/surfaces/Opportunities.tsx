@@ -12,7 +12,6 @@ import {
   UnavailableState,
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
-import { useLocalDecisions } from '@/hooks/useLocalDecisions'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
 import {
   DEFAULT_QUERY,
@@ -53,8 +52,8 @@ export function Opportunities() {
         <div>
           <h1 className="page-head__title">Opportunities</h1>
           <p className="page-head__sub">
-            Ranked by priority. Open one to see the evidence and reasoning behind its
-            score.
+            Every live opportunity, with the filing it came from. Open one to see the
+            excerpt, the corroborating facts and the official source.
           </p>
         </div>
       </header>
@@ -101,7 +100,6 @@ export function Opportunities() {
 function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] }) {
   const [query, setQuery] = useState<OpportunityQuery>(DEFAULT_QUERY)
   const { search } = useLocation()
-  const { decisions, decide } = useLocalDecisions()
 
   /**
    * The drawer is an IN-SESSION affordance and holds no URL state.
@@ -155,10 +153,6 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
           <strong>{visible.length}</strong> of {opportunities.length} opportunities
           {activeCount > 0 && <span className="results__filtered"> · filtered</span>}
         </p>
-        <p className="results__preview-note">
-          Preview only — Pursue, Watch, Assign and Dismiss are not saved and reset on
-          reload.
-        </p>
         <IllustrativeNote />
       </div>
 
@@ -181,8 +175,6 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
             <OpportunityCard
               key={opportunity.id}
               opportunity={opportunity}
-              decision={decisions[opportunity.id]}
-              onDecide={decide}
               onReview={setOpenId}
             />
           ))}
@@ -192,8 +184,6 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
       {open && (
         <OpportunityDrawer
           opportunity={open}
-          decision={decisions[open.id]}
-          onDecide={decide}
           onClose={closeDrawer}
           search={search}
         />

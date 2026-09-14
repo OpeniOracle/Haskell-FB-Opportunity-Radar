@@ -1,15 +1,9 @@
 import { Icon, type IconName } from '@/components/Icon'
 import { StatusPill, type PillTone } from '@/components/StatusPill'
-import { LocalActions } from '@/components/LocalActions'
-import type { LocalDecision, Opportunity, OpportunityStage } from '@/types/domain'
+import type { Opportunity, OpportunityStage } from '@/types/domain'
+import { absoluteDate, stageLabel, statusLabel } from '@/lib/format'
 import {
-  absoluteDateTime,
-  formatTemporal,
-  relativeTime,
-  stageLabel,
-  statusLabel,
-} from '@/lib/format'
-import {
+  AWAITING_PRIORITISATION,
   PRIORITY_SHORT,
   UNRESOLVED_LOCATION,
   priorityBand,
@@ -49,16 +43,13 @@ const CONFIDENCE_TONE = {
 
 export function OpportunityCard({
   opportunity,
-  decision,
-  onDecide,
   onReview,
 }: {
   opportunity: Opportunity
-  decision: LocalDecision | undefined
-  onDecide: (opportunityId: string, decision: LocalDecision) => void
   onReview: (opportunityId: string) => void
 }) {
-  const { organization, facility, confidence, horizon, scores, evidence } = opportunity
+  const { organization, facility, confidence, scores, evidence } = opportunity
+  const source = opportunity.sources[0] ?? null
   const headingId = `opp-${opportunity.id}-title`
   const band = priorityBand(scores.finalScore)
   const isOnHold = opportunity.status === 'on_hold'
@@ -75,7 +66,9 @@ export function OpportunityCard({
       */}
       <div className="opp__score">
         <span className="opp__score-value">{scores.finalScore ?? '\u2014'}</span>
-        <span className="opp__score-band">{band ? PRIORITY_SHORT[band] : 'Not scored'}</span>
+        <span className="opp__score-band">
+          {band ? PRIORITY_SHORT[band] : AWAITING_PRIORITISATION}
+        </span>
       </div>
 
       <div className="opp__body">
@@ -93,6 +86,13 @@ export function OpportunityCard({
         <h3 className="opp__title" id={headingId}>
           {opportunity.title}
         </h3>
+
+        {/* Derived titles repeat — "<family> — <asset>" is the same words for two
+            different projects at one company. This line is what tells them
+            apart, and every value in it came out of the filing. */}
+        {opportunity.distinguisher && (
+          <p className="opp__distinguisher">{opportunity.distinguisher}</p>
+        )}
 
         <div className="opp__pills">
           <StatusPill
@@ -118,28 +118,55 @@ export function OpportunityCard({
         <p className="opp__why">{opportunity.whyItMatters}</p>
 
         <div className="opp__meta">
+          {/*
+            The FILING date, labelled as one.
+
+            This read "No date given" because the only date it looked at was the
+            forecast horizon, which a derived opportunity correctly has none of.
+            The date the record does have is the date its document was filed —
+            shown, and never described as a schedule.
+          */}
           <span className="opp__meta-item">
             <Icon name="clock" className="opp__meta-icon" />
-            {formatTemporal(horizon)}
+            {opportunity.sourceDate
+              ? `${opportunity.sourceDate.basis === 'filing_date' ? 'Filed' : 'Expected'} ${absoluteDate(opportunity.sourceDate.iso)}`
+              : 'No date stated in the source'}
           </span>
+          {opportunity.capabilities.length > 0 && (
+            <span className="opp__meta-item">
+              <Icon name="settings" className="opp__meta-icon" />
+              {opportunity.capabilities[0]}
+              {opportunity.capabilities.length > 1 && (
+                <span className="opp__meta-more">
+                  {' '}
+                  +{opportunity.capabilities.length - 1}
+                </span>
+              )}
+            </span>
+          )}
           <span className="opp__meta-item">
-            <Icon name="settings" className="opp__meta-icon" />
-            {opportunity.capabilities[0]}
-            {opportunity.capabilities.length > 1 && (
-              <span className="opp__meta-more">
-                {' '}
-                +{opportunity.capabilities.length - 1}
-              </span>
-            )}
-          </span>
-          <span
-            className="opp__meta-item"
-            title={absoluteDateTime(evidence.newestRetrievedAt)}
-          >
             <Icon name="document" className="opp__meta-icon" />
-            {evidence.count} evidence · newest {relativeTime(evidence.newestRetrievedAt)}
+            {evidence.count} {evidence.count === 1 ? 'document' : 'documents'}
+            {source?.documentType && ` · ${source.documentType}`}
           </span>
         </div>
+
+        {/* The source, on the card. "Where does that come from?" is the first
+            question anyone asks, and it should not require opening anything. */}
+        {source?.officialUrl && (
+          <p className="opp__source">
+            <Icon name="document" className="opp__meta-icon" />
+            <a
+              className="opp__source-link"
+              href={source.officialUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {source.publisher}
+              {source.documentType ? ` ${source.documentType}` : ''} — official filing
+            </a>
+          </p>
+        )}
       </div>
 
       <div className="opp__aside">
@@ -154,12 +181,6 @@ export function OpportunityCard({
           Review opportunity
           <Icon name="chevron" className="btn__icon" />
         </button>
-        <LocalActions
-          opportunityId={opportunity.id}
-          decision={decision}
-          onDecide={onDecide}
-          compact
-        />
       </div>
     </article>
   )

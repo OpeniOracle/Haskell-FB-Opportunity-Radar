@@ -4,10 +4,11 @@ import type {
   DataSourceMeta,
   EvidenceRecord,
   FacilityRecord,
+  MapSnapshot,
   Opportunity,
   PulseSnapshot,
-  SavedWorkspace,
   SourceHealthSnapshot,
+  SpyglassSnapshot,
   SurfaceState,
 } from '@/types/domain'
 
@@ -44,5 +45,24 @@ export interface DataSource {
 
   getSourceHealth(): Promise<SurfaceState<SourceHealthSnapshot>>
 
-  getSavedWorkspace(): Promise<SurfaceState<SavedWorkspace>>
+  /**
+   * Everything the map draws, and everything it deliberately cannot.
+   *
+   * The saved-workspace method used to sit here. It was removed with the
+   * surface that called it: nothing can write a saved pursuit, so the method
+   * could only ever return `empty`.
+   */
+  getMapLocations(): Promise<SurfaceState<MapSnapshot>>
+
+  /**
+   * The Spyglass dashboard link and any reviewed snapshot embeds.
+   *
+   * Returns a state like everything else, so a Zignal outage or an
+   * unconfigured deployment renders as a named condition on ONE surface rather
+   * than taking anything else down with it.
+   */
+  getSpyglass(): Promise<SurfaceState<SpyglassSnapshot>>
+
+  /** Repoint the dashboard. Refused by row-level policy for a non-administrator. */
+  setSpyglassDashboard(url: string, label: string): Promise<{ ok: boolean; reason?: string }>
 }

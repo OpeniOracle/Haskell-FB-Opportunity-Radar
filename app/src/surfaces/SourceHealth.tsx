@@ -139,6 +139,12 @@ function HealthBody({ snapshot }: { snapshot: SourceHealthSnapshot }) {
   const underCovered = snapshot.coverage.filter(
     (row) => row.coverage.missingSources.length > 0,
   )
+  /* An account with no recorded expectation is not covered and not uncovered —
+     nobody has said what covered would mean. Counted separately so neither
+     figure absorbs it. */
+  const unmeasured = snapshot.coverage.filter(
+    (row) => row.coverage.expectedSources.length === 0,
+  )
 
   return (
     <>
@@ -193,11 +199,23 @@ function HealthBody({ snapshot }: { snapshot: SourceHealthSnapshot }) {
           <span className="section__count">{snapshot.coverage.length}</span>
           <span className="section__note">
             {underCovered.length} below expected
+            {unmeasured.length > 0 && `, ${unmeasured.length} not yet measured`}
           </span>
         </div>
         <p className="panel-scope">
           Are the right things being watched? A company with every connector green can
           still be under-covered, and is reported as under-covered rather than quiet.
+          {unmeasured.length > 0 && (
+            <>
+              {' '}
+              <strong>
+                {unmeasured.length}{' '}
+                {unmeasured.length === 1 ? 'account has' : 'accounts have'} no recorded
+                coverage expectation
+              </strong>{' '}
+              — which is not the same as being fully covered, and is not reported as it.
+            </>
+          )}
         </p>
         <div className="coverage-list">
           {snapshot.coverage.map((row) => (
@@ -221,6 +239,7 @@ function HealthBody({ snapshot }: { snapshot: SourceHealthSnapshot }) {
 
 function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
   const stale = connector.freshnessHours > connector.expectedCadenceHours
+  const { activity } = connector
 
   return (
     <article className="connector" aria-labelledby={`conn-${connector.id}`}>
@@ -228,6 +247,13 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
         <h3 className="connector__name" id={`conn-${connector.id}`}>
           {connector.name}
         </h3>
+        {/* Enabled and healthy are different questions. A source nobody switched
+            on is not a source that is working. */}
+        <StatusPill
+          tone={connector.enabled ? 'neutral' : 'attention'}
+          icon={connector.enabled ? 'dot' : 'alert'}
+          label={connector.enabled ? 'Enabled' : 'Disabled'}
+        />
         <StatusPill
           tone={STATE_TONE[connector.state]}
           icon={
@@ -241,12 +267,61 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
         />
       </div>
 
+      {/*
+        AN OPEN RUN IS REPORTED, AND A RUN OPEN TOO LONG IS REPORTED AS STOPPED.
+
+        An ingestion that died mid-cycle leaves a started row with no completion.
+        Without this the fleet reads as healthy — the last SUCCESSFUL run is
+        still recent — while nothing is collecting at all.
+      */}
+      {connector.activeRun && (
+        <p
+          className={`notice ${connector.activeRun.stale ? 'notice--degraded' : 'notice--info'} connector__active`}
+        >
+          <Icon name={connector.activeRun.stale ? 'alert' : 'refresh'} className="notice__icon" />
+          <span>
+            <strong>
+              {connector.activeRun.stale
+                ? 'A run has been open too long. '
+                : 'A run is in progress. '}
+            </strong>
+            Started {relativeTime(connector.activeRun.startedAt)}, status{' '}
+            {connector.activeRun.status.replace(/_/g, ' ')}.
+            {connector.activeRun.stale &&
+              ' It has not recorded a completion, so treat the figures below as the state before it began.'}
+          </span>
+        </p>
+      )}
+
       <dl className="connector__facts">
         <div className="fact">
+          <dt>Documents discovered</dt>
+          <dd>{activity.documentsDiscovered}</dd>
+        </div>
+        <div className="fact">
+          <dt>Evidence stored</dt>
+          <dd>{activity.evidenceStored}</dd>
+        </div>
+        <div className="fact">
+          <dt>Signals created</dt>
+          <dd>{activity.signalsCreated}</dd>
+        </div>
+        <div className="fact">
+          <dt>Opportunities created</dt>
+          <dd>{activity.opportunitiesCreated}</dd>
+        </div>
+        <div className="fact">
           <dt>Last run</dt>
-          <dd title={absoluteDateTime(connector.lastRunAt)}>
-            {relativeTime(connector.lastRunAt)} · {connector.lastOutcome.replace('_', ' ')}
-            <FutureTimestampWarning iso={connector.lastRunAt} />
+          <dd title={connector.lastRunAt ? absoluteDateTime(connector.lastRunAt) : undefined}>
+            {connector.lastRunAt ? (
+              <>
+                {relativeTime(connector.lastRunAt)} ·{' '}
+                {connector.lastOutcome.replace('_', ' ')}
+                <FutureTimestampWarning iso={connector.lastRunAt} />
+              </>
+            ) : (
+              'Never run'
+            )}
           </dd>
         </div>
         <div className="fact">
@@ -269,7 +344,9 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
         <div className="fact">
           <dt>Freshness</dt>
           <dd className={stale ? 'connector__bad' : undefined}>
-            {connector.freshnessHours}h against a {connector.expectedCadenceHours}h cadence
+            {connector.lastSuccessfulCollectionAt
+              ? `${connector.freshnessHours}h against a ${connector.expectedCadenceHours}h cadence`
+              : `No successful collection yet; expected every ${connector.expectedCadenceHours}h`}
           </dd>
         </div>
       </dl>
@@ -295,6 +372,9 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
               <span className="run__when">
                 {absoluteDateTime(run.startedAt)}
                 <FutureTimestampWarning iso={run.startedAt} />
+              </span>
+              <span className="run__counts">
+                {run.itemsSeen} discovered · {run.itemsStored} stored
               </span>
               <span className="run__note">{run.note}</span>
             </li>

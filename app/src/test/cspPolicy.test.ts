@@ -55,6 +55,21 @@ function generate(env: Record<string, string>): string {
 
 const PROJECT = 'https://dutmdlbangsthclgtkhy.supabase.co'
 
+/**
+ * The map's tile host.
+ *
+ * The ONLY origin outside the project that the browser may open a connection
+ * to. It is named here so widening `connect-src` again requires editing this
+ * list, which is the point of asserting an exact string rather than a substring.
+ */
+const TILES = 'https://tiles.stadiamaps.com'
+
+/** The Zignal embed hosts. Framed, and nothing else. */
+const ZIGNAL_FRAMES = [
+  'https://embeddable-widgets.zignallabs.com',
+  'https://embeddable-widgets.staging.zignallabs.com',
+]
+
 describe('content security policy', () => {
   it('grants no WebSocket origin, because nothing opens a realtime channel', () => {
     // Reserving wss:// for a feature that might arrive later widens the policy
@@ -63,16 +78,50 @@ describe('content security policy', () => {
     expect(headers).not.toMatch(/wss:/)
   })
 
-  it('permits exactly the project origin and same-origin functions', () => {
+  it('permits exactly the project origin, the tile host, and same-origin functions', () => {
     const headers = generate({ VITE_SUPABASE_URL: PROJECT })
     const connectSrc = /connect-src ([^;]+);/.exec(headers)?.[1]?.trim()
-    expect(connectSrc).toBe(`'self' ${PROJECT}`)
+    expect(connectSrc).toBe(`'self' ${PROJECT} ${TILES}`)
   })
 
-  it('falls back to same-origin only when no project is configured', () => {
+  it('falls back to same-origin and the tile host when no project is configured', () => {
     const headers = generate({ VITE_SUPABASE_URL: '' })
     const connectSrc = /connect-src ([^;]+);/.exec(headers)?.[1]?.trim()
-    expect(connectSrc).toBe("'self'")
+    expect(connectSrc).toBe(`'self' ${TILES}`)
+  })
+
+  it('frames the Zignal embed hosts and nothing else', () => {
+    const headers = generate({ VITE_SUPABASE_URL: PROJECT })
+    const frameSrc = /frame-src ([^;]+);/.exec(headers)?.[1]?.trim()
+    expect(frameSrc).toBe(ZIGNAL_FRAMES.join(' '))
+  })
+
+  it('does NOT widen script-src for Zignal', () => {
+    /*
+       Zignal's generated snippet is an <iframe>, not a <script> — their embed
+       documentation shows the markup. So framing is all that was granted. If a
+       future snippet needs a script, that is a separate decision made against a
+       snippet somebody actually read, and this assertion is what forces it to
+       be made rather than absorbed.
+    */
+    const headers = generate({ VITE_SUPABASE_URL: PROJECT })
+    const scriptSrc = /script-src ([^;]+);/.exec(headers)?.[1] ?? ''
+    expect(scriptSrc).not.toContain('zignallabs')
+    const connectSrc = /connect-src ([^;]+);/.exec(headers)?.[1] ?? ''
+    expect(connectSrc).not.toContain('zignallabs')
+    const imgSrc = /img-src ([^;]+);/.exec(headers)?.[1] ?? ''
+    expect(imgSrc).not.toContain('zignallabs')
+  })
+
+  it('admits the blob sources MapLibre needs, and no remote worker', () => {
+    const headers = generate({ VITE_SUPABASE_URL: PROJECT })
+    const policy = /Content-Security-Policy: (.+)/.exec(headers)?.[1] ?? ''
+    expect(policy).toContain("worker-src 'self' blob:")
+    expect(policy).toContain("child-src 'self' blob:")
+    // `blob:` is a same-document source. It is not a remote host and must not
+    // be accompanied by one.
+    const workerSrc = /worker-src ([^;]+);/.exec(headers)?.[1] ?? ''
+    expect(workerSrc).not.toMatch(/https?:/)
   })
 
   it('uses no wildcard and no scheme-only source anywhere', () => {

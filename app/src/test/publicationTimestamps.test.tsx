@@ -267,29 +267,27 @@ describe('an unscored opportunity renders, and says it is unscored', () => {
     expect(sorted[sorted.length - 1]!.id).toBe('unscored-1')
   })
 
-  it('renders the card without throwing, showing a dash and "Not scored"', () => {
+  it('renders the card without throwing, showing a dash and the awaiting state', () => {
     render(
       <MemoryRouter>
         <OpportunityCard
           opportunity={unscored}
-          decision={undefined}
-          onDecide={() => {}}
           onReview={() => {}}
         />
       </MemoryRouter>,
     )
-    expect(screen.getByText('Not scored')).toBeInTheDocument()
+    expect(screen.getByText('Awaiting analyst prioritization')).toBeInTheDocument()
     expect(screen.queryByText('0')).toBeNull()
   })
 
   it('renders the detail without throwing, and explains why there is no score', () => {
     render(
       <MemoryRouter>
-        <OpportunityDetail opportunity={unscored} decision={undefined} onDecide={() => {}} />
+        <OpportunityDetail opportunity={unscored} />
       </MemoryRouter>,
     )
-    expect(screen.getByText('Not scored yet')).toBeInTheDocument()
-    expect(screen.getByText(/has not been scored yet/i)).toBeInTheDocument()
+    expect(screen.getByText('Awaiting analyst prioritization')).toBeInTheDocument()
+    expect(screen.getByText(/where it ranks against the rest is a judgement/i)).toBeInTheDocument()
     // The arithmetic sentence must not appear at all, rather than appearing
     // with holes in it.
     expect(screen.queryByText(/multiplied by a confidence factor/i)).toBeNull()
@@ -300,8 +298,6 @@ describe('an unscored opportunity renders, and says it is unscored', () => {
       <MemoryRouter>
         <OpportunityDetail
           opportunity={opportunityFixtures[0]!}
-          decision={undefined}
-          onDecide={() => {}}
         />
       </MemoryRouter>,
     )

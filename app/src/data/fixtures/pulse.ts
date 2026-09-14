@@ -34,6 +34,58 @@ export const pulseFixture: PulseSnapshot = {
     actionRequired: 1,
     lastCycleCompletedAt: '2026-08-17T06:15:00Z',
   },
+  /* Added with the live Daily Pulse. Illustrative figures, consistent with the
+     rest of this file — nothing here describes a real account. */
+  headline: {
+    opportunityCount: 6,
+    signalCount: 11,
+    newSignalCount: 3,
+    newSignalWindowDays: 7,
+    evidenceCount: 24,
+    latestEvidenceAt: '2026-08-16T09:12:00Z',
+  },
+  topOpportunities: [
+    {
+      id: 'opp-fixture-1',
+      title: 'Aseptic filling line and warehouse automation at Southeast plant',
+      organizationName: 'Example Beverage Company',
+      stage: 'confirmed',
+      confidenceLevel: 'high',
+      sourceDate: { iso: '2026-08-16T09:12:00Z', basis: 'filing_date' },
+      evidenceCount: 6,
+      distinguisher: '$180 million · Macon, GA · 8-K filed 2026-08-16',
+    },
+  ],
+  newSignals: [
+    {
+      id: 'sig-fixture-1',
+      title: 'Aseptic filling line announced',
+      organizationName: 'Example Beverage Company',
+      observedAt: '2026-08-16T09:12:00Z',
+      eventDate: '2026-08-16',
+      negative: false,
+    },
+  ],
+  latestEvidence: [
+    {
+      id: 'ev-fixture-1',
+      title: '8-K — Example Beverage Company',
+      publisher: 'Example Beverage Company',
+      documentType: '8-K',
+      recordedAt: '2026-08-16T09:12:00Z',
+      recordedAtBasis: 'published',
+      officialUrl: 'https://example.invalid/filings/8-k-2026-08-16',
+    },
+  ],
+  sources: [
+    {
+      id: 'sec-edgar',
+      name: 'SEC EDGAR',
+      enabled: true,
+      state: 'healthy',
+      lastSuccessAt: '2026-08-17T06:10:00Z',
+    },
+  ],
   lastVisitAt: '2026-08-14T17:02:00Z',
   generatedAt: '2026-08-17T06:15:00Z',
   changesSinceLastVisit: [

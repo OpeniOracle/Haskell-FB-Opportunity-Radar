@@ -101,7 +101,7 @@ describe('the shipped fixtures no longer render a future instant as the present'
       '/facilities/fac-fixture-1',
       '/evidence/ev-fixture-6',
       '/admin/health',
-      '/views',
+      '/media',
     ]) {
       const view = renderApp(route)
       await screen.findByRole('main')

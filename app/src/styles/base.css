@@ -3663,3 +3663,554 @@ a {
   justify-content: center;
   padding: 0 8px;
 }
+
+/* ==========================================================================
+   Opportunity source attribution
+   ========================================================================== */
+
+.opp__distinguisher {
+  margin: 0 0 0.35rem;
+  font-size: var(--fs-small, 0.85rem);
+  color: var(--c-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.opp__source {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  font-size: var(--fs-small, 0.85rem);
+}
+
+.opp__source-link {
+  color: var(--c-accent);
+}
+
+.source-card {
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  background: var(--c-surface-sunken);
+  margin-bottom: 0.75rem;
+}
+
+.source-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+  font-size: var(--fs-small, 0.85rem);
+  color: var(--c-text-secondary);
+}
+
+.source-card__form {
+  font-weight: 600;
+  color: var(--c-text);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.4rem;
+  background: var(--c-surface);
+}
+
+.source-card__title {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.source-card__excerpt {
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.85rem;
+  border-left: 3px solid var(--c-accent-border);
+  background: var(--c-surface);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--fs-small, 0.88rem);
+  color: var(--c-text-secondary);
+}
+
+.source-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.company-row__top {
+  margin: 0.6rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: var(--fs-small, 0.85rem);
+}
+
+.company-row__top-label {
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.company-row__top-detail {
+  color: var(--c-text-secondary);
+}
+
+.company-row__top--empty {
+  color: var(--c-text-muted);
+}
+
+.change__basis {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-text-muted);
+}
+
+.run__counts {
+  color: var(--c-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.connector__active {
+  margin: 0 0 0.75rem;
+}
+
+/* ==========================================================================
+   Map
+   ========================================================================== */
+
+.map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .map-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The component also stacks explicitly from its media-query hook, so the layout
+   is correct in a test environment where CSS media queries do not apply. */
+.map-layout--stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.map-layout__map {
+  position: relative;
+  min-width: 0;
+}
+
+.map-canvas {
+  width: 100%;
+  height: clamp(24rem, 60vh, 40rem);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--c-surface-sunken);
+}
+
+.map-canvas--failed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  height: auto;
+  padding: 1rem;
+}
+
+.map-canvas__detail {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--c-text-muted);
+  word-break: break-word;
+}
+
+.map-fallback {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/*
+   THE FOUR MARKER KINDS, VISUALLY SEPARATED RATHER THAN SHADED.
+
+   A confirmed site is a solid filled pin. An approximate area is a translucent
+   disc with a dashed edge, because the shape itself should say "somewhere in
+   here". A headquarters is a hollow ring — deliberately the least pin-like thing
+   on the map, so it is never read as a project.
+*/
+.map-pin {
+  display: block;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: transparent;
+}
+
+.map-pin--confirmed_project_site {
+  background: var(--c-confirmed);
+  border: 2px solid var(--c-surface);
+  box-shadow: 0 0 0 1px var(--c-confirmed);
+}
+
+.map-pin--approximate_project_area {
+  width: 26px;
+  height: 26px;
+  background: color-mix(in srgb, var(--c-developing) 28%, transparent);
+  border: 2px dashed var(--c-developing);
+}
+
+.map-pin--known_company_facility {
+  background: var(--c-emerging-bg);
+  border: 2px solid var(--c-emerging);
+}
+
+.map-pin--corporate_headquarters {
+  background: transparent;
+  border: 2px solid var(--c-text-muted);
+  opacity: 0.85;
+}
+
+.map-pin--selected {
+  outline: 3px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+.map-pin--legend {
+  display: inline-block;
+  vertical-align: middle;
+  width: 14px;
+  height: 14px;
+  margin-right: 0.4rem;
+  cursor: default;
+}
+
+.map-legend {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.1rem;
+  font-size: var(--fs-small, 0.82rem);
+  color: var(--c-text-secondary);
+}
+
+.map-legend__item {
+  display: flex;
+  align-items: center;
+}
+
+.map-layout__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.map-aside__hint {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--fs-small, 0.85rem);
+}
+
+.map-detail {
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+  background: var(--c-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.map-detail__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.map-detail__company {
+  margin: 0;
+  font-size: var(--fs-heading);
+}
+
+.map-detail__title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.map-detail__extracted {
+  margin: 0;
+  font-size: var(--fs-small, 0.85rem);
+  color: var(--c-text-secondary);
+}
+
+.map-detail__context {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--c-border-strong);
+  background: var(--c-surface-sunken);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--fs-small, 0.85rem);
+}
+
+.map-detail__address {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--fs-small, 0.85rem);
+}
+
+.map-unlocated {
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+  background: var(--c-surface-sunken);
+}
+
+.map-unlocated__list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.map-unlocated__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: var(--fs-small, 0.85rem);
+}
+
+.map-unlocated__company {
+  color: var(--c-text-secondary);
+}
+
+.map-unlocated__reason {
+  color: var(--c-text-muted);
+}
+
+/* The MapLibre control chrome, brought into the application's palette. */
+.maplibregl-ctrl-group {
+  background: var(--c-surface);
+  border: var(--border-hairline);
+}
+
+.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--c-surface) 88%, transparent);
+  font-size: 0.7rem;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: var(--c-text-secondary);
+}
+
+/* ==========================================================================
+   Spyglass media intelligence
+   ========================================================================== */
+
+.spyglass-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--c-accent-soft);
+  border-color: var(--c-accent-border);
+}
+
+.spyglass-hero__title {
+  margin: 0 0 0.2rem;
+  font-size: var(--fs-heading);
+}
+
+.spyglass-hero__note {
+  margin: 0;
+  font-size: var(--fs-small, 0.85rem);
+  color: var(--c-text-secondary);
+  max-width: 44ch;
+}
+
+.spyglass-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+}
+
+.spyglass-card {
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.spyglass-card__head {
+  padding: 0.75rem 0.9rem;
+  border-bottom: var(--border-hairline);
+}
+
+.spyglass-card__title {
+  margin: 0 0 0.25rem;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+/* Prominent, not a footnote. This is the fact that stops a frozen chart being
+   read as current coverage. */
+.spyglass-card__asof {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--fs-small, 0.82rem);
+  font-weight: 600;
+  color: var(--c-developing);
+}
+
+.spyglass-card__frame {
+  position: relative;
+  min-height: 16rem;
+  display: flex;
+}
+
+.spyglass-card__iframe {
+  width: 100%;
+  min-height: 16rem;
+  border: 0;
+  display: block;
+}
+
+.spyglass-card__iframe--pending {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.spyglass-card__loading {
+  margin: auto;
+  padding: 1.5rem;
+  color: var(--c-text-muted);
+  font-size: var(--fs-small, 0.85rem);
+  text-align: center;
+}
+
+.spyglass-card__fallback {
+  margin: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: var(--fs-small, 0.85rem);
+}
+
+.spyglass-card__fallback p {
+  margin: 0;
+}
+
+.spyglass-editor {
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.9rem;
+  background: var(--c-surface-sunken);
+}
+
+.spyglass-editor__summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: var(--fs-small, 0.88rem);
+}
+
+.spyglass-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+  max-width: 34rem;
+}
+
+.field__help {
+  margin: 0;
+  font-size: var(--fs-small, 0.8rem);
+  color: var(--c-text-muted);
+}
+
+.spyglass-boundary {
+  margin-top: 1rem;
+}
+
+.section--spyglass .panel-scope {
+  max-width: 60ch;
+}
+
+@media (max-width: 900px) {
+  .spyglass-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .map-canvas {
+    height: clamp(18rem, 50vh, 26rem);
+  }
+}
+
+.map-markers {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.map-markers__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: var(--fs-small, 0.85rem);
+  color: inherit;
+}
+
+.map-markers__item--on {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+
+.map-markers__label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.map-markers__type {
+  color: var(--c-text-muted);
+  white-space: nowrap;
+}

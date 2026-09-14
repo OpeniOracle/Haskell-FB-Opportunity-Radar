@@ -79,8 +79,25 @@ export const DEFAULT_QUERY: OpportunityQuery = {
   sort: 'priority',
 }
 
-/** Label used wherever an opportunity has no resolved facility. */
-export const UNRESOLVED_LOCATION = 'Location not resolved'
+/**
+ * Label used wherever an opportunity has no resolved facility.
+ *
+ * "Location not resolved" described our pipeline: it said a resolution step had
+ * not run. What a reader needs to know is the fact about the DOCUMENT — the
+ * filing named a company and a project and did not name a site. One of those is
+ * a status report on us; the other is information about their account.
+ */
+export const UNRESOLVED_LOCATION = 'Location not identified in source'
+
+/**
+ * What an opportunity nobody has assessed is called.
+ *
+ * "Not scored yet" reads as a missing number — as though the page failed to
+ * load one. The record is complete; what has not happened is a person deciding
+ * where it sits against everything else, and that is a queue position, not a
+ * gap.
+ */
+export const AWAITING_PRIORITISATION = 'Awaiting analyst prioritization'
 
 /* ---------------------------------------------------------------- Priority */
 

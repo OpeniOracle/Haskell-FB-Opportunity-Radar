@@ -195,6 +195,34 @@ export function confidenceSentence(c: ConfidenceAxes): string {
 export const FIXTURE_NOW = new Date('2026-08-17T08:00:00Z')
 
 /**
+ * THE CLOCK EVERY RELATIVE LABEL IS MEASURED AGAINST.
+ *
+ * This defaulted to `FIXTURE_NOW` — a frozen instant in the middle of August
+ * 2026 — because the preview build needed reproducible screenshots. Production
+ * inherited the default, so a filing collected on 14 September was compared
+ * against 17 August and rendered "in 4 weeks": today's evidence, presented as a
+ * future event, on the surface whose entire claim is that it does not overstate
+ * what it knows about time.
+ *
+ * The default is now the REAL clock, and the frozen instant is something a
+ * caller has to ask for. That is the correct direction for the failure to run
+ * in: a preview that forgets to freeze its clock produces drifting screenshots,
+ * which someone notices. A production build that silently inherits a frozen one
+ * produces confident, wrong dates, which nobody does.
+ */
+let displayClock: (() => Date) | null = null
+
+/** Freeze the display clock. `null` restores the real one. */
+export function setDisplayClock(clock: (() => Date) | null): void {
+  displayClock = clock
+}
+
+/** The instant relative labels are measured from. Real time unless frozen. */
+export function displayNow(): Date {
+  return displayClock ? displayClock() : new Date()
+}
+
+/**
  * A value that could not be read as an instant.
  *
  * Returning the raw string here used to be the fallback, which put a fragment of
@@ -205,7 +233,7 @@ export const FIXTURE_NOW = new Date('2026-08-17T08:00:00Z')
 export const INVALID_INSTANT = 'Date unavailable'
 
 /** Is this instant later than the reference now? */
-export function isFutureInstant(iso: string, now: Date = FIXTURE_NOW): boolean {
+export function isFutureInstant(iso: string, now: Date = displayNow()): boolean {
   const then = new Date(iso)
   if (Number.isNaN(then.getTime())) return false
   return then.getTime() > now.getTime()
@@ -243,7 +271,7 @@ function magnitude(absMs: number): string | null {
  * Past reads "X ago", future reads "in X", and a future instant less than a
  * minute away reads "in under a minute" so it can never be mistaken for now.
  */
-export function relativeTime(iso: string, now: Date = FIXTURE_NOW): string {
+export function relativeTime(iso: string, now: Date = displayNow()): string {
   const then = new Date(iso)
   if (Number.isNaN(then.getTime())) return INVALID_INSTANT
 

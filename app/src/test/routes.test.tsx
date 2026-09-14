@@ -16,7 +16,18 @@ import {
  * COUNT and the wrong CONTENTS, which a count-only test could not catch.
  */
 describe('surface inventory', () => {
-  it('declares exactly the seven Phase 1 surfaces, by name', () => {
+  /*
+     THE INVENTORY CHANGED, IN BOTH DIRECTIONS, AND THE LIST IS STILL LITERAL.
+
+     Saved Pursuits & Watches left: nothing can write a saved pursuit, so the
+     entry promised a page that could only ever be empty. Map and Spyglass media
+     intelligence joined: both now read live data.
+
+     The list stays spelled out rather than counted, for exactly the reason the
+     original note gives — the first bad inventory had the right count and the
+     wrong contents.
+  */
+  it('declares exactly the built surfaces, by name', () => {
     expect(SURFACES.map((s) => s.label)).toEqual([
       'Daily Pulse',
       'Opportunities',
@@ -24,19 +35,31 @@ describe('surface inventory', () => {
       'Facility',
       'Evidence detail',
       'Source Health & Coverage',
-      'Saved Pursuits & Watches',
+      'Spyglass media intelligence',
+      'Map',
     ])
   })
 
-  it('splits them five primary and two contextual', () => {
+  it('splits them six primary and two contextual', () => {
     expect(PRIMARY_SURFACES.map((s) => s.label)).toEqual([
       'Daily Pulse',
       'Opportunities',
       'Company',
       'Source Health & Coverage',
-      'Saved Pursuits & Watches',
+      'Spyglass media intelligence',
+      'Map',
     ])
     expect(CONTEXTUAL_SURFACES.map((s) => s.label)).toEqual(['Facility', 'Evidence detail'])
+  })
+
+  it('lists no surface that cannot be populated', () => {
+    /*
+       The rule that moved both entries, asserted rather than described. A
+       primary navigation entry is a promise that something is behind it, and
+       `/views` broke that promise for as long as it existed.
+    */
+    expect(SURFACES.map((s) => s.routes[0])).not.toContain('/views')
+    expect(SURFACES.every((s) => s.status === 'implemented')).toBe(true)
   })
 
   it('maps each surface to the routes the plan gives it', () => {
@@ -48,33 +71,39 @@ describe('surface inventory', () => {
       Facility: ['/facilities/:facilityId'],
       'Evidence detail': ['/evidence/:evidenceId'],
       'Source Health & Coverage': ['/admin/health'],
-      'Saved Pursuits & Watches': ['/views'],
+      'Spyglass media intelligence': ['/media'],
+      Map: ['/map'],
     })
   })
 
   it('does not count a detail route as a separate surface', () => {
-    // The regression: /opportunities/:id and /accounts/:id were counted as two of
-    // the seven, displacing Facility and Evidence detail.
+    // The regression: /opportunities/:id and /accounts/:id were counted as two
+    // separate surfaces, displacing Facility and Evidence detail.
     const detailRoutes = SURFACES.flatMap((s) => s.routes).filter((r) => r.includes(':'))
     expect(detailRoutes).toContain('/opportunities/:opportunityId')
     expect(detailRoutes).toContain('/accounts/:accountId')
-    expect(SURFACES).toHaveLength(7)
+    expect(SURFACES).toHaveLength(8)
   })
 
-  it('keeps Market Trends, Map and Briefings out of the surface list', () => {
+  it('keeps Market Trends and Briefings out of the surface list', () => {
+    /*
+       Map is no longer among them. It moved into `SURFACES` when it acquired
+       live locations, which is the only condition on which anything moves: a
+       destination is listed when it works. Market Trends and Briefings still
+       depend on alerting and on cross-account patterns, and stay reserved.
+    */
     const labels = SURFACES.map((s) => s.label)
-    for (const reserved of ['Market Trends', 'Map', 'Briefings']) {
+    for (const reserved of ['Market Trends', 'Briefings']) {
       expect(labels).not.toContain(reserved)
     }
     expect(RESERVED_DESTINATIONS.map((d) => d.label)).toEqual([
       'Market Trends',
-      'Map',
       'Briefings',
     ])
   })
 
-  it('marks every Phase 1 surface as implemented', () => {
-    expect(SURFACES.filter((s) => s.status === 'implemented')).toHaveLength(7)
+  it('marks every built surface as implemented', () => {
+    expect(SURFACES.filter((s) => s.status === 'implemented')).toHaveLength(8)
     expect(SURFACES.filter((s) => s.status === 'scheduled')).toHaveLength(0)
   })
 })
@@ -97,7 +126,8 @@ describe('rendering', () => {
   it.each([
     ['/accounts', 'Company'],
     ['/admin/health', 'Source Health & Coverage'],
-    ['/views', 'Saved Pursuits & Watches'],
+    ['/media', 'Spyglass media intelligence'],
+    ['/map', 'Map'],
   ])('renders the built surface at %s', async (path, label) => {
     renderApp(path)
     expect(await screen.findByRole('heading', { level: 1, name: label })).toBeInTheDocument()

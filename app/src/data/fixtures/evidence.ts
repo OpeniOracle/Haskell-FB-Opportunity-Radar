@@ -32,6 +32,13 @@ export const evidenceFixtures: EvidenceRecord[] = [
       inferenceNote: null,
     },
     retrievedAt: '2026-08-11T14:02:00Z',
+    /* The collector that writes these columns did not exist when this
+       fixture was authored, so they are null rather than invented. */
+    firstSeenAt: null,
+    lastSeenAt: null,
+    sourceDocumentId: null,
+    collectedBy: null,
+    reviewStatus: null,
     excerpt:
       'The company will add aseptic filling capacity and warehouse automation at its Southeast plant, with construction beginning in the first quarter of 2027.',
     locator: 'newsroom/2026/southeast-plant-investment#paragraph-3',
@@ -103,6 +110,13 @@ export const evidenceFixtures: EvidenceRecord[] = [
       inferenceNote: null,
     },
     retrievedAt: '2026-08-16T09:12:00Z',
+    /* The collector that writes these columns did not exist when this
+       fixture was authored, so they are null rather than invented. */
+    firstSeenAt: null,
+    lastSeenAt: null,
+    sourceDocumentId: null,
+    collectedBy: null,
+    reviewStatus: null,
     excerpt:
       'Correcting our release of 11 August: construction at the Southeast plant begins 14 March 2027.',
     locator: 'newsroom/2026/southeast-plant-correction#paragraph-1',
@@ -166,6 +180,13 @@ export const evidenceFixtures: EvidenceRecord[] = [
       inferenceNote: null,
     },
     retrievedAt: '2026-08-11T16:30:00Z',
+    /* The collector that writes these columns did not exist when this
+       fixture was authored, so they are null rather than invented. */
+    firstSeenAt: null,
+    lastSeenAt: null,
+    sourceDocumentId: null,
+    collectedBy: null,
+    reviewStatus: null,
     excerpt:
       'The innovation centre is expected to be fully operational by spring 2029.',
     locator: 'investors/programme-update-2026#innovation-centre',
@@ -219,6 +240,13 @@ export const evidenceFixtures: EvidenceRecord[] = [
       inferenceNote: null,
     },
     retrievedAt: '2026-08-14T07:05:00Z',
+    /* The collector that writes these columns did not exist when this
+       fixture was authored, so they are null rather than invented. */
+    firstSeenAt: null,
+    lastSeenAt: null,
+    sourceDocumentId: null,
+    collectedBy: null,
+    reviewStatus: null,
     excerpt: null,
     locator: 'permits/2026/WD-118-42',
     // Reference-only: the body is not retained, and the surface says so plainly.
@@ -275,6 +303,13 @@ export const evidenceFixtures: EvidenceRecord[] = [
       inferenceNote: null,
     },
     retrievedAt: '2026-08-01T09:00:00Z',
+    /* The collector that writes these columns did not exist when this
+       fixture was authored, so they are null rather than invented. */
+    firstSeenAt: null,
+    lastSeenAt: null,
+    sourceDocumentId: null,
+    collectedBy: null,
+    reviewStatus: null,
     excerpt:
       'Records the transfer of Example Meals & Sauces Co. from Example Holdings Group to Example Pacific Holdings.',
     locator: 'filings/2024/EX-OWN-4412',
@@ -320,6 +355,13 @@ export const evidenceFixtures: EvidenceRecord[] = [
       inferenceNote: null,
     },
     retrievedAt: '2026-02-19T18:40:00Z',
+    /* The collector that writes these columns did not exist when this
+       fixture was authored, so they are null rather than invented. */
+    firstSeenAt: null,
+    lastSeenAt: null,
+    sourceDocumentId: null,
+    collectedBy: null,
+    reviewStatus: null,
     excerpt:
       'The demerger completed on 19 February 2026. Example Pacific Holdings retains approximately 18.4% of the demerged business, to be sold down over time.',
     locator: 'investors/2026/demerger-completion#paragraph-2',
@@ -379,6 +421,13 @@ export const evidenceFixtures: EvidenceRecord[] = [
       inferenceNote: null,
     },
     retrievedAt: '2026-08-16T05:50:00Z',
+    /* The collector that writes these columns did not exist when this
+       fixture was authored, so they are null rather than invented. */
+    firstSeenAt: null,
+    lastSeenAt: null,
+    sourceDocumentId: null,
+    collectedBy: null,
+    reviewStatus: null,
     excerpt: null,
     locator: null,
     // Metadata only: neither body nor locator was retained.

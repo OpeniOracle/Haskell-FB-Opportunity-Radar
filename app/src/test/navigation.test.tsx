@@ -37,7 +37,7 @@ describe('narrow-screen navigation', () => {
       const link = within(nav).getByRole('link', { name: new RegExp(surface.shortLabel) })
       expect(link.textContent?.trim()).toContain(surface.shortLabel)
     }
-    expect(within(nav).getAllByRole('link')).toHaveLength(5)
+    expect(within(nav).getAllByRole('link')).toHaveLength(6)
   })
 
   it('keeps exactly one primary landmark', async () => {
@@ -99,7 +99,7 @@ describe('reserved destinations', () => {
     const nav = await screen.findByRole('navigation', { name: 'Primary' })
     expect(within(nav).getByText('Surfaces')).toBeInTheDocument()
     expect(within(nav).getByText('Later phases')).toBeInTheDocument()
-    expect(within(nav).getAllByText('Reserved')).toHaveLength(3)
+    expect(within(nav).getAllByText('Reserved')).toHaveLength(2)
   })
 
   it('keeps them reachable from a labelled menu on a phone', async () => {

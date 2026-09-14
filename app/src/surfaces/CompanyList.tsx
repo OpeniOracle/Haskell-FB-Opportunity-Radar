@@ -13,7 +13,8 @@ import {
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { companyPath } from '@/lib/links'
+import { absoluteDate } from '@/lib/format'
+import { companyPath, opportunityPath } from '@/lib/links'
 import { countsTowardRelevanceMetrics } from '@/lib/ownership'
 import type { CompanySummary } from '@/types/domain'
 
@@ -110,7 +111,7 @@ function CompanyWorkspace({ companies }: { companies: CompanySummary[] }) {
           .toLowerCase()
         if (!corpus.includes(needle)) return false
       }
-      if (coverage === 'covered' && company.coverage.missingSources.length > 0) return false
+      if (coverage === 'covered' && !isFullyCovered(company)) return false
       if (coverage === 'below' && company.coverage.missingSources.length === 0) return false
       if (classification !== 'any' && company.scopeClassStatus !== classification) return false
       if (sector !== 'any' && !company.sectors.includes(sector)) return false
@@ -235,6 +236,18 @@ function CompanyWorkspace({ companies }: { companies: CompanySummary[] }) {
   )
 }
 
+/**
+ * Fully covered means EVERY EXPECTED SOURCE REPORTED — and that there was an
+ * expectation to meet.
+ *
+ * With an empty expectations table, `missingSources.length === 0` is trivially
+ * true for every account, and the list cheerfully labelled six uncovered
+ * accounts "Fully covered". An empty denominator is not a full numerator.
+ */
+function isFullyCovered(company: CompanySummary): boolean {
+  return company.coverage.expectedSources.length > 0 && company.coverage.missingSources.length === 0
+}
+
 function CompanyRow({
   company,
   search,
@@ -244,6 +257,7 @@ function CompanyRow({
 }) {
   const headingId = `company-${company.id}`
   const underCovered = company.coverage.missingSources.length > 0
+  const unmeasured = company.coverage.expectedSources.length === 0
 
   return (
     <article className="company-row" aria-labelledby={headingId}>
@@ -276,33 +290,74 @@ function CompanyRow({
             <StatusPill tone="neutral" icon="dot" label="Confirmed classification" />
           )}
           <StatusPill
-            tone={underCovered ? 'attention' : 'confirmed'}
-            icon={underCovered ? 'alert' : 'check'}
-            label={underCovered ? 'Below expected coverage' : 'Fully covered'}
+            tone={underCovered ? 'attention' : unmeasured ? 'neutral' : 'confirmed'}
+            icon={underCovered ? 'alert' : unmeasured ? 'clock' : 'check'}
+            label={
+              underCovered
+                ? 'Below expected coverage'
+                : unmeasured
+                  ? 'Coverage not yet measured'
+                  : 'Fully covered'
+            }
             title={company.coverage.gapReason ?? 'Every expected source reported.'}
           />
         </div>
 
         <div className="opp__meta">
           <span className="opp__meta-item">
-            <Icon name="building" className="opp__meta-icon" />
-            {company.facilityCount} {company.facilityCount === 1 ? 'facility' : 'facilities'}
-          </span>
-          <span className="opp__meta-item">
             <Icon name="target" className="opp__meta-icon" />
-            {company.openOpportunityCount} open{' '}
+            {company.openOpportunityCount}{' '}
             {company.openOpportunityCount === 1 ? 'opportunity' : 'opportunities'}
           </span>
           <span className="opp__meta-item">
-            <Icon name="document" className="opp__meta-icon" />
-            {company.coverage.observedSources.length}/
-            {company.coverage.expectedSources.length} expected sources
+            <Icon name="spark" className="opp__meta-icon" />
+            {company.signalCount} {company.signalCount === 1 ? 'signal' : 'signals'}
           </span>
           <span className="opp__meta-item">
-            <Icon name="clock" className="opp__meta-icon" />
-            <RecordedAt iso={company.latestActivityAt} prefix="Last activity" />
+            <Icon name="document" className="opp__meta-icon" />
+            {company.latestEvidenceAt
+              ? `Latest evidence ${absoluteDate(company.latestEvidenceAt)}`
+              : 'No evidence linked yet'}
           </span>
+          <span className="opp__meta-item">
+            <Icon name="settings" className="opp__meta-icon" />
+            {company.coverage.observedSources.length > 0
+              ? `Covered by ${company.coverage.observedSources.join(', ')}`
+              : 'No source has produced a signal here'}
+          </span>
+          {company.latestActivityAt && (
+            <span className="opp__meta-item">
+              <Icon name="clock" className="opp__meta-icon" />
+              <RecordedAt iso={company.latestActivityAt} prefix="Last activity" />
+            </span>
+          )}
         </div>
+
+        {/*
+          THE ACCOUNT'S BEST OPPORTUNITY, OR A SENTENCE SAYING THERE ISN'T ONE.
+
+          The empty case is the one worth getting right: an account can be
+          monitored, collected from, and correctly carry no qualifying project.
+          Rendering nothing there reads as a page that failed to finish loading.
+        */}
+        {company.topOpportunity ? (
+          <p className="company-row__top">
+            <span className="company-row__top-label">Top opportunity</span>
+            <Link to={opportunityPath(company.topOpportunity.id, search)}>
+              {company.topOpportunity.label}
+            </Link>
+            {company.topOpportunity.detail && (
+              <span className="company-row__top-detail">
+                {company.topOpportunity.detail}
+              </span>
+            )}
+          </p>
+        ) : (
+          <p className="company-row__top company-row__top--empty">
+            No qualifying opportunity yet. Documents collected for this account have been
+            evaluated and none carried a supported facility signal.
+          </p>
+        )}
       </div>
 
       <div className="company-row__aside">

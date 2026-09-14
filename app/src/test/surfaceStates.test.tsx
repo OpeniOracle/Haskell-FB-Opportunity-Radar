@@ -114,7 +114,7 @@ const ALL_ROUTES = [
   '/facilities/fac-fixture-1',
   '/evidence/ev-fixture-1',
   '/admin/health',
-  '/views',
+  '/media',
 ]
 
 describe('every state on every surface', () => {

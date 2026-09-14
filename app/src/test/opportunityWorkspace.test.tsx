@@ -153,85 +153,58 @@ describe('sorting', () => {
   })
 })
 
-describe('local preview actions', () => {
-  it('records a decision on the card and states that it is not saved', async () => {
-    const user = userEvent.setup()
-    renderApp('/opportunities')
-    const first = (await screen.findAllByRole('article'))[0]
-    expect(first).toBeDefined()
-    if (!first) return
-
-    const pursue = within(first).getByRole('button', { name: 'Pursue' })
-    expect(pursue).toHaveAttribute('aria-pressed', 'false')
-
-    await user.click(pursue)
-    expect(pursue).toHaveAttribute('aria-pressed', 'true')
-    expect(within(first).getByText('Marked to pursue')).toBeInTheDocument()
-    expect(within(first).getByText(/preview only, not saved/)).toBeInTheDocument()
-  })
-
-  it('offers all four actions and lets a misclick be undone', async () => {
-    const user = userEvent.setup()
+/*
+ * THESE TESTS USED TO ASSERT THAT PURSUE, WATCH, ASSIGN AND DISMISS WORKED AS A
+ * PREVIEW. They now assert that they are not there at all.
+ *
+ * The controls held a decision in component state, discarded it on reload, and
+ * said so in small print. That is an honest demonstration in a design preview
+ * and a broken promise in front of a client: the first thing anyone does with a
+ * list of opportunities is mark one, and being told afterwards that it was not
+ * saved is worse than never having been offered.
+ *
+ * Nothing can write them. `user_read_state` carries a SELECT grant and a
+ * per-user read policy, and no grant or policy admits an insert. So they are
+ * gone, with the surface that listed them, until there is a table to write to.
+ */
+describe('unfinished workflow controls are absent, not disabled', () => {
+  it('offers no pursuit action on a card', async () => {
     renderApp('/opportunities')
     const first = (await screen.findAllByRole('article'))[0]
     expect(first).toBeDefined()
     if (!first) return
 
     for (const label of ['Pursue', 'Watch', 'Assign', 'Dismiss']) {
-      expect(within(first).getByRole('button', { name: label })).toBeEnabled()
+      expect(within(first).queryByRole('button', { name: label })).toBeNull()
     }
-
-    const watch = within(first).getByRole('button', { name: 'Watch' })
-    await user.click(watch)
-    expect(watch).toHaveAttribute('aria-pressed', 'true')
-    await user.click(watch)
-    expect(watch).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('shares one decision between the card and the drawer', async () => {
+  it('offers no pursuit action in the drawer either', async () => {
     const user = userEvent.setup()
     renderApp('/opportunities')
     const first = (await screen.findAllByRole('article'))[0]
     expect(first).toBeDefined()
     if (!first) return
 
-    await user.click(within(first).getByRole('button', { name: 'Dismiss' }))
     await user.click(within(first).getByRole('button', { name: /^Review opportunity/ }))
-
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByRole('button', { name: 'Dismiss' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-  })
-
-  it('states once, above the list, that nothing is persisted', async () => {
-    renderApp('/opportunities')
-    await screen.findAllByRole('article')
-
-    // Said once for the whole list rather than repeated on all six cards.
-    expect(screen.getAllByText(/^Preview only/)).toHaveLength(1)
-    expect(
-      screen.getByText(/Pursue, Watch, Assign and Dismiss are not saved/),
-    ).toBeInTheDocument()
-
-    // Scoped to the surface: "Saved Pursuits & Watches" is a navigation entry,
-    // not a persistence claim about a decision.
-    const main = screen.getByRole('main')
-    for (const node of within(main).getAllByText(/saved/i)) {
-      expect(node.textContent).toMatch(/not saved/i)
+    for (const label of ['Pursue', 'Watch', 'Assign', 'Dismiss']) {
+      expect(within(dialog).queryByRole('button', { name: label })).toBeNull()
     }
   })
-})
 
-describe('illustrative treatment', () => {
-  it('keeps one compact note beside the results count and drops the large panel', async () => {
+  it('says "preview only" nowhere on the surface', async () => {
     renderApp('/opportunities')
     await screen.findAllByRole('article')
 
-    expect(screen.getByText('Fictional examples — not market intelligence')).toBeInTheDocument()
-    expect(screen.queryByText('These are not real opportunities')).toBeNull()
-    // The persistent ribbon is still the primary marker.
-    expect(screen.getByRole('note')).toHaveTextContent('Illustrative data')
+    /*
+       The phrase itself is the assertion. A disabled control with an
+       explanation is still a control that does nothing, and the explanation is
+       what made it feel acceptable to ship.
+    */
+    const main = screen.getByRole('main')
+    expect(within(main).queryByText(/preview only/i)).toBeNull()
+    expect(within(main).queryByText(/not saved/i)).toBeNull()
+    expect(within(main).queryByText(/reset on reload/i)).toBeNull()
   })
 })

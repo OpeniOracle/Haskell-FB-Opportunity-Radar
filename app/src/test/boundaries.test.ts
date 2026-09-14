@@ -196,6 +196,18 @@ const sources = files
 
 const outsideNetworkModules = sources.filter((s) => !NETWORK_MODULES.includes(s.path))
 
+/**
+ * Source with comments removed.
+ *
+ * Several assertions here search for a forbidden token, and several files
+ * legitimately NAME that token in a comment explaining why it must not appear.
+ * Matching prose would make the correct documentation fail the test, and the
+ * cheapest way to pass would be to delete the documentation.
+ */
+function codeOnly(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
 describe('milestone boundaries', () => {
   it('finds source files to check', () => {
     expect(sources.length).toBeGreaterThan(15)
@@ -218,12 +230,83 @@ describe('milestone boundaries', () => {
     expect(present.sort()).toEqual([...NETWORK_MODULES].sort())
   })
 
-  it('references no remote origin', () => {
-    // The browser addresses its own origin and the Supabase project, and the
-    // Supabase URL arrives from configuration rather than being written down
-    // here. A literal external URL in the bundle is still a boundary breach.
+  it('references no remote host beyond the ones deliberately allowed', () => {
+    /*
+       The browser addresses its own origin and the Supabase project, and the
+       Supabase URL arrives from configuration rather than being written down
+       here. A literal external host in `app/src` is still a boundary breach —
+       with an enumerated set of exceptions, each of which is a decision:
+
+         tiles.stadiamaps.com           map tiles and style JSON
+         stadiamaps.com, openmaptiles.org, www.openstreetmap.org
+                                        REQUIRED attribution links
+         zign.al, app.zignallabs.com    the Spyglass dashboard destinations
+         embeddable-widgets[.staging].zignallabs.com
+                                        the Spyglass embed allowlist
+         zignallabs.com                 named ONLY as a near-miss a validation
+                                        test proves is refused
+         *.example, *.invalid           IANA-reserved. Fixtures, and the
+                                        addresses rejection tests are built from
+
+       MATCHED ON THE PARSED HOST, NOT ON A SUBSTRING. The first version tested
+       the allowlist patterns against the whole URL, which meant
+       `https://embeddable-widgets.zignallabs.com.evil.example/a` matched the
+       entry for `embeddable-widgets.zignallabs.com` — a boundary test with the
+       same confusable-prefix hole the code it guards is designed to refuse.
+    */
+    const ALLOWED_HOSTS = new Set([
+      'tiles.stadiamaps.com',
+      'stadiamaps.com',
+      'openmaptiles.org',
+      'www.openstreetmap.org',
+      'www.w3.org',
+      'zign.al',
+      'app.zignallabs.com',
+      'zignallabs.com',
+      'embeddable-widgets.zignallabs.com',
+      'embeddable-widgets.staging.zignallabs.com',
+    ])
+    const RESERVED_TLD = /\.(example|invalid|test|localhost)$/
+
     const offenders = sources
-      .filter((s) => /https?:\/\/(?!www\.w3\.org)/.test(s.text))
+      .filter((s) => {
+        const urls = s.text.match(/https?:\/\/[a-z0-9][^\s'"`)]*/g) ?? []
+        return urls.some((url) => {
+          let host: string
+          try {
+            host = new URL(url).hostname
+          } catch {
+            return true
+          }
+          return !ALLOWED_HOSTS.has(host) && !RESERVED_TLD.test(host)
+        })
+      })
+      .map((s) => s.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('never names the geocoding endpoint in browser code', () => {
+    /*
+       Geocoding needs the Stadia API KEY, so it happens in a Netlify Function
+       and nowhere else. Tiles authenticate by domain and need no key at all.
+       A call to `api.stadiamaps.com` from `app/src` would be a key in the
+       bundle or a request that fails — both worth failing the build over.
+    */
+    const offenders = sources
+      .filter((s) => /api\.stadiamaps\.com/.test(s.text))
+      .map((s) => s.path)
+    expect(offenders).toEqual([])
+  })
+
+  it('holds no Stadia or Zignal credential in browser code', () => {
+    /*
+       CODE ONLY. `mapStyle.ts` explains in a comment that the Stadia key is
+       server-side and must never appear here, and a test that failed on the
+       explanation would delete the explanation — which is the one artefact that
+       stops the next person adding the key "just for geocoding".
+    */
+    const offenders = sources
+      .filter((s) => /STADIA_API_KEY|api_key=|embed[_-]?token/i.test(codeOnly(s.text)))
       .map((s) => s.path)
     expect(offenders).toEqual([])
   })

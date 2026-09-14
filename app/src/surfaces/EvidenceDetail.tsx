@@ -192,6 +192,50 @@ function EvidenceBody({ evidence }: { evidence: EvidenceRecord }) {
               <FutureTimestampWarning iso={evidence.retrievedAt} />
             </dd>
           </div>
+          {/*
+            COLLECTION HISTORY, DISTINCT FROM RETRIEVAL.
+
+            "Retrieved" is when the stored copy was taken. "First seen" is when
+            this document entered the record at all, and it survives a later
+            version superseding this one — which is the whole point of keeping
+            the two apart.
+          */}
+          {evidence.firstSeenAt && (
+            <div className="fact">
+              <dt>First seen</dt>
+              <dd>{absoluteDateTime(evidence.firstSeenAt)}</dd>
+            </div>
+          )}
+          {evidence.lastSeenAt && (
+            <div className="fact">
+              <dt>Last confirmed present</dt>
+              <dd>{absoluteDateTime(evidence.lastSeenAt)}</dd>
+            </div>
+          )}
+          {evidence.sourceDocumentId && (
+            <div className="fact">
+              <dt>Publisher’s identifier</dt>
+              <dd>
+                <code className="locator">{evidence.sourceDocumentId}</code>
+              </dd>
+            </div>
+          )}
+          {evidence.collectedBy && (
+            <div className="fact">
+              <dt>Collected by</dt>
+              <dd>{evidence.collectedBy}</dd>
+            </div>
+          )}
+          {evidence.reviewStatus && (
+            <div className="fact">
+              <dt>Review status</dt>
+              <dd>
+                {evidence.reviewStatus === 'unreviewed'
+                  ? 'Not yet reviewed by a person'
+                  : evidence.reviewStatus.replace(/_/g, ' ')}
+              </dd>
+            </div>
+          )}
           <div className="fact">
             <dt>How this source was obtained</dt>
             <dd>

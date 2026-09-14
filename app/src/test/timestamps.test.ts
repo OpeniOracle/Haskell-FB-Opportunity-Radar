@@ -11,7 +11,7 @@ import { companyFixtures } from '@/data/fixtures/companies'
 import { evidenceFixtures } from '@/data/fixtures/evidence'
 import { facilityFixtures } from '@/data/fixtures/facilities'
 import { sourceHealthFixture } from '@/data/fixtures/health'
-import { savedWorkspaceFixture } from '@/data/fixtures/views'
+import { spyglassFixture } from '@/data/fixtures/spyglass'
 
 const NOW = new Date('2026-08-17T08:00:00Z')
 const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs).toISOString()
@@ -135,8 +135,13 @@ describe('fixture integrity against FIXTURE_NOW', () => {
   for (const r of sourceHealthFixture.coverage) {
     completed.push([`coverage ${r.companyId} lastCheckedAt`, r.coverage.lastCheckedAt])
   }
-  for (const v of savedWorkspaceFixture.views) completed.push([`view ${v.id} createdAt`, v.createdAt])
-  for (const w of savedWorkspaceFixture.watches) completed.push([`watch ${w.id} addedAt`, w.addedAt])
+  /* Saved views and watches are gone — nothing can write one. The Spyglass
+     snapshots took their place as the other dated fixture collection, and a
+     snapshot generated in the future would be the same lie as an evidence
+     record retrieved in the future. */
+  for (const w of spyglassFixture.widgets) {
+    completed.push([`spyglass widget ${w.id} snapshotGeneratedAt`, w.snapshotGeneratedAt])
+  }
 
   it('covers a meaningful number of instants', () => {
     expect(completed.length).toBeGreaterThan(40)

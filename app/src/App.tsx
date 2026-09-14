@@ -1,6 +1,7 @@
-import { useContext, useMemo, type ReactNode } from 'react'
+import { Suspense, lazy, useContext, useMemo, type ReactNode } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { LoadingState } from '@/components/SurfaceStates'
 import { AuthProvider } from '@/auth/AuthProvider'
 import { CallbackPage } from '@/auth/CallbackPage'
 import { ForgotPasswordPage } from '@/auth/ForgotPasswordPage'
@@ -23,8 +24,8 @@ import { Opportunities } from '@/surfaces/Opportunities'
 import { OpportunityDetailPage } from '@/surfaces/OpportunityDetailPage'
 import { NotFound, ReservedPlaceholder, SurfacePlaceholder } from '@/surfaces/Placeholder'
 import { Pulse } from '@/surfaces/Pulse'
-import { SavedViews } from '@/surfaces/SavedViews'
 import { SourceHealth } from '@/surfaces/SourceHealth'
+import { Spyglass } from '@/surfaces/Spyglass'
 
 /**
  * Routes with a built surface.
@@ -34,6 +35,22 @@ import { SourceHealth } from '@/surfaces/SourceHealth'
  * in `routes.ts` before its component exists: a scheduled surface should say so,
  * not 404.
  */
+/**
+ * The map is the one surface worth code-splitting.
+ *
+ * MapLibre is about 800 kB of the bundle, and it is needed by exactly one route.
+ * Loading it eagerly made every other page — including the sign-in screen —
+ * wait for a rendering engine they never use, which on a phone on a hotel
+ * network is the difference between a demonstration and an apology.
+ *
+ * Nothing else is split: the rest of the application is small, and a chunk
+ * boundary in the middle of a surface someone is about to click is a spinner
+ * where there was none.
+ */
+const MapSurface = lazy(() =>
+  import('@/surfaces/MapSurface').then((m) => ({ default: m.MapSurface })),
+)
+
 const BUILT: Record<string, ReactNode> = {
   '/': <Pulse />,
   '/opportunities': <OpportunitiesRoute />,
@@ -43,7 +60,12 @@ const BUILT: Record<string, ReactNode> = {
   '/facilities/:facilityId': <FacilityDetail />,
   '/evidence/:evidenceId': <EvidenceDetail />,
   '/admin/health': <SourceHealth />,
-  '/views': <SavedViews />,
+  '/map': (
+    <Suspense fallback={<LoadingState label="Loading the map" rows={2} />}>
+      <MapSurface />
+    </Suspense>
+  ),
+  '/media': <Spyglass />,
 }
 
 /**

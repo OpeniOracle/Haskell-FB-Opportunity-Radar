@@ -1470,7 +1470,22 @@ begin
     from information_schema.role_table_grants
     where table_schema = 'public'
       and grantee = 'authenticated'
-      and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+      and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')
+      /*
+         ONE DELIBERATE EXCEPTION, NAMED HERE SO IT CANNOT GROW SILENTLY.
+
+         spyglass_settings carries a COLUMN-level UPDATE grant so an
+         application administrator can repoint the media-intelligence dashboard
+         without a deployment. The grant alone permits nothing: the row-level
+         policy spyglass_settings_admin_update calls is_app_administrator(),
+         so a signed-in non-administrator's update matches no row and changes
+         nothing.
+
+         Anything else appearing in this result is a regression. This test has
+         already earned its place once -- it caught an INSERT/UPDATE/DELETE
+         grant on spyglass_widgets for a management screen that does not exist.
+      */
+      and table_name <> 'spyglass_settings';
 
     if writable is not null then
         raise exception 'authenticated can write: %', writable;
@@ -1871,6 +1886,195 @@ update sources set health_status = 'source_unavailable' where id = 'test-source'
     name: 'an invented health status is still refused',
     expect: 'sources_health_status_check',
     sql: `update sources set health_status = 'probably_fine' where id = 'test-source';`,
+  },
+
+  /* ------------------------------------------------------- project locations
+     A MAP PIN IS THE MOST CONFIDENT THING AN INTERFACE CAN DRAW.
+
+     Every case below enforces one rule: a coordinate may only claim what the
+     document that produced it actually said. The interface states the same
+     rules; these make them true of the DATA, so a direct SQL write, a future
+     importer, or a bug in the resolver cannot produce a row the map would then
+     render faithfully and wrongly.
+  */
+  {
+    group: 'project locations',
+    name: 'a corporate headquarters cannot be stored as a project location',
+    expect: 'opportunity_locations_type_check',
+    sql: `
+insert into opportunity_locations
+    (opportunity_id, location_type, extracted_text, precision, latitude, longitude, extractor)
+values (gen_random_uuid(), 'corporate_headquarters', 'HQ', 'address', 41.0, -73.7, 'test');`,
+  },
+  {
+    group: 'project locations',
+    name: 'a project site cannot be stored as company context either',
+    expect: 'organization_locations_type_check',
+    sql: `
+insert into organization_locations
+    (organization_id, location_type, label, precision, source_note)
+values (gen_random_uuid(), 'confirmed_project_site', 'x', 'unresolved', 'test');`,
+  },
+  {
+    group: 'project locations',
+    name: 'a city-level match cannot be claimed as a confirmed site',
+    expect: 'opportunity_locations_confirmed_site_is_precise',
+    sql: `
+insert into opportunity_locations
+    (opportunity_id, location_type, extracted_text, precision, latitude, longitude,
+     uncertainty_radius_m, extractor)
+values (gen_random_uuid(), 'confirmed_project_site', 'Springdale, Arkansas', 'locality',
+        36.1, -94.1, 8000, 'test');`,
+  },
+  {
+    group: 'project locations',
+    name: 'a coarse match must carry the uncertainty it has',
+    expect: 'opportunity_locations_coarse_match_has_radius',
+    sql: `
+insert into opportunity_locations
+    (opportunity_id, location_type, extracted_text, precision, latitude, longitude, extractor)
+values (gen_random_uuid(), 'approximate_project_area', 'Springdale, Arkansas', 'locality',
+        36.1, -94.1, 'test');`,
+  },
+  {
+    group: 'project locations',
+    name: 'a resolved location without coordinates is refused',
+    /* The radius is supplied so this row satisfies every OTHER constraint and
+       fails on the one under test. PostgreSQL does not promise an evaluation
+       order, and a case that trips a different constraint first proves nothing
+       about the constraint it is named after. */
+    expect: 'opportunity_locations_resolved_has_coordinates',
+    sql: `
+insert into opportunity_locations
+    (opportunity_id, location_type, extracted_text, precision, uncertainty_radius_m, extractor)
+values (gen_random_uuid(), 'approximate_project_area', 'Springdale, Arkansas', 'locality', 8000, 'test');`,
+  },
+  {
+    group: 'project locations',
+    name: 'the text the document used is required beside every coordinate',
+    expect: 'opportunity_locations_extracted_text_present',
+    sql: `
+insert into opportunity_locations
+    (opportunity_id, location_type, extracted_text, precision, extractor)
+values (gen_random_uuid(), 'approximate_project_area', '   ', 'unresolved', 'test');`,
+  },
+  {
+    group: 'project locations',
+    name: 'the geocode cache is not readable by a signed-in session',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from geocode_cache;`,
+  },
+  {
+    group: 'project locations',
+    name: 'a signed-in session CAN read the two location tables',
+    expect: 'ok',
+    sql: `
+set local role authenticated;
+select count(*) from organization_locations;
+select count(*) from opportunity_locations;`,
+  },
+
+  /* ------------------------------------------------------------- Spyglass */
+  {
+    group: 'spyglass',
+    name: 'an unapproved embed origin is refused',
+    expect: 'spyglass_widgets_embed_origin',
+    sql: `
+insert into spyglass_widgets (title, embed_url, snapshot_generated_at, fallback_url)
+values ('Injected', 'https://example.invalid/evil', now(), 'https://zign.al/x');`,
+  },
+  {
+    group: 'spyglass',
+    name: 'a protocol-relative embed address is refused',
+    expect: 'spyglass_widgets_embed_origin',
+    sql: `
+insert into spyglass_widgets (title, embed_url, snapshot_generated_at, fallback_url)
+values ('Relative', '//embeddable-widgets.zignallabs.com/w', now(), 'https://zign.al/x');`,
+  },
+  {
+    group: 'spyglass',
+    name: 'a confusable host that merely CONTAINS an approved one is refused',
+    expect: 'spyglass_widgets_embed_origin',
+    sql: `
+insert into spyglass_widgets (title, embed_url, snapshot_generated_at, fallback_url)
+values ('Lookalike', 'https://evil.example/embeddable-widgets.zignallabs.com/w', now(),
+        'https://zign.al/x');`,
+  },
+  {
+    group: 'spyglass',
+    name: 'an approved embed is accepted',
+    expect: 'ok',
+    sql: `
+insert into spyglass_widgets (title, embed_url, snapshot_generated_at, fallback_url)
+values ('Total mentions', 'https://embeddable-widgets.zignallabs.com/abc?theme=Dark',
+        now(), 'https://zign.al/urgnr9l3');`,
+  },
+  {
+    group: 'spyglass',
+    name: 'an embed with no generation time cannot exist',
+    /* The single most important constraint on this table. An embed that cannot
+       say when it was frozen cannot be labelled honestly, and Zignal embeds
+       never refresh. */
+    expect: 'null value in column "snapshot_generated_at"',
+    sql: `
+insert into spyglass_widgets (title, embed_url, fallback_url)
+values ('Undated', 'https://embeddable-widgets.zignallabs.com/abc', 'https://zign.al/x');`,
+  },
+  {
+    group: 'spyglass',
+    name: 'the dashboard cannot be repointed off an approved Zignal destination',
+    expect: 'spyglass_settings_dashboard_origin',
+    sql: `update spyglass_settings set dashboard_url = 'https://example.invalid/x' where id = 'default';`,
+  },
+  {
+    group: 'spyglass',
+    name: 'a signed-in session that is not an administrator changes nothing',
+    expect: 'ok',
+    sql: `
+do $$
+declare
+    before_url text;
+    after_url  text;
+begin
+    select dashboard_url into before_url from spyglass_settings where id = 'default';
+
+    set local role authenticated;
+    update spyglass_settings set dashboard_url = 'https://zign.al/hijacked' where id = 'default';
+    reset role;
+
+    select dashboard_url into after_url from spyglass_settings where id = 'default';
+    if after_url is distinct from before_url then
+        raise exception 'a non-administrator repointed the dashboard: % -> %', before_url, after_url;
+    end if;
+end
+$$;`,
+  },
+  {
+    group: 'spyglass',
+    name: 'the administrator table is unreadable from a session',
+    expect: 'permission denied',
+    sql: `
+set local role authenticated;
+select count(*) from app_administrators;`,
+  },
+  {
+    group: 'spyglass',
+    name: 'a session can ask whether IT is an administrator, and gets false',
+    /* The security-definer function answers one boolean about the caller. It
+       cannot enumerate anybody, and it takes no argument that would let it
+       answer about somebody else. */
+    expect: 'ok',
+    sql: `
+do $$
+begin
+    set local role authenticated;
+    if public.is_app_administrator() then
+        raise exception 'an anonymous test session was treated as an administrator';
+    end if;
+end
+$$;`,
   },
 ]
 

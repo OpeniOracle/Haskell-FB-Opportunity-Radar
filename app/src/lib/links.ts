@@ -28,7 +28,20 @@ export const evidencePath = (evidenceId: string, search = '') =>
 
 export const sourceHealthPath = (search = '') => withSearch('/admin/health', search)
 
-export const savedViewsPath = (search = '') => withSearch('/views', search)
+export const mapPath = (search = '') => withSearch('/map', search)
+
+export const mediaPath = (search = '') => withSearch('/media', search)
+
+/*
+ * `savedViewsPath` is gone with `/views`. Nothing can write a saved pursuit, so
+ * the route was removed rather than left pointing at a page that could only ever
+ * be empty. A helper for an address that no longer resolves is how a dead link
+ * gets reintroduced by autocomplete.
+ */
+
+/** The shareable address for one opportunity. */
+export const opportunityPath = (opportunityId: string, search = '') =>
+  withSearch(`/opportunities/${encodeURIComponent(opportunityId)}`, search)
 
 /**
  * The as-at date an ownership question is asked on.

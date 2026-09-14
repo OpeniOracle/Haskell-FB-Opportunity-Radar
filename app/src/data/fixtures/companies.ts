@@ -50,6 +50,9 @@ export const companyFixtures: Company[] = [
     aliases: ['Example Beverage Co.', 'EBC'],
     facilityCount: 2,
     openOpportunityCount: 1,
+    signalCount: 0,
+    latestEvidenceAt: '2026-08-16T09:12:00Z',
+    topOpportunity: null,
     latestActivityAt: '2026-08-16T09:12:00Z',
     coverage: {
       expectedSources: ['SEC EDGAR', 'Company newsroom', 'FSIS MPI', 'Regional permit index'],
@@ -150,6 +153,9 @@ export const companyFixtures: Company[] = [
     aliases: ['Example Meals', 'EM&S'],
     facilityCount: 1,
     openOpportunityCount: 0,
+    signalCount: 0,
+    latestEvidenceAt: '2026-02-19T11:30:00Z',
+    topOpportunity: null,
     latestActivityAt: '2026-02-19T11:30:00Z',
     coverage: {
       expectedSources: ['SEC EDGAR', 'Company newsroom', 'FSIS MPI'],
@@ -278,6 +284,9 @@ export const companyFixtures: Company[] = [
     aliases: ['Example Consumer Brands'],
     facilityCount: 1,
     openOpportunityCount: 1,
+    signalCount: 0,
+    latestEvidenceAt: '2026-08-11T16:30:00Z',
+    topOpportunity: null,
     latestActivityAt: '2026-08-11T16:30:00Z',
     coverage: {
       expectedSources: ['Company newsroom', 'Regional permit index'],
@@ -336,6 +345,9 @@ export const companyFixtures: Company[] = [
     aliases: [],
     facilityCount: 0,
     openOpportunityCount: 0,
+    signalCount: 0,
+    latestEvidenceAt: '2026-08-15T22:40:00Z',
+    topOpportunity: null,
     latestActivityAt: '2026-08-15T22:40:00Z',
     // The case that matters: every connector is healthy, and this company is
     // still under-covered.
@@ -367,6 +379,9 @@ export const companyFixtures: Company[] = [
     aliases: ['Example Pet Nutrition'],
     facilityCount: 1,
     openOpportunityCount: 0,
+    signalCount: 0,
+    latestEvidenceAt: '2026-07-30T10:00:00Z',
+    topOpportunity: null,
     latestActivityAt: '2026-07-30T10:00:00Z',
     coverage: {
       expectedSources: ['Company newsroom', 'FSIS MPI'],
@@ -414,6 +429,9 @@ export const companyFixtures: Company[] = [
     aliases: [],
     facilityCount: 0,
     openOpportunityCount: 1,
+    signalCount: 0,
+    latestEvidenceAt: '2026-08-16T05:50:00Z',
+    topOpportunity: null,
     latestActivityAt: '2026-08-16T05:50:00Z',
     coverage: {
       expectedSources: ['Regional permit index', 'Trade press index'],
