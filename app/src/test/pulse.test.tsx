@@ -84,29 +84,45 @@ describe('daily pulse structure', () => {
 })
 
 describe('summary metrics', () => {
-  it('keeps the three metrics with short notes', async () => {
-    renderApp('/')
-    expect(await screen.findByRole('heading', { name: /Changes/ })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /Account coverage/ })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /Connector health/ })).toBeInTheDocument()
+  /*
+     THE METRICS ARE COUNTS OF ROWS NOW, AND THERE ARE FOUR.
 
-    expect(screen.getByText('Market changes since your last visit')).toBeInTheDocument()
-    expect(screen.getByText('Accounts fully covered')).toBeInTheDocument()
-    expect(screen.getByText('Sources healthy')).toBeInTheDocument()
+     The page led with three figures derived from `change_events`, which is
+     empty in production — so a database holding 39 evidence records, 13 signals
+     and 5 opportunities rendered as a page of zeroes. The counts are now
+     opportunities, signals, evidence and source health: each one the size of a
+     result set, each one checkable.
+  */
+  it('leads with four live counts, each with a short note', async () => {
+    renderApp('/')
+    expect(await screen.findByRole('heading', { name: /Opportunities/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Signals/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Evidence/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Source health/ })).toBeInTheDocument()
+
+    expect(screen.getByText('Derived from collected filings')).toBeInTheDocument()
+    expect(screen.getByText('Enabled sources healthy')).toBeInTheDocument()
+    // "New" is meaningless without a window, and the window is stated.
+    expect(screen.getByText(/New in the last 7 days/)).toBeInTheDocument()
   })
 
-  it('moves the long account list behind a disclosure', async () => {
+  it('moves the source list behind a disclosure', async () => {
     const user = userEvent.setup()
     renderApp('/')
-    await screen.findByRole('heading', { name: /Account coverage/ })
+    await screen.findByRole('heading', { name: /Source health/ })
 
-    const summary = screen.getByText('4 below expected')
-    // Behind a disclosure, not printed onto the card.
-    expect((summary.closest('details') as HTMLDetailsElement).open).toBe(false)
-    await user.click(summary)
+    const summary = screen.getByText(/degraded, .* needs\s+action/)
     const details = summary.closest('details') as HTMLDetailsElement
-    expect(within(details).getByText('Example Confectionery Group')).toBeInTheDocument()
-    expect(within(details).getAllByRole('listitem')).toHaveLength(4)
+    expect(details.open).toBe(false)
+    await user.click(summary)
+    expect(details.open).toBe(true)
+    expect(within(details).getAllByRole('listitem').length).toBeGreaterThan(0)
+  })
+
+  it('names the under-covered accounts rather than only counting them', async () => {
+    renderApp('/')
+    await screen.findByRole('heading', { name: /Account coverage/ })
+    expect(screen.getByText(/Below expected: /)).toBeInTheDocument()
   })
 
   it('preserves the coverage / connector-health distinction', async () => {

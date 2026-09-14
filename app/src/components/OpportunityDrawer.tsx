@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from '@/components/Icon'
 import { OpportunityDetail } from '@/components/OpportunityDetail'
-import type { LocalDecision, Opportunity } from '@/types/domain'
+import type { Opportunity } from '@/types/domain'
 import { opportunityDetailPath } from '@/lib/opportunityFilters'
 
 /**
@@ -22,14 +22,10 @@ import { opportunityDetailPath } from '@/lib/opportunityFilters'
  */
 export function OpportunityDrawer({
   opportunity,
-  decision,
-  onDecide,
   onClose,
   search = '',
 }: {
   opportunity: Opportunity
-  decision: LocalDecision | undefined
-  onDecide: (opportunityId: string, decision: LocalDecision) => void
   onClose: () => void
   /** Carried onto the full-detail link so the state previewer survives. */
   search?: string
@@ -125,8 +121,6 @@ export function OpportunityDrawer({
 
           <OpportunityDetail
             opportunity={opportunity}
-            decision={decision}
-            onDecide={onDecide}
             headingLevel={3}
           />
         </div>

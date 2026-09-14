@@ -11,7 +11,8 @@ import {
 import { IllustrativeNote } from '@/components/Illustrative'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { absoluteDateTime, relativeTime } from '@/lib/format'
+import { absoluteDate, absoluteDateTime, relativeTime } from '@/lib/format'
+import { evidencePath, mediaPath } from '@/lib/links'
 import { opportunityLink } from '@/lib/opportunityFilters'
 import type { ChangeEvent, PulseSnapshot } from '@/types/domain'
 
@@ -31,10 +32,20 @@ const CHANGE_ICON: Record<string, IconName> = {
  * commercial intelligence is primary and platform operations are secondary:
  *
  *   1. Needs attention today   the two or three things worth acting on
- *   2. Three summary figures   short, with the long lists behind a disclosure
- *   3. Other market changes    everything else that moved at an account
- *   4. Coverage and system     connectors and coverage, quiet, collapsed unless
+ *   2. Four live counts        opportunities, signals, evidence, source health
+ *   3. Top opportunities       highest confidence first — NOT highest scoring,
+ *                              because nothing here has been scored
+ *   4. New signals             what the last week turned up, closures marked as
+ *                              closures rather than folded in with expansions
+ *   5. Latest evidence         the documents themselves, each with its official
+ *                              source link
+ *   6. Coverage and system     connectors and coverage, quiet, collapsed unless
  *      notices                 something actually needs a person
+ *
+ * Every figure on this page is a COUNT OF ROWS. The page used to render three
+ * figures derived from an empty `change_events` table and nothing else, which is
+ * why it looked broken: the data was all there, one join away, and nothing asked
+ * for it.
  *
  * The market/system split comes from `ChangeEvent.channel` in the data, not from
  * matching on `kind` here. Coverage and connector health stay separate figures —
@@ -55,7 +66,10 @@ export function Pulse() {
       <header className="page-head page-head--tight">
         <div>
           <h1 className="page-head__title">Daily Pulse</h1>
-          <p className="page-head__sub">What changed across your accounts since 14 August.</p>
+          <p className="page-head__sub">
+            Live counts from the collected record, the newest signals and evidence, and
+            the current state of every enabled source.
+          </p>
         </div>
         {hasData && (
           <div className="page-head__meta">
@@ -110,7 +124,8 @@ export function Pulse() {
 }
 
 function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
-  const { coverage, connectorHealth, changesSinceLastVisit } = snapshot
+  const { coverage, connectorHealth, headline, changesSinceLastVisit } = snapshot
+  const { search } = useLocation()
 
   const byRecency = [...changesSinceLastVisit].sort((a, b) =>
     b.occurredAt.localeCompare(a.occurredAt),
@@ -142,56 +157,239 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
       )}
 
       <div className="pulse-grid">
-        <section className="stat" aria-labelledby="stat-changes">
-          <h2 className="stat__label" id="stat-changes">
-            <Icon name="pulse" className="stat__icon" /> Changes
+        <section className="stat" aria-labelledby="stat-opportunities">
+          <h2 className="stat__label" id="stat-opportunities">
+            <Icon name="target" className="stat__icon" /> Opportunities
           </h2>
-          <p className="stat__value">{attention.length + market.length}</p>
-          <p className="stat__note">Market changes since your last visit</p>
+          <p className="stat__value">{headline.opportunityCount}</p>
+          <p className="stat__note">Derived from collected filings</p>
         </section>
 
-        <section className="stat" aria-labelledby="stat-coverage">
-          <h2 className="stat__label" id="stat-coverage">
-            <Icon name="building" className="stat__icon" /> Account coverage
+        <section className="stat" aria-labelledby="stat-signals">
+          <h2 className="stat__label" id="stat-signals">
+            <Icon name="spark" className="stat__icon" /> Signals
           </h2>
           <p className="stat__value">
-            {coverage.accountsAtOrAboveExpected}
-            <span className="stat__of">/{coverage.accountsMonitored}</span>
+            {headline.newSignalCount}
+            <span className="stat__of">/{headline.signalCount}</span>
           </p>
-          <p className="stat__note">Accounts fully covered</p>
-          {coverage.accountsUncovered.length > 0 && (
-            <details className="stat__detail">
-              <summary>{coverage.accountsBelowExpected} below expected</summary>
-              <ul>
-                {coverage.accountsUncovered.map((account) => (
-                  <li key={account}>{account}</li>
-                ))}
-              </ul>
-            </details>
-          )}
+          {/* The window is stated, because "new" is meaningless without one and
+              there is no stored last-visit time to measure against. */}
+          <p className="stat__note">
+            New in the last {headline.newSignalWindowDays} days, of {headline.signalCount}{' '}
+            on record
+          </p>
+        </section>
+
+        <section className="stat" aria-labelledby="stat-evidence">
+          <h2 className="stat__label" id="stat-evidence">
+            <Icon name="document" className="stat__icon" /> Evidence
+          </h2>
+          <p className="stat__value">{headline.evidenceCount}</p>
+          <p className="stat__note">
+            {headline.latestEvidenceAt
+              ? `Newest ${absoluteDate(headline.latestEvidenceAt)}`
+              : 'Nothing collected yet'}
+          </p>
         </section>
 
         <section className="stat" aria-labelledby="stat-health">
           <h2 className="stat__label" id="stat-health">
-            <Icon name="settings" className="stat__icon" /> Connector health
+            <Icon name="settings" className="stat__icon" /> Source health
           </h2>
           <p className="stat__value">
             {connectorHealth.healthy}
             <span className="stat__of">/{connectorHealth.sourcesEnabled}</span>
           </p>
-          <p className="stat__note">Sources healthy</p>
+          <p className="stat__note">Enabled sources healthy</p>
           <details className="stat__detail">
             <summary>
               {connectorHealth.degraded} degraded, {connectorHealth.actionRequired} needs
               action
             </summary>
-            <p>
-              Connector health is whether the sources are working. Account coverage is
-              whether the right things are being watched. They are tracked separately.
-            </p>
+            <ul>
+              {snapshot.sources.map((source) => (
+                <li key={source.id}>
+                  {source.name} — {source.state.replace(/_/g, ' ')}
+                  {source.lastSuccessAt
+                    ? `, last collected ${absoluteDate(source.lastSuccessAt)}`
+                    : ', never collected'}
+                </li>
+              ))}
+            </ul>
           </details>
         </section>
       </div>
+
+      {snapshot.topOpportunities.length > 0 && (
+        <section className="section" aria-labelledby="top-opps-title">
+          <div className="section__head">
+            <h2 className="section__title" id="top-opps-title">
+              Top opportunities
+            </h2>
+            <span className="section__count">{snapshot.topOpportunities.length}</span>
+            {/* Not "highest scoring". Nothing is scored, and saying so here stops
+                the ordering being read as a ranking somebody made. */}
+            <span className="section__note">Highest confidence first</span>
+          </div>
+          <div className="change-list">
+            {snapshot.topOpportunities.map((item) => (
+              <article className="change" key={item.id}>
+                <span className="change__icon change__icon--confirmed" aria-hidden="true">
+                  <Icon name="target" />
+                </span>
+                <div className="change__body">
+                  <h3 className="change__title">
+                    <Link to={opportunityLink(item.id, search)}>{item.title}</Link>
+                    <span className="change__subject"> — {item.organizationName}</span>
+                  </h3>
+                  <p className="change__detail">
+                    {item.distinguisher ?? `${item.confidenceLevel} confidence`} ·{' '}
+                    {item.evidenceCount}{' '}
+                    {item.evidenceCount === 1 ? 'document' : 'documents'}
+                  </p>
+                </div>
+                <span className="change__when">
+                  {item.sourceDate ? absoluteDate(item.sourceDate.iso) : 'No date'}
+                </span>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {snapshot.newSignals.length > 0 && (
+        <section className="section" aria-labelledby="new-signals-title">
+          <div className="section__head">
+            <h2 className="section__title" id="new-signals-title">
+              New signals
+            </h2>
+            <span className="section__count">{snapshot.newSignals.length}</span>
+            <span className="section__note">
+              Last {headline.newSignalWindowDays} days
+            </span>
+          </div>
+          <div className="change-list">
+            {snapshot.newSignals.map((signal) => (
+              <article className="change" key={signal.id}>
+                <span
+                  className={`change__icon change__icon--${signal.negative ? 'attention' : 'emerging'}`}
+                  aria-hidden="true"
+                >
+                  <Icon name={signal.negative ? 'alert' : 'spark'} />
+                </span>
+                <div className="change__body">
+                  <h3 className="change__title">
+                    {signal.title}
+                    <span className="change__subject"> — {signal.organizationName}</span>
+                  </h3>
+                  {/* A closure is not a build. The two are never flattened. */}
+                  {signal.negative && (
+                    <p className="change__detail">
+                      Recorded as a closure or consolidation, not an expansion.
+                    </p>
+                  )}
+                </div>
+                <time className="change__when" dateTime={signal.observedAt}>
+                  {signal.observedAt ? absoluteDate(signal.observedAt) : '—'}
+                </time>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/*
+        A SMALL LINK, NOT AN EMBED.
+
+        Daily Pulse summarises what the Radar itself collected. Media coverage is
+        a different source with a different provenance, so it gets a pointer here
+        rather than a panel — and the pointer says "live" because a link to the
+        Zignal dashboard genuinely is live, unlike the snapshots on the Spyglass
+        page.
+      */}
+      <section className="section section--spyglass" aria-labelledby="spyglass-pulse-title">
+        <div className="section__head">
+          <h2 className="section__title" id="spyglass-pulse-title">
+            Spyglass media intelligence
+          </h2>
+        </div>
+        <p className="panel-scope">
+          Media coverage of these accounts is tracked separately in Openi Spyglass, and
+          is not part of the counts above — nothing there is ingested as evidence.
+        </p>
+        <p className="source-card__links">
+          <Link className="btn btn--quiet" to={mediaPath(search)}>
+            Spyglass media intelligence
+            <Icon name="chevron" className="btn__icon" />
+          </Link>
+        </p>
+      </section>
+
+      {snapshot.latestEvidence.length > 0 && (
+        <section className="section" aria-labelledby="latest-evidence-title">
+          <div className="section__head">
+            <h2 className="section__title" id="latest-evidence-title">
+              Latest evidence
+            </h2>
+            <span className="section__count">{snapshot.latestEvidence.length}</span>
+            <span className="section__note">Newest first</span>
+          </div>
+          <div className="change-list">
+            {snapshot.latestEvidence.map((item) => (
+              <article className="change" key={item.id}>
+                <span className="change__icon change__icon--neutral" aria-hidden="true">
+                  <Icon name="document" />
+                </span>
+                <div className="change__body">
+                  <h3 className="change__title">
+                    <Link to={evidencePath(item.id, search)}>{item.title}</Link>
+                  </h3>
+                  <p className="change__detail">
+                    {item.documentType ? `${item.documentType} · ` : ''}
+                    {item.publisher}
+                    {item.officialUrl && (
+                      <>
+                        {' · '}
+                        <a href={item.officialUrl} target="_blank" rel="noopener noreferrer">
+                          Official source
+                        </a>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <time className="change__when" dateTime={item.recordedAt}>
+                  {item.recordedAt ? absoluteDate(item.recordedAt) : '—'}
+                  {/* Published and retrieved are different facts. Which one this
+                      is says so rather than being inferred from the column. */}
+                  <span className="change__basis">
+                    {item.recordedAtBasis === 'published' ? 'filed' : 'collected'}
+                  </span>
+                </time>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="section" aria-labelledby="coverage-title">
+        <div className="section__head">
+          <h2 className="section__title" id="coverage-title">
+            Account coverage
+          </h2>
+          <span className="section__count">
+            {coverage.accountsAtOrAboveExpected}/{coverage.accountsMonitored}
+          </span>
+        </div>
+        <p className="panel-scope">
+          Connector health is whether the sources are working. Account coverage is whether
+          the right things are being watched. They are tracked separately and neither
+          substitutes for the other.
+          {coverage.accountsUncovered.length > 0 && (
+            <> Below expected: {coverage.accountsUncovered.join(', ')}.</>
+          )}
+        </p>
+      </section>
 
       {market.length > 0 && (
         <section className="section" aria-labelledby="market-title">

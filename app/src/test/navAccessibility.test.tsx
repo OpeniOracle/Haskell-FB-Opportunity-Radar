@@ -15,8 +15,8 @@ import {
  *
  * "Surfaces" and "Later phases" were plain spans, so the grouping existed only
  * on screen, and the "Reserved" chip was `aria-hidden`, so the accessibility
- * tree announced `"Market Trends"`, `"Map"` and `"Briefings"` exactly like the
- * five working surfaces. A screen-reader user moving link by link had nothing to
+ * tree announced `"Market Trends"` and `"Briefings"` exactly like the
+ * working surfaces. A screen-reader user moving link by link had nothing to
  * distinguish a built surface from a reserved position.
  */
 describe('navigation groups are programmatically labelled', () => {
@@ -28,15 +28,15 @@ describe('navigation groups are programmatically labelled', () => {
     expect(screen.getByRole('group', { name: 'Later phases' })).toBeInTheDocument()
   })
 
-  it('puts the five working surfaces in one group and the three reserved in the other', async () => {
+  it('puts the six working surfaces in one group and the two reserved in the other', async () => {
     renderApp('/')
     await screen.findByRole('navigation', { name: 'Primary' })
 
     const surfaces = within(screen.getByRole('group', { name: 'Surfaces' }))
     const later = within(screen.getByRole('group', { name: 'Later phases' }))
 
-    expect(surfaces.getAllByRole('link')).toHaveLength(5)
-    expect(later.getAllByRole('link')).toHaveLength(3)
+    expect(surfaces.getAllByRole('link')).toHaveLength(6)
+    expect(later.getAllByRole('link')).toHaveLength(2)
   })
 
   it('associates each label with its group rather than merely preceding it', async () => {
@@ -83,7 +83,7 @@ describe('reserved destinations announce their later-phase status', () => {
     await screen.findByRole('navigation', { name: 'Primary' })
 
     const chips = document.querySelectorAll('.nav__link--reserved .nav__tag')
-    expect(chips).toHaveLength(3)
+    expect(chips).toHaveLength(2)
     for (const chip of chips) {
       expect(chip.getAttribute('aria-hidden')).toBeNull()
       expect(chip.textContent?.trim()).toBe('Reserved')
@@ -115,8 +115,8 @@ describe('reserved destinations stay outside the seven Phase 1 surfaces', () => 
     for (const destination of RESERVED_DESTINATIONS) {
       expect(labels).not.toContain(destination.label)
     }
-    expect(SURFACES).toHaveLength(7)
-    expect(RESERVED_DESTINATIONS).toHaveLength(3)
+    expect(SURFACES).toHaveLength(8)
+    expect(RESERVED_DESTINATIONS).toHaveLength(2)
   })
 })
 

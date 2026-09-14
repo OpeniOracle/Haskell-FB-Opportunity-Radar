@@ -110,15 +110,11 @@ describe('Opportunities still behaves as approved', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('still keeps local decisions local', async () => {
-    const user = userEvent.setup()
+  it('no longer offers a decision it cannot keep', async () => {
     renderApp('/opportunities')
     const cards = await screen.findAllByRole('article')
-    expect(
-      within(cards[0]!).getByRole('button', { name: /Pursue/ }),
-    ).toBeInTheDocument()
-    await user.click(within(cards[0]!).getByRole('button', { name: /Pursue/ }))
-    expect(screen.getByText(/not saved and reset on\s+reload/)).toBeInTheDocument()
+    expect(within(cards[0]!).queryByRole('button', { name: /Pursue/ })).toBeNull()
+    expect(screen.queryByText(/reset on\s+reload/)).toBeNull()
   })
 })
 

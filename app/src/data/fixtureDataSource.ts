@@ -6,12 +6,14 @@ import type {
   CompanySummary,
   EvidenceRecord,
   FacilityRecord,
+  MapSnapshot,
   Opportunity,
   PulseSnapshot,
-  SavedWorkspace,
   SourceHealthSnapshot,
+  SpyglassSnapshot,
   SurfaceState,
 } from '@/types/domain'
+import { FIXTURE_NOW, setDisplayClock } from '@/lib/format'
 import { fixtureMeta } from '@/data/fixtures/meta'
 import { opportunityFixtures } from '@/data/fixtures/opportunities'
 import { pulseFixture } from '@/data/fixtures/pulse'
@@ -19,7 +21,8 @@ import { companyFixtures } from '@/data/fixtures/companies'
 import { facilityFixtures } from '@/data/fixtures/facilities'
 import { evidenceFixtures } from '@/data/fixtures/evidence'
 import { sourceHealthFixture } from '@/data/fixtures/health'
-import { savedWorkspaceFixture } from '@/data/fixtures/views'
+import { mapFixture } from '@/data/fixtures/map'
+import { spyglassFixture } from '@/data/fixtures/spyglass'
 
 /**
  * The fixture-backed DataSource. This is the ONLY implementation in PR 1.
@@ -120,6 +123,17 @@ const CHECKED_AT = '2026-08-17T06:15:00Z'
 export function createFixtureDataSource(
   scenario: FixtureScenario = 'ready',
 ): DataSource {
+  /*
+     THE PREVIEW FREEZES THE CLOCK; PRODUCTION DOES NOT.
+
+     Fixture timestamps are written relative to `FIXTURE_NOW`, so the preview
+     needs that instant to produce reproducible relative labels. It used to be
+     the DEFAULT inside `format.ts`, which meant production silently inherited a
+     frozen August clock and rendered a filing collected today as "in 4 weeks".
+     The freeze now belongs to the thing that needs it.
+  */
+  setDisplayClock(() => FIXTURE_NOW)
+
   return {
     meta: fixtureMeta,
 
@@ -275,21 +289,51 @@ export function createFixtureDataSource(
       })
     },
 
-    async getSavedWorkspace(): Promise<SurfaceState<SavedWorkspace>> {
-      return envelope<SavedWorkspace>(scenario, savedWorkspaceFixture, {
-        empty: 'You have not saved any views or watches yet.',
+    async getSpyglass(): Promise<SurfaceState<SpyglassSnapshot>> {
+      return envelope<SpyglassSnapshot>(scenario, spyglassFixture, {
+        empty: 'No Spyglass dashboard has been configured for this deployment yet.',
         unavailable: {
           reason:
-            'Saved views cannot be listed in this preview session. Nothing has been lost — there is no stored copy to lose.',
-          blockedBy: 'No persistence layer in Phase 1',
+            'The Spyglass configuration could not be read. Nothing else on the Radar is affected — media intelligence is a separate integration.',
+          blockedBy: 'Spyglass configuration unreadable',
         },
         degraded: {
           notice:
-            'One saved view references a filter that no longer matches anything, so its count may be wrong.',
-          affected: ['Under-covered accounts'],
+            'One configured snapshot is older than the others, so the figures on it are from a different date.',
+          affected: ['Historical sentiment'],
         },
         stale: {
-          notice: 'Result counts were computed before the last cycle.',
+          notice:
+            'Every snapshot below was generated some time ago. Open the live dashboard for current figures.',
+          asOf: '2026-08-15T06:15:00Z',
+        },
+      })
+    },
+
+    async setSpyglassDashboard() {
+      /* The preview has no database to write to, and saying so is better than a
+         control that appears to work. */
+      return {
+        ok: false,
+        reason: 'The preview build cannot save a Spyglass dashboard address.',
+      }
+    },
+
+    async getMapLocations(): Promise<SurfaceState<MapSnapshot>> {
+      return envelope<MapSnapshot>(scenario, mapFixture, {
+        empty: 'No opportunity or account has a recorded location yet.',
+        unavailable: {
+          reason:
+            'Locations cannot be shown because the last extraction run did not finish. Nothing is required from you.',
+          blockedBy: 'Location extraction pending',
+        },
+        degraded: {
+          notice:
+            'One location was resolved to a city rather than an address, so it is drawn as an area.',
+          affected: ['Example Snack Foods, Inc.'],
+        },
+        stale: {
+          notice: 'These locations were resolved before the last collection cycle.',
           asOf: '2026-08-15T06:15:00Z',
         },
       })

@@ -107,10 +107,35 @@ describe('the grant migration names the columns the client reads', () => {
     .join('\n')
 
   /** Every column named in a `.select('…')` against one table in the client. */
+  /**
+   * The client source with its column constants inlined.
+   *
+   * The reads moved from literal strings to shared constants
+   * (`EVIDENCE_COLUMNS` and friends) so five surfaces cannot each ask for a
+   * different set. A scanner that only understood literals started reporting
+   * that the client had stopped reading columns it reads on every request —
+   * which would have been read as "the grant is too wide" and answered by
+   * REVOKING a column the interface needs. Resolving the constants first is
+   * what keeps this test measuring the thing it is named after.
+   */
+  const resolved = (() => {
+    let text = source
+    for (const [, name, value] of source.matchAll(
+      /const ([A-Z_]+_COLUMNS)\s*=\s*\n?\s*'([^']+)'/g,
+    )) {
+      text = text.split(`\${${name}}`).join(value)
+    }
+    return text
+  })()
+
   function selectedColumns(table: string): string[] {
     const out = new Set<string>()
-    const pattern = new RegExp(`from\\('${table}'\\)[\\s\\S]{0,200}?\\.select\\(\\s*'([^']+)'`, 'g')
-    for (const hit of source.matchAll(pattern)) {
+    // Both quoting styles: several selects are template literals now.
+    const pattern = new RegExp(
+      `from\\('${table}'\\)[\\s\\S]{0,400}?\\.select\\(\\s*[',\`]?['\`]([^'\`]+)['\`]`,
+      'g',
+    )
+    for (const hit of resolved.matchAll(pattern)) {
       for (const raw of hit[1]!.split(',')) {
         const column = raw.trim().split(/\s|\(/)[0]!
         // Skip the embedded-resource syntax, which names a table not a column.

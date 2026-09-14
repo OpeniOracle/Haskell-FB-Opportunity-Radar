@@ -69,6 +69,24 @@ export const opportunityFixtures: Opportunity[] = [
       newestRetrievedAt: '2026-08-16T09:12:00Z',
       strongestAccessMode: 'structured_primary',
     },
+    /* Added with the source-attribution model. Illustrative, like the rest
+       of this file — no real filing exists behind any of it. */
+    sourceDate: { iso: '2026-08-16T09:12:00Z', basis: 'filing_date' },
+    rationale: null,
+    distinguisher: null,
+    sources: [
+      {
+        evidenceId: 'ev-fixture-1',
+        title: 'Announcement — Example Group',
+        publisher: 'Example Group',
+        documentType: '8-K',
+        filingDate: '2026-08-16T09:12:00Z',
+        officialUrl: 'https://example.invalid/filings/example',
+        excerpt:
+          'Illustrative excerpt. Nothing in this file describes a real filing or a real organization.',
+        accessMode: 'structured_primary',
+      },
+    ],
     lastMaterialChangeAt: '2026-08-16T09:12:00Z',
   },
   {
@@ -118,6 +136,24 @@ export const opportunityFixtures: Opportunity[] = [
       newestRetrievedAt: '2026-08-15T14:40:00Z',
       strongestAccessMode: 'structured_primary',
     },
+    /* Added with the source-attribution model. Illustrative, like the rest
+       of this file — no real filing exists behind any of it. */
+    sourceDate: { iso: '2026-08-15T14:40:00Z', basis: 'filing_date' },
+    rationale: null,
+    distinguisher: null,
+    sources: [
+      {
+        evidenceId: 'ev-fixture-2',
+        title: 'Announcement — Example Group',
+        publisher: 'Example Group',
+        documentType: '8-K',
+        filingDate: '2026-08-15T14:40:00Z',
+        officialUrl: 'https://example.invalid/filings/example',
+        excerpt:
+          'Illustrative excerpt. Nothing in this file describes a real filing or a real organization.',
+        accessMode: 'structured_primary',
+      },
+    ],
     lastMaterialChangeAt: '2026-08-15T14:40:00Z',
   },
   {
@@ -170,6 +206,24 @@ export const opportunityFixtures: Opportunity[] = [
       newestRetrievedAt: '2026-08-14T07:05:00Z',
       strongestAccessMode: 'structured_primary',
     },
+    /* Added with the source-attribution model. Illustrative, like the rest
+       of this file — no real filing exists behind any of it. */
+    sourceDate: { iso: '2026-08-14T07:05:00Z', basis: 'filing_date' },
+    rationale: null,
+    distinguisher: null,
+    sources: [
+      {
+        evidenceId: 'ev-fixture-3',
+        title: 'Announcement — Example Group',
+        publisher: 'Example Group',
+        documentType: '8-K',
+        filingDate: '2026-08-14T07:05:00Z',
+        officialUrl: 'https://example.invalid/filings/example',
+        excerpt:
+          'Illustrative excerpt. Nothing in this file describes a real filing or a real organization.',
+        accessMode: 'structured_primary',
+      },
+    ],
     lastMaterialChangeAt: '2026-08-14T07:05:00Z',
   },
   {
@@ -225,6 +279,24 @@ export const opportunityFixtures: Opportunity[] = [
       newestRetrievedAt: '2026-08-11T16:30:00Z',
       strongestAccessMode: 'archived_full_text',
     },
+    /* Added with the source-attribution model. Illustrative, like the rest
+       of this file — no real filing exists behind any of it. */
+    sourceDate: { iso: '2026-08-11T16:30:00Z', basis: 'filing_date' },
+    rationale: null,
+    distinguisher: null,
+    sources: [
+      {
+        evidenceId: 'ev-fixture-4',
+        title: 'Announcement — Example Group',
+        publisher: 'Example Group',
+        documentType: '8-K',
+        filingDate: '2026-08-11T16:30:00Z',
+        officialUrl: 'https://example.invalid/filings/example',
+        excerpt:
+          'Illustrative excerpt. Nothing in this file describes a real filing or a real organization.',
+        accessMode: 'structured_primary',
+      },
+    ],
     lastMaterialChangeAt: '2026-08-11T16:30:00Z',
   },
   {
@@ -275,6 +347,24 @@ export const opportunityFixtures: Opportunity[] = [
       newestRetrievedAt: '2026-08-16T05:50:00Z',
       strongestAccessMode: 'reference_only',
     },
+    /* Added with the source-attribution model. Illustrative, like the rest
+       of this file — no real filing exists behind any of it. */
+    sourceDate: { iso: '2026-08-16T05:50:00Z', basis: 'filing_date' },
+    rationale: null,
+    distinguisher: null,
+    sources: [
+      {
+        evidenceId: 'ev-fixture-5',
+        title: 'Announcement — Example Group',
+        publisher: 'Example Group',
+        documentType: '8-K',
+        filingDate: '2026-08-16T05:50:00Z',
+        officialUrl: 'https://example.invalid/filings/example',
+        excerpt:
+          'Illustrative excerpt. Nothing in this file describes a real filing or a real organization.',
+        accessMode: 'structured_primary',
+      },
+    ],
     lastMaterialChangeAt: '2026-08-16T05:50:00Z',
   },
   {
@@ -327,6 +417,24 @@ export const opportunityFixtures: Opportunity[] = [
       newestRetrievedAt: '2026-08-09T11:20:00Z',
       strongestAccessMode: 'archived_full_text',
     },
+    /* Added with the source-attribution model. Illustrative, like the rest
+       of this file — no real filing exists behind any of it. */
+    sourceDate: { iso: '2026-08-09T11:20:00Z', basis: 'filing_date' },
+    rationale: null,
+    distinguisher: null,
+    sources: [
+      {
+        evidenceId: 'ev-fixture-6',
+        title: 'Announcement — Example Group',
+        publisher: 'Example Group',
+        documentType: '8-K',
+        filingDate: '2026-08-09T11:20:00Z',
+        officialUrl: 'https://example.invalid/filings/example',
+        excerpt:
+          'Illustrative excerpt. Nothing in this file describes a real filing or a real organization.',
+        accessMode: 'structured_primary',
+      },
+    ],
     lastMaterialChangeAt: '2026-08-09T11:20:00Z',
   },
 ]

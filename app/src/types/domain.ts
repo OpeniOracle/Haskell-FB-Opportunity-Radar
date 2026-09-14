@@ -114,14 +114,22 @@ export interface ScoreComponents {
  */
 export type PriorityBand = 'critical' | 'high' | 'moderate' | 'low'
 
-/**
- * A pursuit decision taken in the interface.
+/*
+ * THERE IS NO `LocalDecision` TYPE ANY MORE, AND THAT IS DELIBERATE.
  *
- * In this milestone these are LOCAL PREVIEW ONLY — held in component state and
- * discarded on reload. There is no persistence layer to write them to, and
- * pretending otherwise would be worse than the disabled button it replaces.
+ * Pursue, Watch, Assign and Dismiss existed as buttons that held a choice in
+ * component state and threw it away on reload, labelled "preview only". In a
+ * preview build that was an honest demonstration of an interaction. In front of
+ * a client it is a control that appears to do something and does not, and the
+ * small print underneath is not a remedy — the first thing a user does with a
+ * list of opportunities is mark one.
+ *
+ * There is no persistence layer: `user_read_state` is granted SELECT and
+ * nothing else, and no policy admits a write. So the controls are gone rather
+ * than disabled, and Saved Pursuits & Watches is gone from the navigation
+ * rather than rendering an empty page. They come back when there is a table to
+ * write to.
  */
-export type LocalDecision = 'pursue' | 'watch' | 'dismiss' | 'assign'
 
 /** Caps come from `02_DATA_AND_SIGNAL_MODEL.md` and are used to render bars. */
 export const SCORE_CAPS = {
@@ -161,6 +169,74 @@ export interface EvidenceSummary {
     | 'metadata_only'
 }
 
+/**
+ * The document an opportunity rests on, in the terms a client reads it in.
+ *
+ * An opportunity derived from a filing is only as good as the filing, and the
+ * first question anyone asks in a demonstration is "where does that come from?"
+ * This is the answer, and it is carried on the record rather than assembled in a
+ * component, so the list, the drawer and the full page cannot cite it three
+ * different ways.
+ *
+ * `officialUrl` is the publisher's own address for the document — not our copy,
+ * not a search result. `documentType` is the form as the publisher filed it
+ * ("8-K"), taken from the recorded locator metadata rather than parsed out of a
+ * title.
+ */
+export interface OpportunitySource {
+  evidenceId: string
+  title: string
+  publisher: string
+  /** The form as filed — "8-K", "10-K". Null when the source did not state one. */
+  documentType: string | null
+  /** The date the document was published or filed. Null if the source gave none. */
+  filingDate: string | null
+  officialUrl: string | null
+  /** The matched passage, verbatim from the document. */
+  excerpt: string | null
+  accessMode: EvidenceAccessMode
+}
+
+/**
+ * Why the platform believes this is a project, written for a reader.
+ *
+ * The classifier records its own derivation — the term it matched, the asset it
+ * matched near, the corroborating facts, the width of the window it searched and
+ * the grade it assigned. That text is a correct and useful engineering artefact
+ * and it is the wrong thing to put in front of a business-development user: it
+ * describes the mechanism, not the finding, and phrases like "within 420
+ * characters" and "read by a machine" tell a client about our regular
+ * expressions instead of about their account.
+ *
+ * So the STRUCTURED parts of that derivation are carried here and the sentence
+ * is composed from them at the boundary. Nothing is invented: every value in
+ * `corroboration` is a string the source document actually contained.
+ */
+export interface OpportunityRationale {
+  /** One sentence, composed from the fields below. Never the raw derivation. */
+  summary: string
+  /** The activity term the document used — "will build", "expansion". */
+  matchedActivity: string | null
+  /** The asset the activity was about — "production facility". */
+  matchedAsset: string | null
+  /** Corroborating facts found in the same passage, with readable labels. */
+  corroboration: { label: string; value: string }[]
+}
+
+/**
+ * The date this opportunity is anchored to, and what that date actually IS.
+ *
+ * `basis` is not decoration. A filing date is when a document was published; an
+ * event date is when the thing is said to happen. Rendering the first as though
+ * it were the second is the specific lie this type exists to prevent — and
+ * showing neither, which is what "No date given" did while the filing date sat
+ * in the record, is the failure it was written to fix.
+ */
+export interface OpportunityDate {
+  iso: string
+  basis: 'filing_date' | 'stated_event_date'
+}
+
 export interface Opportunity {
   id: string
   title: string
@@ -170,10 +246,27 @@ export interface Opportunity {
   status: OpportunityStatus
   confidence: ConfidenceAxes
   horizon: TemporalValue
+  /**
+   * The date on the record. Filing date when the source stated no event date —
+   * labelled as a filing date, never promoted into a forecast.
+   */
+  sourceDate: OpportunityDate | null
   whyItMatters: string
+  rationale: OpportunityRationale | null
+  /**
+   * What makes this record different from the one above it.
+   *
+   * Derived opportunity titles are "<family> — <matched asset>", so two projects
+   * at the same company read identically in a list. This is a short line of
+   * TRUE source attributes — amount, place, filing date — that tells them apart.
+   * Null when nothing distinguishing was recorded; it is never padded.
+   */
+  distinguisher: string | null
   capabilities: string[]
   scores: ScoreComponents
   evidence: EvidenceSummary
+  /** Every document behind this opportunity, newest first. */
+  sources: OpportunitySource[]
   lastMaterialChangeAt: string
 }
 
@@ -235,10 +328,82 @@ export interface ConnectorHealthSummary {
   lastCycleCompletedAt: string
 }
 
+/**
+ * The four counts Daily Pulse leads with.
+ *
+ * These are COUNTS OF RECORDS, not estimates: each one is the number of rows a
+ * query returned. `newSignalCount` is bounded by a stated window rather than by
+ * "since your last visit", because there is no stored last-visit time and
+ * pretending there is would make the number unreproducible.
+ */
+export interface PulseHeadline {
+  opportunityCount: number
+  signalCount: number
+  newSignalCount: number
+  /** The window `newSignalCount` covers, stated so the figure can be checked. */
+  newSignalWindowDays: number
+  evidenceCount: number
+  latestEvidenceAt: string | null
+}
+
+/** One collected document, as Daily Pulse lists it. */
+export interface PulseEvidenceItem {
+  id: string
+  title: string
+  publisher: string
+  documentType: string | null
+  /** Published or filed date where the source gave one, retrieval date otherwise. */
+  recordedAt: string
+  recordedAtBasis: 'published' | 'retrieved'
+  officialUrl: string | null
+}
+
+/** One opportunity, as Daily Pulse lists it. */
+export interface PulseOpportunityItem {
+  id: string
+  title: string
+  organizationName: string
+  stage: OpportunityStage
+  confidenceLevel: ConfidenceLevel
+  sourceDate: OpportunityDate | null
+  evidenceCount: number
+  distinguisher: string | null
+}
+
+/** One signal, as Daily Pulse lists it. */
+export interface PulseSignalItem {
+  id: string
+  title: string
+  organizationName: string
+  observedAt: string
+  eventDate: string | null
+  /** A closure or consolidation is not a build. Never flattened together. */
+  negative: boolean
+}
+
+/** One source, as Daily Pulse reports its health. */
+export interface PulseSourceItem {
+  id: string
+  name: string
+  enabled: boolean
+  state: string
+  lastSuccessAt: string | null
+}
+
 export interface PulseSnapshot {
   /** Distinct from connector health — ADR 0010 forbids merging these. */
   coverage: CoverageSummary
   connectorHealth: ConnectorHealthSummary
+  /** The counts the page leads with. */
+  headline: PulseHeadline
+  /** Highest-confidence, most recent first. Bounded. */
+  topOpportunities: PulseOpportunityItem[]
+  /** Signals first observed inside `headline.newSignalWindowDays`. */
+  newSignals: PulseSignalItem[]
+  /** The most recently collected documents. */
+  latestEvidence: PulseEvidenceItem[]
+  /** Every enabled source and its current state. */
+  sources: PulseSourceItem[]
   changesSinceLastVisit: ChangeEvent[]
   lastVisitAt: string | null
   generatedAt: string
@@ -383,6 +548,17 @@ export interface CompanySummary {
   scopeClassStatus: ScopeClassStatus
   facilityCount: number
   openOpportunityCount: number
+  /** Signals recorded against this account, opportunity-bearing or not. */
+  signalCount: number
+  /** When a document about this account was last published or collected. */
+  latestEvidenceAt: string | null
+  /**
+   * The account's strongest open opportunity, or null.
+   *
+   * Null is a real answer and the surface says so in words: an account can be
+   * monitored, collected from, and correctly carry no qualifying project.
+   */
+  topOpportunity: RecordRef | null
   latestActivityAt: string
   coverage: CoverageDetail
   /** D14-L. Never populated. */
@@ -503,6 +679,20 @@ export interface EvidenceRecord {
   /** Distinct values, never conflated. */
   publishedAt: TemporalValue
   retrievedAt: string
+  /**
+   * When this document was first observed, and when it was last confirmed still
+   * there. Distinct from `retrievedAt`, which is when the stored copy was taken.
+   *
+   * Null in the preview fixtures, which predate the collector that writes them.
+   */
+  firstSeenAt: string | null
+  lastSeenAt: string | null
+  /** The publisher's own identifier for the document — an SEC accession number. */
+  sourceDocumentId: string | null
+  /** Which connector version stored it. Provenance, not decoration. */
+  collectedBy: string | null
+  /** Whether a person has looked at it yet. */
+  reviewStatus: string | null
   /** Absent for reference-only and metadata-only access modes. */
   excerpt: string | null
   locator: string | null
@@ -533,14 +723,53 @@ export type ConnectorState =
 export interface ConnectorRun {
   id: string
   startedAt: string
+  completedAt: string | null
   outcome: 'success' | 'partial_success' | 'failure'
+  /** Documents the run discovered at the source. */
+  itemsSeen: number
+  /** Documents the run stored as evidence. */
+  itemsStored: number
   note: string
+}
+
+/**
+ * What a connector has actually produced, end to end.
+ *
+ * Four counts rather than one, because they answer four different questions and
+ * the gaps between them are the interesting part: a connector can discover a
+ * hundred documents, store all hundred, and produce no signal at all — which is
+ * a working connector reporting that nothing qualified, not a broken one.
+ */
+export interface ConnectorActivity {
+  documentsDiscovered: number
+  evidenceStored: number
+  signalsCreated: number
+  opportunitiesCreated: number
+}
+
+/**
+ * A run that has started and not recorded a completion.
+ *
+ * `stale` is true once it has been open longer than any run should take. An
+ * ingestion that died mid-cycle leaves exactly this row behind, and a health
+ * surface that does not show it reports the fleet as healthy while nothing is
+ * collecting.
+ */
+export interface ActiveRun {
+  id: string
+  startedAt: string
+  status: string
+  stale: boolean
 }
 
 export interface ConnectorRecord {
   id: string
   name: string
   state: ConnectorState
+  /** A disabled source is not a broken one. The two are never merged. */
+  enabled: boolean
+  activity: ConnectorActivity
+  activeRun: ActiveRun | null
   lastRunAt: string
   lastOutcome: ConnectorRun['outcome']
   consecutiveFailures: number
@@ -573,30 +802,150 @@ export interface SourceHealthSnapshot {
   lastCycleCompletedAt: string
 }
 
-/* ------------------------------------------ Saved pursuits and watches */
+/* -------------------------------------------- Spyglass media intelligence */
 
-export type WatchKind = 'company' | 'facility' | 'opportunity'
-
-export interface WatchItem {
+/**
+ * AN EMBEDDED ZIGNAL WIDGET IS A SNAPSHOT. IT IS NOT LIVE.
+ *
+ * Zignal's own documentation is unambiguous: embeddable widgets support neither
+ * realtime nor data refresh, and "the data that it will show once embedded will
+ * be the data available at the time you generated the embed snippet. As days go
+ * by the data remains the same."
+ *
+ * So `snapshotGeneratedAt` is REQUIRED, not optional — a widget that cannot say
+ * when it was frozen cannot be rendered honestly, and a stale sentiment chart
+ * presented as current coverage of a client's brand is the exact failure this
+ * type is shaped to prevent. The word "live" belongs to `dashboardUrl` and to
+ * nothing else on this surface.
+ */
+export interface SpyglassWidget {
   id: string
-  kind: WatchKind
-  targetId: string
+  title: string
+  /** An allow-listed https Zignal embed URL. Never a stored HTML snippet. */
+  embedUrl: string
+  enabled: boolean
+  displayOrder: number
+  snapshotGeneratedAt: string
+  theme: 'light' | 'dark' | 'auto'
+  /** Where to send a reader when the frame will not load. Always present. */
+  fallbackUrl: string
+}
+
+export interface SpyglassSettings {
+  dashboardUrl: string
+  dashboardLabel: string
+  updatedAt: string
+}
+
+export interface SpyglassSnapshot {
+  settings: SpyglassSettings
+  widgets: SpyglassWidget[]
+  /** True when this session may repoint the dashboard or edit a widget. */
+  viewerIsAdministrator: boolean
+  generatedAt: string
+}
+
+/* --------------------------------------------------------------- Map */
+
+/**
+ * WHAT A COORDINATE ON THE MAP ACTUALLY MEANS.
+ *
+ * This is the most important type in the map, and it exists because a pin is
+ * the most confident thing an interface can draw. A dot on a map reads as "the
+ * project is HERE" whatever the caption says, so the distinction between a site
+ * a filing named and a head office forty miles away cannot live in a footnote.
+ *
+ *   confirmed_project_site     the source named this site for this project
+ *   approximate_project_area   the source named a city, county or state only
+ *   known_company_facility     a site we hold for the company, not tied to this
+ *                              project
+ *   corporate_headquarters     account context. NEVER a project location.
+ *
+ * A headquarters is never promoted, never inferred into a project site, and is
+ * styled so it cannot be mistaken for one.
+ */
+export type MapLocationType =
+  | 'confirmed_project_site'
+  | 'approximate_project_area'
+  | 'known_company_facility'
+  | 'corporate_headquarters'
+
+/** How precisely the underlying text pinned the place. */
+export type LocationPrecision =
+  | 'exact'
+  | 'address'
+  | 'locality'
+  | 'county'
+  | 'region'
+  | 'unresolved'
+
+/** The opportunity behind a marker, with its source attribution intact. */
+export interface MapOpportunityRef {
+  id: string
+  title: string
+  /** The project type in readable words — "Facility construction". */
+  opportunityType: string
+  stage: OpportunityStage
+  confidenceLevel: ConfidenceLevel
+  filingDate: string | null
+  documentType: string | null
+  publisher: string | null
+  excerpt: string | null
+  officialUrl: string | null
+}
+
+export interface MapMarker {
+  id: string
+  locationType: MapLocationType
+  precision: LocationPrecision
+  latitude: number
+  longitude: number
+  /**
+   * Radius of the area the source actually described, in metres.
+   *
+   * Non-null whenever the precision is coarser than an address: a city-level
+   * match is drawn as a circle over the city, not as a point at its centroid
+   * pretending to be a street corner.
+   */
+  uncertaintyRadiusMetres: number | null
   label: string
-  context: string
-  addedAt: string
+  /** What the document said, verbatim, before geocoding. */
+  extractedText: string | null
+  normalizedAddress: string | null
+  organizationId: string
+  organizationName: string
+  opportunity: MapOpportunityRef | null
+  resolvedAt: string | null
 }
 
-export interface SavedViewRecord {
+/**
+ * An opportunity with no defensible geography.
+ *
+ * It goes in a list beside the map rather than onto it. The alternative —
+ * dropping it on the company's head office — is the single failure this whole
+ * surface is built to avoid, and an opportunity that is invisible because it was
+ * silently omitted is barely better.
+ */
+export interface UnlocatedOpportunity {
   id: string
-  name: string
-  surface: 'opportunities' | 'accounts'
-  /** Human-readable summary of the filters the view carries. */
-  filterSummary: string[]
-  resultCount: number
-  createdAt: string
+  title: string
+  organizationName: string
+  /** Why it could not be placed, in words a reader can act on. */
+  reason: string
 }
 
-export interface SavedWorkspace {
-  views: SavedViewRecord[]
-  watches: WatchItem[]
+export interface MapSnapshot {
+  markers: MapMarker[]
+  unlocated: UnlocatedOpportunity[]
+  generatedAt: string
 }
+
+/*
+ * SAVED PURSUITS AND WATCHES USED TO BE MODELLED HERE.
+ *
+ * `WatchItem`, `SavedViewRecord` and `SavedWorkspace` are gone with the surface
+ * that rendered them. Nothing wrote them: `user_read_state` carries a SELECT
+ * grant and a per-user read policy, and no policy or grant admits an insert. A
+ * type for records that can never be created is an invitation to build a page
+ * that is empty by construction, which is what `/views` was.
+ */

@@ -14,12 +14,22 @@ import {
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { FIXTURE_NOW, formatTemporal, precisionLabel } from '@/lib/format'
+import { displayNow, formatTemporal, precisionLabel } from '@/lib/format'
 import { AS_OF_PARAM, companyPath, evidencePath, parseAsOf } from '@/lib/links'
 import { opportunityDetailPath } from '@/lib/opportunityFilters'
 import type { FacilityOperatingStatus, FacilityRecord } from '@/types/domain'
 
-const TODAY = FIXTURE_NOW.toISOString().slice(0, 10)
+/**
+ * The default "as at" date for the ownership graph.
+ *
+ * Read from the display clock, not from a module-level constant computed at
+ * import time against a frozen preview instant. The as-at control asks "who
+ * operated this on a date?", and defaulting it to a date weeks in the past
+ * answered a question nobody asked.
+ */
+function today(): string {
+  return displayNow().toISOString().slice(0, 10)
+}
 
 const STATUS_LABEL: Record<FacilityOperatingStatus, string> = {
   operating: 'Operating',
@@ -103,12 +113,12 @@ export function FacilityDetail() {
 function FacilityBody({ facility }: { facility: FacilityRecord }) {
   const { search } = useLocation()
   const [, setSearchParams] = useSearchParams()
-  const asOf = parseAsOf(search, TODAY)
+  const asOf = parseAsOf(search, today())
   const isCandidate = facility.resolution === 'candidate'
 
   const setAsOf = (next: string) => {
     const params = new URLSearchParams(search)
-    if (next === TODAY) params.delete(AS_OF_PARAM)
+    if (next === today()) params.delete(AS_OF_PARAM)
     else params.set(AS_OF_PARAM, next)
     setSearchParams(params, { replace: true })
   }
@@ -178,7 +188,7 @@ function FacilityBody({ facility }: { facility: FacilityRecord }) {
         </div>
       )}
 
-      <AsOfControl value={asOf} onChange={setAsOf} today={TODAY} />
+      <AsOfControl value={asOf} onChange={setAsOf} today={today()} />
 
       <section className="detail__section" aria-labelledby="fac-identity">
         <h2 className="detail__h2" id="fac-identity">

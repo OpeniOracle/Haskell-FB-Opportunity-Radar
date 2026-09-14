@@ -17,7 +17,7 @@ import {
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { FIXTURE_NOW, absoluteDate, formatTemporal, precisionLabel } from '@/lib/format'
+import { absoluteDate, displayNow, formatTemporal, precisionLabel } from '@/lib/format'
 import { AS_OF_PARAM, evidencePath, facilityPath, parseAsOf } from '@/lib/links'
 import {
   controllingParentAsOf,
@@ -29,7 +29,17 @@ import {
 import { opportunityDetailPath } from '@/lib/opportunityFilters'
 import type { Company, OrganizationRelationship } from '@/types/domain'
 
-const TODAY = FIXTURE_NOW.toISOString().slice(0, 10)
+/**
+ * The default "as at" date for the ownership graph.
+ *
+ * Read from the display clock, not from a module-level constant computed at
+ * import time against a frozen preview instant. The as-at control asks "who
+ * operated this on a date?", and defaulting it to a date weeks in the past
+ * answered a question nobody asked.
+ */
+function today(): string {
+  return displayNow().toISOString().slice(0, 10)
+}
 
 /**
  * Company detail — `/accounts/:accountId`.
@@ -102,11 +112,11 @@ export function CompanyDetail() {
 function CompanyBody({ company }: { company: Company }) {
   const { search } = useLocation()
   const [, setSearchParams] = useSearchParams()
-  const asOf = parseAsOf(search, TODAY)
+  const asOf = parseAsOf(search, today())
 
   const setAsOf = (next: string) => {
     const params = new URLSearchParams(search)
-    if (next === TODAY) params.delete(AS_OF_PARAM)
+    if (next === today()) params.delete(AS_OF_PARAM)
     else params.set(AS_OF_PARAM, next)
     setSearchParams(params, { replace: true })
   }
@@ -160,7 +170,7 @@ function CompanyBody({ company }: { company: Company }) {
         </p>
       )}
 
-      <AsOfControl value={asOf} onChange={setAsOf} today={TODAY} />
+      <AsOfControl value={asOf} onChange={setAsOf} today={today()} />
 
       <section className="detail__section" aria-labelledby="ownership-title">
         <h2 className="detail__h2" id="ownership-title">

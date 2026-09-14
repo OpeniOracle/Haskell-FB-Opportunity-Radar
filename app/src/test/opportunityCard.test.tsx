@@ -36,15 +36,34 @@ describe('compact card', () => {
     expect(within(first).getByText('New')).toBeInTheDocument()
     expect(within(first).getByText('high confidence')).toBeInTheDocument()
     expect(within(first).getByText(/Macon, GA/)).toBeInTheDocument()
-    expect(within(first).getByText(/construction begins 14 March 2027/)).toBeInTheDocument()
+    /*
+       THE DATE ON THE CARD IS THE DOCUMENT'S DATE, NOT A FORECAST.
+
+       It used to be `horizon` — the expected completion window — which most
+       records do not have, so a card with a perfectly good filing date rendered
+       "No date given". The card now leads with the filing date and says which
+       kind of date it is.
+    */
+    expect(within(first).getByText(/^Filed /)).toBeInTheDocument()
     expect(within(first).getByText(/Process systems/)).toBeInTheDocument()
-    expect(within(first).getByText(/6 evidence · newest/)).toBeInTheDocument()
+    // Split across elements, so matched on the card's own text content.
+    expect(first.textContent).toMatch(/6 documents · 8-K/)
+    // The source itself, reachable without opening anything.
+    expect(within(first).getByRole('link', { name: /official filing/i })).toHaveAttribute(
+      'target',
+      '_blank',
+    )
   })
 
   it('names the unresolved-location state rather than leaving it blank', async () => {
     renderApp('/opportunities')
+    /*
+       "Location not resolved" described OUR pipeline — it said a resolution step
+       had not run. What a reader needs is the fact about the document: the
+       filing named a company and a project and did not name a site.
+    */
     const unresolved = (await cards()).filter((c) =>
-      within(c).queryByText('Location not resolved'),
+      within(c).queryByText('Location not identified in source'),
     )
     expect(unresolved).toHaveLength(2)
   })
@@ -53,7 +72,7 @@ describe('compact card', () => {
     renderApp('/opportunities')
     await cards()
     // Score breakdown, confidence axes and publisher counts belong in the drawer.
-    expect(screen.queryByText('How this score was reached')).toBeNull()
+    expect(screen.queryByText('Prioritisation')).toBeNull()
     expect(screen.queryByText('Evidence strength')).toBeNull()
     expect(screen.queryByText(/independent publishers/)).toBeNull()
     expect(screen.queryByText(/Timing is inferred, not stated/)).toBeNull()
@@ -81,12 +100,13 @@ describe('detail drawer', () => {
     await user.click(within(first).getByRole('button', { name: /^Review opportunity/ }))
     const dialog = await screen.findByRole('dialog')
 
-    expect(within(dialog).getByText('Assessment')).toBeInTheDocument()
+    expect(within(dialog).getByText('Why this is an opportunity')).toBeInTheDocument()
+    expect(within(dialog).getByText('Source')).toBeInTheDocument()
     expect(within(dialog).getByText('Confidence')).toBeInTheDocument()
     expect(within(dialog).getByText('Evidence strength')).toBeInTheDocument()
     expect(within(dialog).getByText('Assessment type')).toBeInTheDocument()
     expect(within(dialog).getByText('Confidence level')).toBeInTheDocument()
-    expect(within(dialog).getByText('How this score was reached')).toBeInTheDocument()
+    expect(within(dialog).getByText('Prioritisation')).toBeInTheDocument()
     expect(within(dialog).getByText('Independent publishers')).toBeInTheDocument()
     expect(within(dialog).getByText('Capability match')).toBeInTheDocument()
 

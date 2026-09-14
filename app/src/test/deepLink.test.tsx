@@ -104,12 +104,12 @@ describe('the full detail page', () => {
     await screen.findByRole('heading', { level: 1 })
 
     for (const section of [
-      'Assessment',
+      'Why this is an opportunity',
+      'Source',
       'Confidence',
-      'How this score was reached',
+      'Prioritisation',
       'Evidence',
       'Capability match',
-      'Decision',
     ]) {
       expect(screen.getByRole('heading', { level: 2, name: section })).toBeInTheDocument()
     }
@@ -134,15 +134,16 @@ describe('the full detail page', () => {
     ).toBeInTheDocument()
   })
 
-  it('offers local preview actions that are still not persisted', async () => {
-    const user = userEvent.setup()
+  it('offers no unfinished pursuit control', async () => {
+    /* The full page carried the same four preview-only buttons the card did.
+       They are gone from both, because nothing can persist a decision. */
     renderApp('/opportunities/opp-fixture-1')
     await screen.findByRole('heading', { level: 1 })
 
-    const pursue = screen.getByRole('button', { name: 'Pursue' })
-    await user.click(pursue)
-    expect(pursue).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText(/preview only, not saved/i)).toBeInTheDocument()
+    for (const label of ['Pursue', 'Watch', 'Assign', 'Dismiss']) {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
+    }
+    expect(screen.queryByText(/preview only/i)).toBeNull()
   })
 
   it('fails safe on an unknown identifier', async () => {

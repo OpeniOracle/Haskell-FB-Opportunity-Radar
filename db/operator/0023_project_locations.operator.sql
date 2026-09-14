@@ -1,0 +1,350 @@
+-- =====================================================================
+-- OPERATOR FILE -- migration 0023 (project_locations)
+--
+-- Adds the three tables the Map surface reads: where a FILING said a
+-- project is, where a COMPANY is, and the geocoder's cached answers.
+--
+-- The split between the first two is the point. A map pin reads as "the
+-- project is HERE" whatever the caption says, and the likeliest way to
+-- get that wrong is to put a head office in a project column because it
+-- was the only coordinate available. A foreign key a headquarters row
+-- cannot satisfy is what makes that impossible rather than discouraged.
+--
+-- HOW TO RUN IT
+--
+--   Supabase Dashboard -> SQL Editor -> paste this ENTIRE file -> Run.
+--   Or: psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f <this file>
+--
+--   Nothing to paste into it, nothing to substitute, nothing left out.
+--
+-- ONE STATEMENT, so one transaction, whatever the SQL Editor does with
+-- the script around it -- that editor does not keep one session across
+-- the statements of a script, so an explicit begin/commit would not wrap
+-- a multi-statement version of this file.
+--
+-- Any line containing ABORT: means NOTHING WAS COMMITTED.
+--
+-- CHECKSUM (whitespace-normalised per line, sha256 -- the rule
+-- db/migrate.mjs uses, so a database migrated this way verifies clean)
+--
+--   0023  8151da04fd047b39caac72b62d44b894f073ca4d919ee9760225c565ae1ce8ae
+-- =====================================================================
+
+do $operator_0023$
+begin
+    -- ------------------------------------------------------------ preconditions
+    if to_regclass('public.schema_migrations') is null then
+        raise exception 'ABORT: there is no schema_migrations ledger.';
+    end if;
+
+    if exists (select 1 from public.schema_migrations where version = '0023') then
+        raise exception 'ABORT: migration 0023 is already recorded. Nothing to do.';
+    end if;
+
+    if not exists (select 1 from public.schema_migrations where version = '0022') then
+        raise exception 'ABORT: migration 0022 is not present. Apply it first.';
+    end if;
+
+    if to_regclass('public.opportunities') is null or to_regclass('public.organizations') is null then
+        raise exception 'ABORT: opportunities or organizations is missing.';
+    end if;
+
+    -- IT CREATES TABLES AND SEEDS THREE ADDRESSES. It alters no existing table,
+    -- changes no existing row, and cannot affect collected evidence, signals or
+    -- opportunities. The three seeded headquarters rows carry postal addresses
+    -- and NO COORDINATES -- latitude and longitude are written by the geocoder
+    -- or not at all, because a hand-typed coordinate has no source to check it
+    -- against.
+
+-- >>>>>>>>>>>>>>>>>>>>>> CANONICAL PAYLOAD BEGINS <<<<<<<<<<<<<<<<<<<<<<
+-- Verbatim from db/migrations/0023_project_locations.up.sql, minus its own
+-- begin;/commit; lines. DDL ONLY -- the rows this feature needs are
+-- seeded separately; see the note at the end of this file.
+
+-- 0023 — Where a project is, and how sure we are that it is there.
+--
+-- THREE TABLES, AND THE SPLIT BETWEEN THEM IS THE POINT.
+--
+--   organization_locations   where a COMPANY is — a head office, a site we hold
+--                            for them. Account context. Never a project.
+--   opportunity_locations    where a DOCUMENT said a PROJECT is. One row per
+--                            place a filing named, tied to the evidence it came
+--                            from.
+--   geocode_cache            the geocoder's answers, keyed on the query text,
+--                            so the same phrase is never billed or asked twice.
+--
+-- Keeping the first two apart in the SCHEMA rather than in a `kind` column is
+-- deliberate. A map pin is the most confident thing an interface can draw: a dot
+-- reads as "the project is here" whatever the caption says. The single most
+-- likely way to get that wrong is to put a head office in a project column
+-- because it was the only coordinate available, and a foreign key to
+-- `opportunities` that a headquarters row cannot satisfy is what makes that
+-- mistake impossible rather than merely discouraged.
+--
+-- NOTHING HERE IS SEEDED WITH A COORDINATE. The headquarters rows below carry
+-- public postal addresses and no latitude or longitude at all. Coordinates are
+-- written by the geocoder or not at all — a hand-typed pair of numbers is a
+-- fabrication with a citation-shaped hole where its source should be.
+
+-- ---------------------------------------------------------------------------
+-- 1. Vocabulary, as constraints rather than as convention.
+-- ---------------------------------------------------------------------------
+
+create table geocode_cache (
+    id                 uuid primary key default gen_random_uuid(),
+    -- Lower-cased, whitespace-collapsed query text. The cache key.
+    query_normalized   text not null unique,
+    query_as_asked     text not null,
+    latitude           double precision,
+    longitude          double precision,
+    normalized_address text,
+    precision          text not null,
+    provider           text not null,
+    -- Null when the provider answered and matched nothing. A recorded miss is
+    -- what stops the same dead phrase being asked on every run.
+    matched            boolean not null default true,
+    resolved_at        timestamptz not null default now(),
+
+    constraint geocode_cache_precision_check
+        check (precision in ('exact', 'address', 'locality', 'county', 'region', 'unresolved')),
+    constraint geocode_cache_coordinates_together
+        check ((latitude is null) = (longitude is null)),
+    constraint geocode_cache_latitude_range
+        check (latitude is null or (latitude >= -90 and latitude <= 90)),
+    constraint geocode_cache_longitude_range
+        check (longitude is null or (longitude >= -180 and longitude <= 180)),
+    -- A matched result without a coordinate is not a match.
+    constraint geocode_cache_match_has_coordinates
+        check (matched = false or latitude is not null)
+);
+
+comment on table geocode_cache is
+    'Geocoder answers keyed on normalized query text, including recorded misses, so no phrase is resolved twice.';
+
+create table organization_locations (
+    id                 uuid primary key default gen_random_uuid(),
+    organization_id    uuid not null references organizations(id) on delete cascade,
+    location_type      text not null,
+    label              text not null,
+    address_text       text,
+    locality           text,
+    region             text,
+    country            text,
+    normalized_address text,
+    latitude           double precision,
+    longitude          double precision,
+    precision          text not null default 'unresolved',
+    -- Where this address came from, in words. A location with no provenance is
+    -- indistinguishable from one somebody typed.
+    source_note        text not null,
+    resolved_at        timestamptz,
+    created_at         timestamptz not null default now(),
+    updated_at         timestamptz not null default now(),
+
+    unique (organization_id, location_type, label),
+
+    -- A HEADQUARTERS IS NOT A PROJECT SITE, AND THIS TABLE CANNOT HOLD ONE.
+    constraint organization_locations_type_check
+        check (location_type in ('corporate_headquarters', 'known_company_facility')),
+    constraint organization_locations_precision_check
+        check (precision in ('exact', 'address', 'locality', 'county', 'region', 'unresolved')),
+    constraint organization_locations_coordinates_together
+        check ((latitude is null) = (longitude is null)),
+    constraint organization_locations_resolved_has_coordinates
+        check (precision = 'unresolved' or latitude is not null),
+    constraint organization_locations_source_note_present
+        check (length(trim(source_note)) > 0)
+);
+
+comment on table organization_locations is
+    'Where a COMPANY is. Account context only — a row here is never a project location.';
+
+create table opportunity_locations (
+    id                  uuid primary key default gen_random_uuid(),
+    opportunity_id      uuid not null references opportunities(id) on delete cascade,
+    -- The document that named the place. Null only if the evidence row is later
+    -- superseded; the extracted text stays either way.
+    evidence_id         uuid references evidence(id) on delete set null,
+    location_type       text not null,
+    -- WHAT THE DOCUMENT SAID, VERBATIM, BEFORE ANY GEOCODING.
+    -- The coordinate can always be checked against this.
+    extracted_text      text not null,
+    facility_name       text,
+    address_text        text,
+    locality            text,
+    county              text,
+    region              text,
+    country             text,
+    normalized_address  text,
+    latitude            double precision,
+    longitude           double precision,
+    precision           text not null default 'unresolved',
+    -- Metres. Non-null whenever the precision is coarser than an address, so a
+    -- city-level match is drawn as the area it is rather than as a street corner.
+    uncertainty_radius_m integer,
+    extractor           text not null,
+    resolved_at         timestamptz,
+    created_at          timestamptz not null default now(),
+
+    unique (opportunity_id, extracted_text),
+
+    -- A PROJECT LOCATION IS EITHER A SITE A FILING NAMED OR AN AREA IT NAMED.
+    -- 'corporate_headquarters' is not a member and cannot be written here.
+    constraint opportunity_locations_type_check
+        check (location_type in ('confirmed_project_site', 'approximate_project_area')),
+    constraint opportunity_locations_precision_check
+        check (precision in ('exact', 'address', 'locality', 'county', 'region', 'unresolved')),
+    constraint opportunity_locations_coordinates_together
+        check ((latitude is null) = (longitude is null)),
+    constraint opportunity_locations_resolved_has_coordinates
+        check (precision = 'unresolved' or latitude is not null),
+    -- A COARSE MATCH MUST CARRY ITS UNCERTAINTY.
+    -- Without this a locality-level coordinate is indistinguishable from a
+    -- surveyed one, which is the whole failure this table exists to prevent.
+    constraint opportunity_locations_coarse_match_has_radius
+        check (precision not in ('locality', 'county', 'region') or uncertainty_radius_m is not null),
+    -- An exact site claim requires an exact or address-level resolution.
+    constraint opportunity_locations_confirmed_site_is_precise
+        check (
+            location_type <> 'confirmed_project_site'
+            or precision in ('exact', 'address', 'unresolved')
+        ),
+    constraint opportunity_locations_extracted_text_present
+        check (length(trim(extracted_text)) > 0)
+);
+
+comment on table opportunity_locations is
+    'Where a FILING said a project is. One row per place named, with the source text kept beside the coordinate.';
+
+create index opportunity_locations_opportunity_idx on opportunity_locations (opportunity_id);
+create index organization_locations_organization_idx on organization_locations (organization_id);
+
+-- ---------------------------------------------------------------------------
+-- 2. Who may read this.
+--
+-- The two location tables are readable by a signed-in reviewer: they are what
+-- the map draws. `geocode_cache` is NOT — it is an operational table holding a
+-- third party's responses, the browser has no use for it, and the smallest
+-- readable surface is the correct one.
+--
+-- Every grant below names its columns. Migration 0021 added columns to granted
+-- tables and granted none of them, which took every surface down with a 42501
+-- reported to users as "your access has been withdrawn" (see 0022). Column
+-- lists are why that was survivable; they are used here for the same reason.
+-- ---------------------------------------------------------------------------
+
+alter table geocode_cache enable row level security;
+alter table geocode_cache force row level security;
+alter table organization_locations enable row level security;
+alter table organization_locations force row level security;
+alter table opportunity_locations enable row level security;
+alter table opportunity_locations force row level security;
+
+revoke all on geocode_cache from anon, authenticated;
+revoke all on organization_locations from anon, authenticated;
+revoke all on opportunity_locations from anon, authenticated;
+
+grant select (
+    id, organization_id, location_type, label, address_text, locality, region,
+    country, normalized_address, latitude, longitude, precision, source_note,
+    resolved_at
+) on organization_locations to authenticated;
+
+grant select (
+    id, opportunity_id, evidence_id, location_type, extracted_text,
+    facility_name, address_text, locality, county, region, country,
+    normalized_address, latitude, longitude, precision, uncertainty_radius_m,
+    extractor, resolved_at
+) on opportunity_locations to authenticated;
+
+create policy organization_locations_read_authenticated on public.organization_locations
+    for select to authenticated using (true);
+create policy opportunity_locations_read_authenticated on public.opportunity_locations
+    for select to authenticated using (true);
+
+-- `geocode_cache` gets RLS, no grant and no policy. It is unreachable from the
+-- browser by construction, not by omission.
+
+-- ---------------------------------------------------------------------------
+-- 3. NO ROWS ARE WRITTEN HERE.
+--
+-- The three cohort headquarters are DATA, and data lives in db/seed. A
+-- migration that carries rows runs on every environment including production
+-- without anyone deciding that it should, which is why CI fails a migration
+-- containing an insert — and why this one was caught doing exactly that.
+--
+-- See db/seed/0007_cohort_headquarters.sql. It seeds postal addresses and NO
+-- COORDINATES: latitude and longitude are written by the geocoder or not at
+-- all, because a hand-typed coordinate has no source to check it against.
+-- ---------------------------------------------------------------------------
+
+-- >>>>>>>>>>>>>>>>>>>>>>> CANONICAL PAYLOAD ENDS <<<<<<<<<<<<<<<<<<<<<<<
+
+    -- ------------------------------------------------------------- ledger row
+    insert into public.schema_migrations (version, name, checksum, stamped)
+    values ('0023', 'project_locations', '8151da04fd047b39caac72b62d44b894f073ca4d919ee9760225c565ae1ce8ae', false);
+
+    -- ----------------------------------------------------------- postconditions
+    if to_regclass('public.opportunity_locations') is null
+       or to_regclass('public.organization_locations') is null
+       or to_regclass('public.geocode_cache') is null then
+        raise exception 'ABORT: a location table was not created.';
+    end if;
+
+    -- The geocode cache must NOT be readable from the browser. It holds a third
+    -- party's responses and no surface needs it.
+    if exists (
+        select 1 from information_schema.table_privileges
+         where grantee in ('authenticated', 'anon') and table_name = 'geocode_cache'
+    ) then
+        raise exception 'ABORT: geocode_cache became reachable from a session.';
+    end if;
+
+    -- A SIGNED-IN SESSION MAY READ LOCATIONS AND WRITE NONE OF THEM.
+    if exists (
+        select 1 from information_schema.role_table_grants
+         where grantee = 'authenticated'
+           and table_name in ('organization_locations', 'opportunity_locations')
+           and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')
+    ) then
+        raise exception 'ABORT: a session gained write access to a location table.';
+    end if;
+
+    -- NO ROWS WERE WRITTEN. This file is DDL; the headquarters are seeded
+    -- separately. A location present here means something else wrote it.
+    if exists (select 1 from public.organization_locations)
+       or exists (select 1 from public.opportunity_locations) then
+        raise exception 'ABORT: a location row exists already. This migration writes none.';
+    end if;
+
+    -- The allowlist stays unreadable by a signed-in session (migration 0016).
+    if exists (
+        select 1 from information_schema.table_privileges
+         where grantee = 'authenticated' and table_name = 'auth_invite_allowlist'
+           and privilege_type = 'SELECT'
+    ) then
+        raise exception 'ABORT: auth_invite_allowlist became readable.';
+    end if;
+
+    if (select count(*) from public.schema_migrations where version = '0023') <> 1 then
+        raise exception 'ABORT: 0023 is not recorded exactly once.';
+    end if;
+
+    raise notice 'Migration 0023 applied. Location tables created; the geocode cache is server-side only and no coordinate was invented.';
+end
+$operator_0023$;
+
+-- =====================================================================
+-- AFTERWARDS: seed the cohort headquarters.
+--
+-- This file created the tables. The three headquarters rows are DATA and
+-- live in db/seed, because a migration that carries rows runs on every
+-- environment without anyone deciding that it should.
+--
+--   Supabase SQL Editor -> paste db/seed/0007_cohort_headquarters.sql -> Run
+--   Or: node db/seed.mjs 0007
+--
+-- It seeds POSTAL ADDRESSES AND NO COORDINATES. Latitude and longitude are
+-- written by POST /api/resolve-locations, which geocodes through Stadia --
+-- a hand-typed coordinate has no source to check it against.
+-- =====================================================================

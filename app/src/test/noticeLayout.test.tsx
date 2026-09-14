@@ -58,7 +58,7 @@ const SURFACES_WITH_NOTICE = [
   '/facilities/fac-fixture-1',
   '/evidence/ev-fixture-1',
   '/admin/health',
-  '/views',
+  '/media',
 ]
 
 describe('degraded notice keeps both message and timestamp', () => {
