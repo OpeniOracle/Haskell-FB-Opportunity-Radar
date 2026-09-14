@@ -115,4 +115,23 @@ sed 's/^/    /' "$WORK/tamper.log"
 restore
 node "$ROOT/db/migrate.mjs" verify
 
+# --------------------------------------------------------------------------
+step "3c. The seed reconciles a retired candidate without overwriting operator state"
+bash "$ROOT/db/tests/seed-reconciliation.sh"
+
+# --------------------------------------------------------------------------
+step "3d. The SEC evidence payload is accepted by the current schema"
+bash "$ROOT/db/tests/evidence-payload.sh"
+
+# --------------------------------------------------------------------------
+step "3e. An accepted SEC filing's signal and opportunity are accepted"
+bash "$ROOT/db/tests/signal-payload.sh"
+
+# --------------------------------------------------------------------------
+step "5. The Supabase SQL Editor operator file for 0021"
+# Run here rather than as a separate CI job so that it is exercised on every
+# PostgreSQL version in the matrix. The file an operator pastes into the
+# dashboard is the file this tests, byte for byte.
+bash "$ROOT/db/tests/operator-0021.sh"
+
 printf '\n\033[32mAll migration checks passed.\033[0m\n'

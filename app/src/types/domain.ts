@@ -80,15 +80,29 @@ export type ScopeClass = 'fnb_core' | 'fnb_adjacent' | 'non_fnb' | 'unknown'
 
 export type ScopeClassStatus = 'provisional' | 'confirmed'
 
+/**
+ * NULL MEANS NOT SCORED YET. IT DOES NOT MEAN ZERO.
+ *
+ * An opportunity derived from collected evidence exists before anyone has
+ * scored it: the scoring configuration is versioned, and one axis is gated on
+ * the D14-L licence review. Modelling these as plain numbers forced whatever
+ * created the record to supply a value, and the only values available to a
+ * collector are invented ones — in the same column an analyst's real score
+ * lives in, indistinguishable from it forever after.
+ *
+ * So the absence is in the type, and every consumer has to decide what to show
+ * for it. That is the point: "not scored yet" is a fact worth rendering, and a
+ * zero would be a lie that sorts to the bottom and looks deliberate.
+ */
 export interface ScoreComponents {
-  haskellFit: number
-  projectMaturity: number
-  potentialScope: number
-  timingMomentum: number
-  accountStrategy: number
-  rawScore: number
-  confidenceMultiplier: number
-  finalScore: number
+  haskellFit: number | null
+  projectMaturity: number | null
+  potentialScope: number | null
+  timingMomentum: number | null
+  accountStrategy: number | null
+  rawScore: number | null
+  confidenceMultiplier: number | null
+  finalScore: number | null
 }
 
 /**

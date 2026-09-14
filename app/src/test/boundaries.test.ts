@@ -37,7 +37,22 @@ function walk(dir: string): string[] {
  * can check in one place, and still fails for every surface, hook and component.
  */
 const NETWORK_MODULES = ['/lib/apiClient.ts', '/lib/supabaseClient.ts']
-const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
+/*
+  Three modules may read build-time configuration.
+
+  `supabaseClient.ts` needs the project URL and publishable key.
+  `vite-env.d.ts` declares their types.
+  `DataSourceContext.tsx` reads `import.meta.env.DEV` and nothing else — it is
+  the build-time constant that decides whether the fixture module is reachable
+  at all. Reading it here is what lets the production bundle exclude fixtures
+  structurally rather than skip them at runtime, so this entry buys a stronger
+  guarantee than it costs.
+*/
+const ENV_MODULES = [
+  '/lib/supabaseClient.ts',
+  '/vite-env.d.ts',
+  '/data/DataSourceContext.tsx',
+]
 
 /**
  * A few files necessarily contain the very strings this suite forbids, each for
@@ -61,6 +76,22 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  *                         and friends — as open-redirect candidates. A return-path
  *                         test that could not name an external origin would be
  *                         testing nothing
+ *   liveConnectors.test.ts
+ *                         drives the SEC and Mars connectors against recorded
+ *                         transport contracts, so it must name the real filers
+ *                         and the real endpoints. A connector test that could
+ *                         not write `data.sec.gov` or `PepsiCo` would be
+ *                         asserting against an imaginary API — and the point of
+ *                         the pilot-cohort rule is that the APPLICATION must not
+ *                         hard-code the roster, not that a test may not name the
+ *                         companies whose transport it is checking
+ *   liveDataMode.test.ts  asserts that the fixture corpus is reachable only
+ *                         behind `import.meta.env.DEV`, so it must name that
+ *                         expression to check for it
+ *   publicationTimestamps.test.tsx
+ *                         asserts that a source-stated publication time is
+ *                         preserved exactly, which means quoting real archive
+ *                         URLs as the documents those timestamps came from
  *   authAccessibility.test.tsx
  *                         asserts that no key, token or `service_role` string
  *                         reaches the rendered sign-in page, so it must name them
@@ -86,6 +117,53 @@ const ENV_MODULES = ['/lib/supabaseClient.ts', '/vite-env.d.ts']
  *                         right shape. Every value in it is fabricated — the URL
  *                         resolves to nothing and the keys are zeroes — and the
  *                         file asserts that none of them reaches the output
+ *   secOpportunityPath.test.ts
+ *                         drives the whole path a demonstration depends on --
+ *                         SEC filing to readable text to signal to candidate
+ *                         opportunity -- against a recorded 8-K exhibit. It
+ *                         must name the real filer and the real sec.gov archive
+ *                         URLs, because what it asserts is that the OFFICIAL
+ *                         document URL is built from the filing's own
+ *                         archiveFolder and primaryDocument
+ *   evidencePayload.test.ts
+ *                         builds the exact evidence row the SEC connector
+ *                         produces for a real Tyson Foods 8-K and checks every
+ *                         constrained column against the vocabularies parsed
+ *                         out of the migrations. The representative payload IS
+ *                         the test: a fabricated filer with a fabricated
+ *                         accession number would not be the row that was
+ *                         refused 39 times, so it names the filer and the
+ *                         sec.gov archive URLs its transport actually uses
+ *   sourceConnectivity.test.ts
+ *                         asserts the pre-flight connectivity decision -- that a
+ *                         404 on one guessed Mars feed candidate must not
+ *                         disable a source whose robots.txt, sitemap and
+ *                         newsroom index all answer. Proving that means naming
+ *                         the real SEC and Mars endpoints, because the rule
+ *                         under test is which of THOSE endpoints is required and
+ *                         which is optional
+ *   modelDependency.test.ts
+ *                         runs the ingestion pipeline under every permutation of
+ *                         the four MODEL_ variables to prove the model is not on
+ *                         any path that produces a user-visible row. That means
+ *                         setting those variables on `process.env`, stubbing
+ *                         `fetch` to assert nothing is requested, and naming the
+ *                         one model endpoint so it can assert the endpoint is a
+ *                         literal that no retrieved document or connector
+ *                         configuration can influence. The credential in it is
+ *                         the string `test-key-not-a-real-credential`
+ *   runtimeConfiguration.test.ts
+ *                         asserts that a deployed function's configuration can
+ *                         only come from the Netlify UI, never from
+ *                         `netlify.toml`. Proving that means naming every
+ *                         server variable, setting them on `process.env` to
+ *                         watch each scope fail closed when one is removed, and
+ *                         driving the egress gateway against real source
+ *                         hostnames and attacker-shaped URLs. Every value in it
+ *                         is fabricated — `example-project.supabase.co`,
+ *                         `sb_secret_exampleValueForTests`,
+ *                         `ops@example.invalid` — and the file asserts that
+ *                         `describeServerVariables()` leaks none of them
  *
  * Excluded by exact name so the exemption stays auditable. Excluding all of
  * `test/` would hide a real leak in any future test file.
@@ -101,6 +179,14 @@ const SELF_REFERENTIAL = [
   'authGate.test.tsx',
   'authAccessibility.test.tsx',
   'apiContract.test.ts',
+  'liveConnectors.test.ts',
+  'publicationTimestamps.test.tsx',
+  'liveDataMode.test.ts',
+  'runtimeConfiguration.test.ts',
+  'modelDependency.test.ts',
+  'sourceConnectivity.test.ts',
+  'evidencePayload.test.ts',
+  'secOpportunityPath.test.ts',
 ]
 
 const files = walk(srcDir)

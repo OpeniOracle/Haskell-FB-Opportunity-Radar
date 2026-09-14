@@ -49,6 +49,13 @@ export type ModelOutcome<T> =
 export interface ModelGateway {
   readonly available: boolean
   readonly describe: string
+  /**
+   * Why it is unavailable, when it is. Reported by `/api/status` so that an
+   * operator finds out from the diagnostic rather than from a refusal buried
+   * in a run. Never contains a credential -- only the NAMES of what is
+   * missing, or the provider's own message about a value it rejected.
+   */
+  readonly detail?: string
   run<T>(request: ModelRequest, parse: (raw: unknown) => T | null): Promise<ModelOutcome<T>>
 }
 
@@ -90,6 +97,7 @@ export function unavailableGateway(detail: string): ModelGateway {
   return {
     available: false,
     describe: 'unavailable',
+    detail,
     async run() {
       return { ok: false, reason: 'no_credential', detail }
     },

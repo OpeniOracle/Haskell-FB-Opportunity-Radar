@@ -50,7 +50,7 @@ describe('search', () => {
 describe('filters', () => {
   it('filters by priority band', () => {
     const critical = filterOpportunities(opportunityFixtures, query({ priority: 'critical' }))
-    expect(critical.every((o) => o.scores.finalScore >= 85)).toBe(true)
+    expect(critical.every((o) => (o.scores.finalScore ?? -1) >= 85)).toBe(true)
     expect(critical).toHaveLength(1)
   })
 
@@ -113,7 +113,7 @@ describe('sorting', () => {
     const scores = sortOpportunities(opportunityFixtures, 'priority').map(
       (o) => o.scores.finalScore,
     )
-    expect(scores).toEqual([...scores].sort((a, b) => b - a))
+    expect(scores).toEqual([...scores].sort((a, b) => (b ?? -1) - (a ?? -1)))
   })
 
   it('sorts by newest evidence, most recent first', () => {

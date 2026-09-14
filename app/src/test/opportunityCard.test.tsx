@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { byScoreDescending } from '@/lib/opportunityFilters'
 import { renderApp } from '@/test/render'
 import { opportunityFixtures } from '@/data/fixtures/opportunities'
 import { SCORE_CAPS } from '@/types/domain'
@@ -13,7 +14,7 @@ describe('compact card', () => {
   it('ranks by final score, highest first', async () => {
     renderApp('/opportunities')
     const expected = [...opportunityFixtures]
-      .sort((a, b) => b.scores.finalScore - a.scores.finalScore)
+      .sort(byScoreDescending)
       .map((o) => o.title)
     expect(
       (await cards()).map((c) => within(c).getByRole('heading', { level: 3 }).textContent),

@@ -57,46 +57,39 @@
   # The Entra client ID, tenant ID and client secret are NOT here and never will
   # be. They belong to the Supabase project; the browser never sees them.
 
-  # Server-side, non-secret. The functions runtime inherits these.
+  # ---------------------------------------------------------------------
+  # NOTHING BELOW THIS LINE, BECAUSE FUNCTIONS CANNOT READ THIS FILE.
+  # ---------------------------------------------------------------------
   #
-  # The publishable key appears here deliberately. It is not confidential — it
-  # identifies the project and grants nothing on its own — and the server needs
-  # it to read AS A CALLER: under the current key system a user-scoped request
-  # sends the publishable key as `apikey` and the user's token as
-  # `Authorization`. Without it, every server read would have to use the SECRET
-  # key, which bypasses row-level security. Same value as the VITE_ one, under a
-  # different name, because the two have different scopes.
-  SUPABASE_URL = "https://dutmdlbangsthclgtkhy.supabase.co"
-  SUPABASE_PUBLISHABLE_KEY = "sb_publishable_kE97uOb8HCo51uT_e0mxqg_So2Z0dwH"
-  SUPABASE_EVIDENCE_BUCKET = "evidence-raw"
-  RADAR_ENV = "development"
-
-  # The single egress gateway's allowlist. An entry permits the host and its
-  # subdomains and nothing else. Corporate newsroom hosts are added as each
-  # connector is verified — the coverage matrix records them as Unverified, and
-  # allowlisting a host we have never successfully fetched would assert a
-  # verification that has not happened.
-  EGRESS_ALLOWLIST = "sec.gov,data.sec.gov,www.sec.gov,fsis.usda.gov,www.fsis.usda.gov"
-
-  # SEC requires a declared User-Agent carrying an address a human monitors.
+  # This block used to also declare SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY,
+  # SUPABASE_EVIDENCE_BUCKET, RADAR_ENV, EGRESS_ALLOWLIST,
+  # SEC_EDGAR_USER_AGENT, SEC_CONTACT_CONFIRMED and the three MODEL_*
+  # variables, under a comment claiming "the functions runtime inherits
+  # these". IT DOES NOT. Netlify's documentation is explicit: environment
+  # variables declared in a configuration file are available to the BUILD and
+  # are NOT available to serverless functions.
   #
-  # CONFIRMED 2026-08-26: oracles@openi-analytics.com is an active, monitored
-  # Openi mailbox. `SEC_CONTACT_CONFIRMED` records that attestation and is NOT a
-  # secret — it is a boolean stating that a person checked something, which is
-  # exactly the kind of fact that belongs in reviewable configuration rather than
-  # in a dashboard where nobody can see when it changed.
+  #   https://docs.netlify.com/build/functions/environment-variables/
   #
-  # The mailbox is for automated-source identification and operational notices
-  # only. It must never hold an application account: `reserved_service_addresses`
-  # (migration 0017) refuses to allowlist it.
-  SEC_EDGAR_USER_AGENT = "Openi Analytics Haskell F&B Radar oracles@openi-analytics.com"
-  SEC_CONTACT_CONFIRMED = "true"
-
-  # Anthropic Direct, through the provider-neutral gateway. MODEL_ID stays
-  # configurable; claude-sonnet-5 is the current stable Sonnet.
-  MODEL_PROVIDER = "anthropic"
-  MODEL_ID = "claude-sonnet-5"
-  MODEL_PROMPT_VERSION = "v0"
+  # So those declarations could never have worked, and were worse than
+  # useless: they read as configuration while supplying nothing, so a missing
+  # Functions-scoped variable looked like it was already set. They have been
+  # removed rather than corrected in place, because there is no way to make a
+  # configuration file supply a function value.
+  #
+  # Removing them changes no runtime behaviour. A function never received
+  # them. `env.ts` reads `process.env[name]` with a COMPUTED key, which no
+  # bundler can inline even in principle, so there was never a path by which
+  # a build-time value reached a deployed function.
+  #
+  # Every one of those variables now lives in the Netlify UI with the
+  # **Functions** scope, per context. `docs/ENVIRONMENT.md` lists each with
+  # its scope, contexts and secret status, and
+  # `app/src/test/runtimeConfiguration.test.ts` fails if any of them
+  # reappears here.
+  #
+  # WHAT MAY LIVE HERE: values Vite compiles into the bundle (VITE_*), and
+  # values the build process itself reads. Nothing else.
 
 # EVERY CONTEXT STATES THE MICROSOFT FLAG EXPLICITLY.
 #
@@ -117,7 +110,6 @@
 
 [context.production.environment]
   VITE_RADAR_ENV = "production"
-  RADAR_ENV = "production"
   # ON. Microsoft sign-in was hosted-tested on the PR 13 deploy preview with an
   # existing allowlisted Openi account: the identity linked to the EXISTING
   # Supabase user, no duplicate was created, and password sign-in and recovery
@@ -132,14 +124,12 @@
 
 [context.deploy-preview.environment]
   VITE_RADAR_ENV = "preview"
-  RADAR_ENV = "preview"
   # ON for pull-request previews, which is where Microsoft sign-in is tested
   # before production is asked to carry it.
   VITE_AUTH_MICROSOFT_ENABLED = "true"
 
 [context.branch-deploy.environment]
   VITE_RADAR_ENV = "preview"
-  RADAR_ENV = "preview"
   # A branch deploy is not a reviewed pull request. It gets the preview
   # environment but NOT the Microsoft button.
   VITE_AUTH_MICROSOFT_ENABLED = "false"

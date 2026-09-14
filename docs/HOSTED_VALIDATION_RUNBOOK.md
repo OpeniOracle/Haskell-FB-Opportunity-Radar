@@ -196,7 +196,7 @@ Windows PowerShell 5.1 loopback test parses the real request line to prove it.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 pwsh -File .\scripts\Send-BootstrapInvitation.ps1
 ```
@@ -351,7 +351,7 @@ accounts ever have is the one their owner chooses.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\New-PreprovisionedAccounts.ps1
 ```
@@ -398,21 +398,72 @@ account therefore needs nothing that an invited one does not.
 
 ## C. Netlify variables
 
-Site configuration → Environment variables. **Three values now**, all for every
-deploy context (one development project currently serves all of them):
+### `netlify.toml` cannot configure a function
 
-| Key | Scope | Contexts | Secret |
-| --- | --- | --- | --- |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | **Builds** | all | no |
-| `SUPABASE_SECRET_KEY` | **Functions** | all | yes |
-| `INGEST_SHARED_SECRET` | **Functions** | all | yes |
+Netlify's documentation is explicit:
 
-`MODEL_API_KEY` (Functions, secret) is **optional** and may be left absent.
-`SEC_EDGAR_USER_AGENT` and `SEC_CONTACT_CONFIRMED` need no entry — both are
-committed in `netlify.toml`. Full reasoning in `docs/ENVIRONMENT.md`.
+> Environment variables declared in a Netlify configuration file
+> (`netlify.toml`) are not available to serverless functions.
+> — <https://docs.netlify.com/build/functions/environment-variables/>
 
-Then **Deploys → Trigger deploy → Clear cache and deploy site**, so the build
-picks up the new build-scope variable.
+So there are **four distinct places**, and only two of them reach a function:
+
+| Where it is set | Reaches the Vite **build** | Reaches a **Function** |
+| --- | --- | --- |
+| `netlify.toml` (`[build.environment]`, `[context.*.environment]`) | yes | **no** |
+| Netlify UI / CLI / API, scope **Builds** | yes | **no** |
+| Netlify UI / CLI / API, scope **Functions** | no | **yes** |
+| Netlify UI / CLI / API, scope **All** | yes | **yes** |
+
+Earlier revisions of this runbook said `SUPABASE_URL`, `SEC_EDGAR_USER_AGENT`,
+`SEC_CONTACT_CONFIRMED` and `EGRESS_ALLOWLIST` were "committed in
+`netlify.toml`" and therefore needed no entry. **That was wrong.** Those
+declarations never reached a function. They have been removed from the file, and
+the values must be entered in the dashboard like any other runtime value.
+
+`netlify.toml` now carries build settings and `VITE_`-prefixed values only.
+`app/src/test/runtimeConfiguration.test.ts` fails if a runtime variable
+reappears there.
+
+### A deploy is frozen at the values it was built with
+
+Netlify resolves environment values when a deploy is created and freezes them
+into it. Changing a variable in the dashboard changes nothing about an existing
+deploy, including one whose status is `ready`.
+
+**After every change below, redeploy the context you changed** — Deploys →
+Trigger deploy → **Clear cache and deploy site** for production, or *Retry
+deploy* / a fresh push for a Deploy Preview — and confirm afterwards with
+`/api/status`, which reports what the running function can actually see.
+
+### The values
+
+Site configuration → Environment variables. One development project currently
+serves every context, so *Same value for all deploy contexts* is correct today.
+
+**Builds scope** — read by Vite, inlined into the bundle:
+
+| Key | Secret |
+| --- | --- |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | no |
+
+**Functions scope** — read by a function at request time. None of these can be
+committed:
+
+| Key | Secret | Notes |
+| --- | --- | --- |
+| `SUPABASE_URL` | no | Already set — production `/api/session` works, which is only possible if it is present |
+| `SUPABASE_PUBLISHABLE_KEY` | no | Same value as the `VITE_` one; a Builds-scope value is not visible to a function |
+| `SUPABASE_SECRET_KEY` | **yes** | Already set, for the same reason as `SUPABASE_URL` |
+| `INGEST_SHARED_SECRET` | **yes** | Required by `admin-run` |
+| `SEC_EDGAR_USER_AGENT` | no | Required before any SEC request |
+| `SEC_CONTACT_CONFIRMED` | no | Exactly `true` or `false`; anything else throws |
+| `EGRESS_ALLOWLIST` | no | **Absent means every outbound request is denied** |
+| `RADAR_ENV` | no | Optional, per context; reporting only |
+| `MODEL_API_KEY` | **yes** | **Optional.** Absent means classification fails closed |
+
+Full reasoning, including why the publishable key is entered twice, is in
+`docs/ENVIRONMENT.md`.
 
 ---
 
@@ -464,7 +515,7 @@ in the hosted database waiting for a human to come back.
 
 ```powershell
 cd C:\path\to\Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation
+git switch main
 git pull
 pwsh -File .\scripts\Invoke-HostedValidation.ps1
 ```
@@ -491,7 +542,7 @@ It will ask for two values, each hidden as you type:
 
 ```bash
 cd /path/to/Haskell-FB-Opportunity-Radar
-git switch claude/production-foundation && git pull
+git switch main && git pull
 bash scripts/hosted-validation.sh
 ```
 
@@ -519,10 +570,938 @@ Paste the whole output into PR #9.
 ## F. SEC contact — done
 
 `oracles@openi-analytics.com` was confirmed on 2026-08-26 as an active, monitored
-Openi mailbox. `SEC_CONTACT_CONFIRMED = "true"` is committed in `netlify.toml`,
-so there is nothing to enter and nothing to toggle. `/api/status` reports
-`sec.contactConfirmed: true`.
+Openi mailbox. **The confirmation is done; the configuration is not.**
+
+An earlier revision said `SEC_CONTACT_CONFIRMED = "true"` was committed in
+`netlify.toml` and there was nothing to enter. That declaration never reached a
+function, so set both values in the Netlify UI with **Functions** scope:
+
+```
+SEC_EDGAR_USER_AGENT  = Openi Analytics Haskell F&B Radar oracles@openi-analytics.com
+SEC_CONTACT_CONFIRMED = true
+```
+
+Then redeploy, and confirm `/api/status` reports `sec.contactConfirmed: true`.
+Until it does, the value is not set, whatever the repository says.
 
 The mailbox is reserved for automated-source identification and operational
 notices only, and `reserved_service_addresses` makes it impossible to allowlist
 as an application account.
+
+---
+
+# F. First live collection — Tyson Foods, PepsiCo, Mars
+
+**Read this section end to end before running anything in it.** Every step is
+reversible; the point of reading first is that the stop conditions matter more
+than the commands.
+
+The collection runs **on the deployment**, not on your machine. Your machine
+sends one authenticated request. Nothing here needs the Supabase secret key.
+
+## F0. What this will and will not do
+
+It will retrieve documents from SEC EDGAR and the Mars newsroom, store each one
+as evidence with its provenance, classify what it can, and derive opportunities
+only where the evidence supports one. It will not delete anything, will not
+modify a document it already holds, and will not send any email.
+
+**A company producing zero opportunities is a valid outcome.** If Mars published
+nothing about a facility in the last year, the correct result is zero. Do not
+fill that in.
+
+## F0a. Runtime readiness, before anything is applied
+
+**Nothing below F0a is worth starting until it passes.** Migration 0021, the
+seed, source enablement and the backfill all assume a deployment whose
+functions can actually run, and a Netlify deploy marked `ready` is not evidence
+of that: every variable a function needs is read at *request* time, so a deploy
+with none of them configured is equally `ready`.
+
+### The order
+
+1. Enter the Functions-scope variables in Netlify (§ C).
+2. Force a **new** Deploy Preview for PR #10 — a deploy is frozen at the values
+   it was built with, so an existing one still serves the old ones.
+3. Run the readiness check below.
+4. It must reach **HTTP 200** at stage 2 (**401** at stage 1 is the minimum).
+5. Only then run `db/operator/0021_live_source_ingestion.operator.sql` (F1).
+6. Only after F1b verification: the seed (F1c), enablement (F5), dry run and
+   backfill (F7).
+
+### The check
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-DeploymentReadiness.ps1 `
+  -BaseUri 'https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app'
+```
+
+```bash
+bash scripts/test-deployment-readiness.sh https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app
+```
+
+### Stage 1 sends no credential at all
+
+`/api/status` validates its environment **before** it reads the `Authorization`
+header. That ordering is what makes the configuration question answerable with
+nothing secret in flight:
+
+| Response | What it means |
+| --- | --- |
+| **401** | **PASS.** The function ran. `SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` are all present at Functions scope. |
+| **503** | The function ran and refused. The body **names** the variables it cannot see. Set them, redeploy, run again. |
+| 200 | The endpoint answered without authentication. That is a finding — stop and report it. |
+| 404 | `/api/status` did not reach a function. A `_redirects` file may be shadowing `netlify.toml`. |
+| no response | Your network, not the deployment. |
+
+A 401 is the answer to "did my Netlify variables land". No token is involved, so
+there is no token to mishandle.
+
+### Stage 2 is optional, and the token never leaves your machine's memory
+
+The full report — database reachable *as the caller*, schema version, storage
+posture, auth posture, `sec.contactConfirmed`, `egressAllowlistSize` — needs a
+signed-in user's access token. Sign in to the deployment, then take the access
+token from the Supabase session in browser storage.
+
+**Where the token must never go, and where these scripts do not put it:**
+
+| | |
+| --- | --- |
+| a command-line argument | visible in `ps` to every other process; PowerShell also records bound parameters in history |
+| an environment variable | inherited by every child process |
+| a file, or this repository | it would outlive the check |
+| shell history | `read -rs` and `Read-SecretValue` keep the characters off the terminal |
+| chat, a ticket, or a log | it is a bearer credential, not a reference |
+
+Bash hands the header to curl through `--config -` on **stdin** — the one
+channel that is neither the argument vector nor the environment — and unsets it
+afterwards. PowerShell uses `Read-SecretValue` and `Use-Plain` from
+`OperatorGuards.psm1`, the same primitives the hosted validator uses, and
+`Assert-NoObservation` refuses to run at all under a transcript, verbose or
+debug output, script tracing, or a debugger breakpoint.
+
+**The token stays valid until its own expiry**, on this project as on any
+Supabase project — signing out does not revoke it. Run the check and close the
+terminal.
+
+`app/src/test/hostedValidationScripts.test.ts` asserts every one of those
+properties, including the ordering inside `/api/status` that stage 1 depends on.
+
+### What a healthy report looks like
+
+`ok: true`, `schema.version` at least `"0020"` before F1 and `"0021"` after,
+`database.reachable: true`, `storage.private: true`,
+`auth.inviteOnlyEnforced: true`.
+
+`model.configured: false` is **expected and correct**, and affects nothing —
+see F0b. `sec.contactConfirmed` must be `true` before any SEC request, and
+`egressAllowlistSize` must be **3**.
+
+---
+
+## F0b. The model, and why it is not a precondition
+
+**No ingestion code path calls a model.** `modelGateway` is imported by exactly
+one file in this repository — `netlify/functions/status.ts` — and only to report
+whether it is configured. Classification is
+`netlify/functions/_shared/connectors/classify.ts`: deterministic, regex-based,
+requiring a project action, a physical asset and a corroborating fact to
+co-occur within one 420-character window.
+
+`app/src/test/modelDependency.test.ts` runs the pipeline against a recorded
+connector fixture under four permutations — no model variables at all; all four
+set; provider and id with no key; a key with nothing else — and asserts the
+written rows are **identical** in every case, with **zero** outbound requests.
+
+| Question | Answer |
+| --- | --- |
+| Without a model key, which rows are created? | **All of them.** `evidence` for every retrieved document, `signals` and `signal_evidence` for every qualifying passage, `opportunities` and `opportunity_signals` wherever the confidence bar is met. |
+| Can the application display real evidence, signals and opportunities? | **Yes.** Nothing on the read path consults a model. |
+| Does "classification fails closed" mean retained, failed, or discarded? | **Retained.** A document that carries no qualifying signal is stored with `classification_status = 'not_relevant'` — evaluated and found to carry nothing. There is no `failed` status and nothing is discarded. Its bytes hash, URLs, excerpt and timestamps are all kept. |
+| Can it be reprocessed later? | **Yes.** `classifyText` takes a string and returns a verdict — no network, no credential, no state. Reprocessing is a re-read of `evidence`, not a re-fetch from the source. |
+| Optional enrichment, or required? | **Neither — currently unused.** It is not wired into any stage that produces a user-visible row. |
+| Is there a deterministic non-model path? | **It is the only path.** |
+| Can a run succeed while every document fails classification? | **Yes**, and that is the correct outcome. `run_status` is derived from errors and evidence written, not from how many documents qualified. |
+| What does Source Health & Coverage show then? | The source is **healthy** and `last_success_at` advances — retrieval worked. The opportunity surfaces show the **empty** state, not an error: *"No qualifying opportunity has been found in the collected sources yet. Every document retrieved so far was evaluated and none carried a supported facility signal."* Each rejection is counted by reason in the run record. |
+
+**Zero opportunities is a finding, not a fault, and not a missing model.**
+
+### If a model is configured anyway
+
+It changes nothing about ingestion, and these are its properties:
+
+| | |
+| --- | --- |
+| Provider | Anthropic Direct (`MODEL_PROVIDER=anthropic`). `bedrock` and `vertex` are declared in the type and have **no adapter** — they refuse rather than falling back. |
+| Endpoint | `https://api.anthropic.com/v1/messages`, a **literal** argument to `fetch`. Not a variable, not a template, not from the environment, not from `connector_config`. A retrieved document cannot redirect a model request. Asserted by test. |
+| Not on the egress allowlist | and must not be added. `EGRESS_ALLOWLIST` governs **source retrieval**; the model gateway does not use it. |
+| Variables | `MODEL_API_KEY` (**secret**), `MODEL_ID` (**required once the key is set** — a key without it throws), `MODEL_PROVIDER` (defaults `anthropic`), `MODEL_PROMPT_VERSION` (defaults `v0`). All **Netlify UI, Functions scope**. |
+| Transmitted | `system` instructions, the `input` text, and `model`/`max_tokens`. Document text would be the payload. Nothing else — no URL, no database row, no account identifier. |
+| Retention | The **replay key** is stored: a sha256 over content hash, preprocessing version, task, provider, model id, prompt version, schema and taxonomy versions, resolved-context digest, and a hash of the instructions. **Prompts and responses are not stored.** Anthropic's own retention is governed by their terms, not by this repository. |
+| Request limits / timeout / retry | **None in the adapter.** No timeout, no retry, no rate limit — unlike the egress gateway, which has all three. A model call today would hang on the platform default. That is a gap, and it is stated rather than implied. |
+| Failure behaviour | `no_credential`, `provider_error`, `invalid_output`, `refused_by_model`. Every one is a refusal; none fabricates a classification. |
+| Cost for a 12-month, three-company backfill | **Not estimable, and no figure should be invented.** Nothing calls the gateway, so the number of calls is zero. Were a stage added, the inputs to an estimate — documents retrieved, tokens per document, calls per document — are unknown until the first backfill runs, because no source has been contacted from this environment. |
+
+**A half-configured model no longer breaks the diagnostic.** `modelEnv()`
+correctly throws for a key with no `MODEL_ID`, and for an unknown provider — but
+`status.ts` called it outside its error handler, so either one escaped and
+`/api/status` answered **500 with HTML**, on the endpoint an operator runs
+precisely because something is wrong. It now reports
+`model.configured: false` with `model.detail` naming what is missing, and every
+other component still answers.
+
+---
+
+## F1. Apply migration 0021, after the already-applied 0020
+
+**Read the ordering note first.** This migration was drafted as `0019` and never
+applied. While it sat unapplied, `0020` (the Microsoft identity guard) was
+merged and **applied** to the hosted database. It has been renumbered to `0021`
+so that version order and application order agree.
+
+The hosted path is therefore **0018 → 0020 → 0021**. A clean replay in filename
+order reaches the same schema; `db/verify.sh` proves both, and the two dumps are
+byte-identical. **Do not reapply or modify 0020.**
+
+Backward compatible: every column is nullable or defaulted, every index is
+partial or on a new column, and a pre-0021 application keeps working against the
+migrated database.
+
+### Run one file. There is nothing to assemble.
+
+```
+db/operator/0021_live_source_ingestion.operator.sql
+```
+
+**Supabase Dashboard → SQL Editor → paste the entire file → Run.**
+Or, if you have the pooler URL:
+
+```bash
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/operator/0021_live_source_ingestion.operator.sql
+```
+
+That file contains the complete migration and records the ledger row itself.
+Nothing is left out, nothing is substituted, and you are not asked to paste one
+file inside another. **It is the exact file CI tests**, on PostgreSQL 16 and 17,
+on every run.
+
+#### Why it is one `DO` block
+
+**The Supabase SQL Editor does not keep one session across the statements of a
+script.** That was learned applying 0020, when a temporary table created by one
+statement was already gone by the next. The consequence people miss is the
+second-order one: if the session does not survive, an explicit `begin; … commit;`
+does not wrap the script either — so a script that *looks* atomic can commit its
+first half and fail on its second, leaving migration objects with no ledger row.
+
+A `DO` block is a single statement, and a single statement is one transaction
+whatever the client does with the script around it. So either every object
+exists **and** the ledger row is recorded, or neither is.
+
+There is no dynamic SQL in it. An earlier draft wrapped the migration in
+`execute $mig$ … $mig$`, which assumes one `EXECUTE` can run an arbitrary
+multi-statement migration. That assumption is not made: PL/pgSQL runs an
+ordinary SQL statement written directly in its body, utility statements
+included, so the migration's own statements are inlined **verbatim**. The
+payload in the operator file is byte-identical to
+`db/migrations/0021_live_source_ingestion.up.sql` between its `begin;` and
+`commit;`, and CI diffs the two.
+
+#### What it refuses
+
+Any line containing `ABORT:` means **nothing was committed**. It refuses if:
+
+| Condition | Message |
+| --- | --- |
+| no `schema_migrations` ledger | this database has never been migrated |
+| 0021 already recorded | `already recorded. Nothing to do.` |
+| 0018 missing | older than 0021 expects |
+| 0020 missing | apply it first; the order is 0018, 0020, 0021 |
+| the recorded 0020 checksum is not `55514d77a1e9…` | investigate the ledger first |
+| `auth_guard_microsoft_identity` absent | 0020 is recorded but its objects are not there |
+
+It also **asserts the result before returning** — all seven new objects, the
+nine evidence columns, the three opportunities columns, the three sources
+columns, that no scoring column is still `NOT NULL`, that 0021 is recorded
+exactly once, and that 0020 and the Microsoft guard are still intact afterwards.
+A silent partial application is not a state it can reach.
+
+#### What CI proves about it, every run, on PostgreSQL 16 and 17
+
+`db/tests/operator-0021.sh`, driven from `db/verify.sh`:
+
+| | |
+| --- | --- |
+| the payload is byte-identical to the canonical migration | 204 lines, diffed |
+| exactly one statement | one `DO`, one terminator |
+| no dynamic SQL | nothing re-quoted or reassembled |
+| applies from the exact pre-0021 schema | 0001–0018 then 0020 |
+| all seven objects, nine columns, nullable scoring columns | asserted |
+| `db/migrate.mjs verify` accepts the result | the parity proof — the repository's own checksum rule agrees |
+| 0020 checksum and the Microsoft guard unchanged | asserted |
+| a second run refuses | and the database is byte-identical afterwards |
+| a failure near the **beginning** | nothing committed, database byte-identical |
+| a failure in the **middle** | nothing committed, database byte-identical |
+| a failure at the **end**, after the ledger insert | no objects **and** no ledger row |
+
+The failures are injected mechanically into the committed file — a real runtime
+error, not a `raise` — so what is being tested is the transaction and not the
+error-reporting path.
+
+#### If you edit the migration
+
+Regenerate, or CI fails:
+
+```bash
+node db/tools/build-operator-sql.mjs
+```
+
+**Rollback**, if you need it: `db/migrations/0021_live_source_ingestion.down.sql`,
+then `delete from public.schema_migrations where version = '0021';`. It drops
+only what 0021 added, and it will **refuse** rather than invent or delete data if
+any opportunity row is unscored. Evidence rows written by a live run would lose
+their `source_document_id`, so roll back **before** collecting, not after.
+
+## F1b. Verify the ledger and the schema
+
+Read-only. Run before going any further.
+
+```sql
+select version, name, checksum, stamped
+from public.schema_migrations
+where version in ('0018','0020','0021')
+order by version;
+
+select to_regclass('public.source_document_cache')                     as cache_table,
+       to_regclass('public.evidence_current_document_uidx')            as current_doc_index,
+       to_regclass('public.source_runs_single_active_uidx')            as single_active_run,
+       to_regproc('public.auth_guard_microsoft_identity') is not null  as microsoft_guard_intact,
+       (select count(*) from public.schema_migrations)                 as migrations_applied;
+```
+
+**Expected:** three rows — `0018`, `0020` (checksum
+`55514d77a1e92019598127d733df47f1895eb6166c5ddf003df10a1ebb968832`, untouched),
+and `0021` (checksum `fd15cdc30a526e9575fe9c0644d8055e4346290ea8d7596048f78b9e7afc53b7`),
+all `stamped = false`. The second query: all four object checks non-null/true,
+and `migrations_applied` = **20**.
+
+`microsoft_guard_intact` is there on purpose. 0021 touches none of the auth
+objects, and this is the cheapest way to prove it did not.
+
+## F1c. Apply the live-cohort source seed
+
+**Only after F1b passes.** The seed writes rows into columns 0021 adds.
+
+```bash
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/seed/0006_live_cohort_sources.sql
+```
+
+**Expected:** two `INSERT 0 1`. The seed is idempotent — running it twice updates
+the rows and never resets `enabled` or `health_status`.
+
+## F2. Confirm the sources exist and are still disabled
+
+```sql
+select id, enabled, health_status, connector_id, last_success_at from sources order by id;
+```
+
+**Expected:** `sec-edgar` and `mars-newsroom`, both `enabled = false`,
+`health_status = 'disabled'`, `last_success_at` null. Seeded off deliberately:
+enabling is an operator decision made while someone is watching.
+
+## F3. Check the network path, before the credential
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-SourceConnectivity.ps1
+```
+
+```bash
+bash scripts/test-source-connectivity.sh
+```
+
+### A candidate has a role, and the role decides the weight
+
+This check used to count every probe the same way: any non-200 became a failure
+and the script exited 1. On 2026-09-13 that reported Mars as a **failure** while
+robots.txt, the newsroom index and the sitemap all answered 200 — because one
+**guessed** RSS path answered 404. The source was entirely viable.
+
+| Role | Which endpoints | Rule |
+| --- | --- | --- |
+| **required** | SEC's three documented APIs; Mars `robots.txt` | every one must answer |
+| **discovery** | Mars feed, sitemap and index candidates | tried in order, **one is enough**; each miss is a **warning** |
+
+**A source is viable when every required endpoint answered and at least one
+discovery path did.** A failed optional candidate never disables a source.
+
+That mirrors the connector: `discoverMars` walks feed → sitemap → index,
+records each miss, and continues, reporting a problem only when *nothing* was
+discovered by any path. A pre-flight stricter than the thing it predicts is
+wrong in the worst direction — it argues for disabling a source that works.
+
+**One deliberate asymmetry.** `robots.txt` is *required* here, while the
+connector treats an unreachable robots.txt as "no policy" and proceeds. A
+pre-flight that passed with robots.txt unreachable would greenlight a run whose
+compliance posture is unknown, and finding that out first is the point of
+running this.
+
+### Verdicts
+
+| Verdict | Meaning | Exit |
+| --- | --- | --- |
+| **VIABLE** | required all answered, ≥1 discovery path usable | 0 |
+| **VIABLE**, with warnings | same, and some optional candidates missed | 0 |
+| **NOT VIABLE** | a required endpoint failed, or no discovery path answered | 1 |
+| **INCONCLUSIVE** | nothing answered at all from this machine | 0 |
+
+**INCONCLUSIVE is not a verdict about the source.** If every probe failed with
+a proxy or transport error, the run says something about *your network* and
+nothing about Mars or SEC. Re-run from a machine with direct egress before
+concluding anything. This is the case that would otherwise get a working source
+disabled from behind a corporate proxy.
+
+### Stop conditions
+
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| `INCONCLUSIVE` | Your proxy, not the source | Run from a machine with direct egress. **Do not disable the source.** |
+| `warn … 404` on a discovery candidate | A guessed path that does not exist | Retire it from `connector_config` — see below. Not a failure. |
+| `warn … interstitial challenge` | A WAF or interstitial | **The one warning class to act on.** Do not work around it; find an official feed, sitemap or IR endpoint and record the exact URL and status. |
+| `NOT VIABLE — no discovery path answered` | Every candidate is wrong, or the newsroom moved | Correct `connector_config`; do not enable the source. |
+| `NOT VIABLE — required endpoint(s)` | SEC changed shape, or robots.txt is unreachable | Stop. Record the status and URL. |
+| `429` | Rate limited | Wait. The connector honours `Retry-After`; you should too. |
+
+### Observed from a network with direct egress — the full sweep
+
+Every guessed path has now been probed. **Four of the six do not exist**,
+including both feed candidates.
+
+| Endpoint | Role | Result |
+| --- | --- | --- |
+| SEC `company_tickers.json` | required | **200** |
+| SEC submissions API | required | **200** |
+| SEC archive folder index | required | **200** |
+| Mars `/robots.txt` | required | **200** |
+| Mars `/sitemap.xml` | discovery (sitemap) | **200** |
+| Mars `/news-and-stories` | discovery (index) | **200** |
+| Mars `/rss.xml` | feed | **404 — retired 2026-09-13** |
+| Mars `/news-and-stories/rss` | feed | **404 — retired 2026-09-14** |
+| Mars `/feed` | feed | **404 — retired 2026-09-14** |
+| Mars `/news` | index | **404 — retired 2026-09-14** |
+| Mars `/press-releases` | index | **404 — retired 2026-09-14** |
+
+**sec-edgar VIABLE. mars-newsroom VIABLE**, through the sitemap and the
+newsroom index. No CAPTCHA, no access refusal, no network block — the four
+missing paths simply are not there.
+
+### Mars publishes no feed we can find
+
+That is a finding, not a gap, and the configuration says so:
+
+| Array | Contents |
+| --- | --- |
+| `feedCandidates` | **`[]`** |
+| `sitemapCandidates` | `https://www.mars.com/sitemap.xml` |
+| `indexCandidates` | `https://www.mars.com/news-and-stories` |
+
+**An empty feed array is a real configuration, not a missing value.** The
+connector concatenates the three arrays to build its walk, so an empty one
+contributes nothing and discovery begins at the sitemap. Three tests in
+`liveConnectors.test.ts` hold that: an empty feed array falls through to the
+sitemap, an empty feed *and* sitemap fall through to the newsroom index, and an
+explicitly empty array is never replaced by the default.
+
+Feeds remain fully supported. If a real Mars feed is ever found, adding it to
+`connector_config` restores the short-circuit behaviour — and no deploy is
+needed, because candidate URLs are data.
+
+### Retiring a dead candidate
+
+**The script tells you which ones, and prints the statement for exactly those.**
+It used to print the same example every run naming `/rss.xml`, long after that
+had been removed — advice that is irrelevant every time teaches you to skip the
+section, which is exactly when a real one appears. Now: nothing 404ed, nothing
+printed.
+
+Only a **404** earns a removal. A 403 may be a WAF in front of a real page, a
+429 is a rate limit, a redirect is the page moving, and a transport error is
+usually your own network. Retiring on any of those deletes a working candidate
+because of a bad afternoon.
+
+The statement edits **one array**, leaving the others alone:
+
+```sql
+update sources
+   set connector_config = jsonb_set(
+         connector_config, '{indexCandidates}',
+         coalesce((select jsonb_agg(value order by ordinality)
+                     from jsonb_array_elements_text(connector_config->'indexCandidates')
+                          with ordinality as c(value, ordinality)
+                    where value not in ('https://www.mars.com/news',
+                                        'https://www.mars.com/press-releases')), '[]'::jsonb)),
+       updated_at = now()
+ where id = 'mars-newsroom';
+```
+
+**Do not** write `connector_config || '{"indexCandidates":[…]}'` unless you are
+supplying the *complete* remaining array — that form replaces the whole key.
+
+The repository records retirements in `RETIRED_CANDIDATES`
+(`scripts/lib/connectivity-rules.mjs`) with the observed status, the date and
+the array each one lived in, and `db/seed/0006_live_cohort_sources.sql`
+reconciles all of them onto an existing row — removing each URL only from the
+array it was retired from, preserving array order, operator-added candidates,
+operator-written keys and every non-array value.
+`db/tests/seed-reconciliation.sh` proves that against a real database on both
+PostgreSQL versions, and `app/src/test/sourceConnectivity.test.ts` fails if a
+retired URL reappears as a candidate in the seed, the connector defaults, or
+either script.
+
+## F4. Confirm the deployed environment
+
+`EGRESS_ALLOWLIST` must permit the connector hosts, or the run fails with a
+message naming the host. The connector will not grant itself egress.
+
+Required, Functions scope, all deploy contexts:
+
+```
+SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY,
+INGEST_SHARED_SECRET, SEC_EDGAR_USER_AGENT, SEC_CONTACT_CONFIRMED
+EGRESS_ALLOWLIST = data.sec.gov,www.sec.gov,www.mars.com
+```
+
+All of them are entered in the **Netlify UI with Functions scope**. None can be
+committed — see § C.
+
+`SEC_EDGAR_USER_AGENT` must name the organisation and a monitored address, e.g.
+`Openi-Haskell-FB-Radar/1.0 (oracles@openi-analytics.com)`. SEC's fair-access
+guidance asks for a contact; an anonymous agent is the one that gets blocked.
+
+### Exact scopes and contexts
+
+Every row is **Netlify UI, Functions scope**. There is no committed alternative.
+
+| Variable | Contexts | Notes |
+| --- | --- | --- |
+| `SUPABASE_URL` | all | already set — `/api/session` works in production |
+| `SUPABASE_PUBLISHABLE_KEY` | all | **verify** — was declared only in `netlify.toml`, so it may never have been delivered |
+| `SUPABASE_SECRET_KEY` | all | **secret**; already set |
+| `INGEST_SHARED_SECRET` | all | **secret**; required by `admin-run` |
+| `SEC_EDGAR_USER_AGENT` | all | **verify** — was declared only in `netlify.toml` |
+| `SEC_CONTACT_CONFIRMED` | all | **verify** — was declared only in `netlify.toml` |
+| `EGRESS_ALLOWLIST` | all | **verify and set** — see below |
+
+`EGRESS_ALLOWLIST` was previously declared in `netlify.toml` and therefore never
+reached the egress gateway. An absent allowlist parses to an empty array, and an
+empty allowlist **denies every outbound request**, so the first live run would
+have failed every source with `Egress to "…" is not on the allowlist. Permitted:
+(none configured).` rather than reaching SEC or Mars. That is the control failing
+closed, which is the correct direction, but it is not configured.
+
+The value for the first cohort is:
+
+```
+data.sec.gov,www.sec.gov,www.mars.com
+```
+
+**Exact hosts, no bare parent domain.** An entry authorises every host beneath
+it, so `sec.gov` would grant every SEC subdomain in one keystroke. The
+connectors declare exactly these hosts, and the runner refuses to start a source
+whose declared hosts are not all permitted — it will not merge them in for you.
+
+Add `www.fsis.usda.gov` only if the FSIS connector is enabled. Nothing in the
+first cohort requests it, and `api.anthropic.com` does not belong here at all —
+the model gateway does not use the egress allowlist.
+
+### Supabase redirect allowlist — the PR 10 preview
+
+The preview now carries Microsoft sign-in, so its callback must be allowlisted
+before you sign in to it. **Supabase Dashboard → Authentication → URL
+Configuration → Redirect URLs** must contain, exactly:
+
+```
+https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/auth/callback
+https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/auth/reset-password
+```
+
+Assume they are absent until you have seen them. Without the first, Microsoft
+authenticates you and Supabase then refuses the redirect — which fails *after*
+the identity provider has already succeeded, and reads like a broken
+application rather than a missing configuration line.
+
+## F5a. Enable sec-edgar ONLY
+
+**One source at a time.** Enabling both at once means a first live run where two
+connectors, two rate-limit regimes and two failure modes are new simultaneously,
+and a run report you cannot attribute. SEC first because it is a documented API
+with a published fair-access policy; Mars is a newsroom crawl and goes second,
+after SEC is proven end to end.
+
+```sql
+update sources
+   set enabled = true, health_status = 'healthy', updated_at = now()
+ where id = 'sec-edgar';
+```
+
+**Verify immediately** — read-only:
+
+```sql
+select s.id, s.enabled, s.health_status, s.last_success_at, s.consecutive_failures,
+       (select count(*) from source_runs r
+         where r.source_id = s.id and r.run_status = 'running')     as active_runs,
+       (select max(r.started_at) from source_runs r
+         where r.source_id = s.id)                                   as last_run_started
+  from sources s
+ where s.id in ('sec-edgar', 'mars-newsroom')
+ order by s.id;
+```
+
+**Expected:** `sec-edgar` enabled `true`, health `healthy`, `active_runs = 0`,
+`last_run_started` null. **`mars-newsroom` must still read `enabled = false`,
+`health_status = disabled`.** If Mars is enabled here, stop and disable it
+before going further.
+
+## F5b. Enable mars-newsroom — NOT YET
+
+Only after the SEC dry run, the SEC backfill and its repeat run have been
+reviewed. The statement is kept here so nobody improvises it:
+
+```sql
+-- DO NOT RUN until SEC is validated end to end.
+update sources
+   set enabled = true, health_status = 'healthy', updated_at = now()
+ where id = 'mars-newsroom';
+```
+
+## F6. Mars retrieval strategy — already confirmed, nothing to correct
+
+This section used to tell you to write the real Mars URLs into
+`connector_config` after the first live run, because the environment that wrote
+the connector could not reach mars.com. **That has now been done by direct-egress
+probing**, and the hosted row is reconciled:
+
+| Array | Contents |
+| --- | --- |
+| `feedCandidates` | `[]` — every guessed feed path returned 404 |
+| `sitemapCandidates` | `https://www.mars.com/sitemap.xml` |
+| `indexCandidates` | `https://www.mars.com/news-and-stories` |
+
+**Do not run the `connector_config || jsonb_build_object(...)` statement that
+used to be here.** That form replaces whole keys, so it would re-add the five
+retired candidates and undo the reconciliation. If a candidate ever needs
+changing, use the targeted `jsonb_set` form in F3.
+
+`confirmedOnFirstLiveRun` is still `false`, and correctly so: reachability has
+been confirmed, but no document has yet been *retrieved and parsed* from Mars.
+Flip it only after a Mars run actually produces evidence.
+
+## F6a. The SEC dry run
+
+**Do this before any backfill, and report the result before going further.**
+
+A dry run authenticates, validates the environment and the request, reads which
+sources are enabled, and reports what a real run would collect. **It writes
+nothing, opens no run row, and contacts no source.**
+
+Endpoint — the Deploy Preview for PR #10:
+
+```
+POST https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/api/admin-run
+```
+
+`/api/admin-run` is the only HTTP path into collection. The scheduled collector
+has no route at all, deliberately, so there is no public invocation path.
+
+### Authentication
+
+`X-Radar-Operator-Secret`, holding `INGEST_SHARED_SECRET`, compared in constant
+time. **It is not a user session**: a signed-in reviewer cannot force a
+collection, and this secret cannot read the dashboard. A missing secret and a
+wrong one return the identical 401 — distinguishing them would be a free hint to
+whoever is guessing.
+
+**The secret never goes on a command line.** An argument is visible in `ps` to
+every other process on the machine and lands in shell history.
+
+```powershell
+$secret = Read-Host -Prompt 'INGEST_SHARED_SECRET' -AsSecureString
+$bstr   = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+try {
+  $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+  Invoke-RestMethod -Method Post `
+    -Uri 'https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/api/admin-run' `
+    -Headers @{ 'X-Radar-Operator-Secret' = $plain; 'Content-Type' = 'application/json' } `
+    -Body '{"dryRun":true,"sources":["sec-edgar"],"windowDays":365}' |
+    ConvertTo-Json -Depth 6
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+  Remove-Variable plain -ErrorAction SilentlyContinue
+}
+```
+
+```bash
+read -rs -p 'INGEST_SHARED_SECRET: ' SECRET; printf '\n'
+printf '%s\n' \
+  'url = "https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/api/admin-run"' \
+  "header = \"X-Radar-Operator-Secret: $SECRET\"" \
+  'header = "Content-Type: application/json"' \
+  'request = "POST"' \
+  'data = "{\"dryRun\":true,\"sources\":[\"sec-edgar\"],\"windowDays\":365}"' \
+  'silent' 'show-error' 'write-out = "\n%{http_code}\n"' \
+  | curl --config -
+unset SECRET
+```
+
+`curl --config -` takes the header on **stdin** — the one channel that is
+neither the argument vector nor the environment.
+
+### The expected response
+
+**HTTP 200**, `application/json`:
+
+```json
+{
+  "dryRun": true,
+  "window": { "start": "2025-09-15T00:00:00.000Z", "end": "2026-09-15T00:00:00.000Z" },
+  "requestedSources": ["sec-edgar"],
+  "enabledSources": ["sec-edgar"],
+  "wouldRun": ["sec-edgar"],
+  "requestedButNotEnabled": [],
+  "note": "Configuration and credentials accepted. A real run would collect from: sec-edgar. No collection was performed."
+}
+```
+
+| Field | What to check |
+| --- | --- |
+| `window` | A 365-day span ending tomorrow, UTC. `windowDays: 1` would give the daily window instead. |
+| `enabledSources` | **`["sec-edgar"]` and nothing else.** If `mars-newsroom` appears, F5a was applied wrongly — stop. |
+| `wouldRun` | `["sec-edgar"]`. This is the intersection of what you asked for and what is enabled. |
+| `requestedButNotEnabled` | `[]`. A non-empty value means a typo in the source id. |
+| `note` | Names the sources a real run would collect from. "**NO source would run**" means the intersection is empty. |
+
+### Stop conditions
+
+| Response | Meaning | Action |
+| --- | --- | --- |
+| `401 unauthorized` | Wrong or missing operator secret | Check `INGEST_SHARED_SECRET` in Netlify, Functions scope, and that the preview was redeployed after it was set. Do not retry blindly. |
+| `503 not_configured` | A Functions-scope variable is missing | The message **names** it. Add it, redeploy this context, re-run. |
+| `400 bad_request` | Malformed body, bad `sources`, or `windowDays` outside 1–400 | The message says which. |
+| `405` | Wrong method | It is POST. |
+| `404` or an HTML body | The request did not reach a function | A `_redirects` file may be shadowing `netlify.toml`. |
+| `wouldRun` empty | Nothing would be collected | F5a did not take effect, or the source id is wrong. |
+| `mars-newsroom` in `enabledSources` | Mars was enabled by accident | Disable it before proceeding. |
+
+**A dry run proves configuration and authorization. It does not contact SEC**,
+so it says nothing about whether EDGAR will answer — F3 covers that, and it
+passed. Nothing is written, so there is nothing to clean up.
+
+**Report the dry-run output before running a backfill.** The backfill command is
+deliberately not in this section.
+
+## F7. Run the backfill
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-LiveBackfill.ps1 `
+  -BaseUri 'https://deploy-preview-<N>--haskell-fb-opportunity-radar.netlify.app' `
+  -WindowDays 365
+```
+
+It refuses before asking for the secret: another repository, a dirty tree, the
+wrong branch, a `HEAD` behind the remote, a transcript, `-Verbose`, `-Debug`,
+tracing, a debugger. Then it does a **dry run** (authenticates, checks
+configuration, writes nothing), asks you to type `BACKFILL`, runs, and then
+**runs the same window again** to prove idempotency.
+
+Twelve months is the window recorded in **ADR 0016**.
+
+**Expected on the first run:** per source, a `runStatus`, counts, and a note.
+
+**Stop conditions:**
+
+| Response | Meaning | Action |
+| --- | --- | --- |
+| `401` | Wrong or missing operator secret | Check `INGEST_SHARED_SECRET`. Do not retry blindly. |
+| `503 not_configured` | A variable is missing | The message names it. Add it, redeploy, re-run. |
+| `502 collection_failed` | The run threw server-side | Read the message. Do not re-run until you know why. |
+| any source `runStatus: failure` | That source did not complete | **The cohort is not current.** Investigate that source. |
+| `mars-newsroom` `manual_review_required` | No compliant automated path | Correct. Import by hand; do not bypass the control. |
+
+**Expected on the repeat run:** `evidenceCreated: 0` for every source and
+`duplicatesPrevented` greater than zero. The script says so explicitly. If the
+repeat run creates records, stop and investigate before trusting any count.
+
+## F7b. Verify the run in the database
+
+Read-only. Run these after any collection, dry run included — after a dry run
+every count must still be zero, which is how you prove it wrote nothing.
+
+```sql
+-- 1. Runs. `run_status = 'running'` is an ACTIVE run; the partial unique index
+--    source_runs_single_active_uidx permits at most one per source.
+select id, source_id, run_status, status,
+       collection_window_start, collection_window_end,
+       started_at, completed_at,
+       discovered_count, fetched_count, extracted_count,
+       rejected_count, duplicate_count, items_seen, items_stored,
+       error_code, error_summary
+  from source_runs
+ where source_id = 'sec-edgar'
+ order by started_at desc nulls last
+ limit 10;
+
+-- 2. Per-attempt detail: what was actually requested, and what came back.
+select a.attempt_number, a.outcome, a.http_status, a.error_class,
+       a.error_detail, a.bytes_fetched, a.started_at, a.finished_at
+  from source_run_attempts a
+  join source_runs r on r.id = a.source_run_id
+ where r.source_id = 'sec-edgar'
+ order by a.started_at desc
+ limit 50;
+
+-- 3. Conditional-request validators. Populated only by a real retrieval;
+--    a dry run leaves this empty. Never holds a response body.
+select source_id, request_url, etag, last_modified, status, hit_count, fetched_at
+  from source_document_cache
+ where source_id = 'sec-edgar'
+ order by fetched_at desc
+ limit 20;
+
+-- 4. Evidence, with provenance. missing_document_id MUST be 0: a stable source
+--    identity is what makes a repeat run a no-op.
+select source_id, connector_id, connector_version,
+       count(*)                                                  as documents,
+       count(*) filter (where superseded_at is null)              as current_documents,
+       count(*) filter (where source_document_id is null)         as missing_document_id,
+       count(*) filter (where published_at is null)               as no_published_date,
+       min(first_seen_at) as first_seen, max(last_seen_at) as last_seen
+  from evidence
+ where source_id = 'sec-edgar'
+ group by 1, 2, 3;
+
+-- 5. Health and failure events, with what each one implies for coverage.
+select h.created_at, h.source_id, h.event_type,
+       h.prior_status, h.new_status,
+       h.summary, h.coverage_impact, h.action_required, h.resolved_at
+  from source_health_events h
+ where h.source_id = 'sec-edgar'
+ order by h.created_at desc
+ limit 20;
+```
+
+**After a dry run, expected:** every one of the five returns **zero rows** for
+`sec-edgar`, and `sources.last_success_at` is still null. A dry run that left a
+`source_runs` row behind is a defect — report it rather than continuing.
+
+**Before any backfill, stop if:**
+
+| What you see | Why it stops the run |
+| --- | --- |
+| any `source_runs` row with `run_status = 'running'` | A run is already in flight, or a previous one died without completing. A second would be refused by the database, but find out why first. |
+| a dry run left any row in `source_runs` or `source_document_cache` | It is documented to write nothing. |
+| `mars-newsroom` enabled | One source at a time. |
+| `missing_document_id > 0` | Document identity is broken; a repeat run would duplicate rather than deduplicate. |
+| `source_health_events` carrying `action_required` | Something wants a decision before more traffic is sent. |
+| `/api/status` not returning 200 | The deployment changed under you. |
+
+## F8. Verify in the database
+
+```sql
+-- Per company: what was collected and what it produced.
+select o.canonical_name,
+       count(distinct e.id)  filter (where e.superseded_at is null) as current_evidence,
+       count(distinct s.id)                                          as signals,
+       count(distinct opp.id)                                        as opportunities
+  from organizations o
+  left join evidence_entity_links l on l.organization_id = o.id
+  left join evidence e   on e.id = l.evidence_id
+  left join signals s    on s.organization_id = o.id
+  left join opportunities opp on opp.organization_id = o.id
+ where o.entity_key in ('sec:0000077476', 'sec:0000100493', 'radar:mars-incorporated')
+ group by o.canonical_name order by o.canonical_name;
+
+-- Provenance is present on every stored document.
+select source_id, connector_id, connector_version,
+       count(*) as documents,
+       count(*) filter (where source_document_id is null) as missing_document_id,
+       count(*) filter (where published_at is null)       as no_published_date,
+       min(first_seen_at) as first_seen, max(last_seen_at) as last_seen
+  from evidence where connector_id is not null group by 1,2,3;
+
+-- Run outcomes, including the ones that found nothing.
+select source_id, run_status, items_seen, items_stored, duplicate_count,
+       started_at, completed_at, error_summary
+  from source_runs order by started_at desc limit 20;
+```
+
+**Expected:** `missing_document_id = 0`. Every live document has a stable source
+identity — that is what makes the second run a no-op.
+
+## F9. Verify in the authenticated preview
+
+**Sign in first**, at
+`https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app`. Either
+method works and both should be exercised once:
+
+- **Continue with Microsoft** — the preview context builds with the button on.
+  Requires the redirect URL from F4.
+- **Email and password**, or **Set or reset your password** and the emailed
+  six-digit code.
+
+Neither is affected by anything in this section: live data changes what the
+application shows, never who may see it.
+
+Then check:
+
+1. **Sign-in is still required.** Open the preview in a private window; every
+   protected route redirects to `/login` with no data visible.
+2. **No illustrative data.** There is no "illustrative" banner and no
+   preview-state control in the navigation — both are gated on a flag the live
+   provider sets to false.
+3. **`?state=empty` does nothing.** The parameter is inert outside a development
+   build; the page shows live state.
+4. **Counts match F8.** The opportunity count on screen equals the query.
+5. **Empty is honest.** A company with no qualifying signal reads as "no
+   qualifying opportunity has been found", not as an error.
+6. **Evidence resolves through the proxy** and the response carries
+   `Cache-Control: private, no-store`.
+7. **Source URLs and timestamps are visible** and match the filing or article.
+8. **Source Health** shows the real run outcomes, including
+   `manual_review_required` if that is what happened.
+9. **Sign out** removes all protected content immediately.
+10. **No credential survives** in the URL, in history, in rendered content, or
+    in the console.
+
+## F10. Cleanup
+
+**Nothing to clean up.** This procedure creates no canary: the verification uses
+the real collected records and the repeat run, so there is no test row to
+remove and no artefact to leave behind.
+
+If you need to re-run a window from scratch — after correcting a Mars URL, say —
+delete that source's rows rather than the cohort's:
+
+```sql
+-- Reversible and scoped to one source. Evidence rows cascade to their links.
+delete from evidence     where source_id = 'mars-newsroom';
+delete from source_runs  where source_id = 'mars-newsroom';
+delete from source_document_cache where source_id = 'mars-newsroom';
+update sources set last_success_at = null, health_status = 'healthy',
+                   consecutive_failures = 0
+ where id = 'mars-newsroom';
+```
+
+Signals and opportunities derived only from those documents lose their evidence
+links and should be reviewed before deletion — an opportunity an analyst has
+since touched is not the collector's to remove.
+
+## F11. Schedule
+
+The collector runs **`0 6 * * *` — 06:00 UTC daily**, which is **02:00 US
+Eastern during daylight time and 01:00 during standard time**. It is pinned to
+UTC deliberately: an Eastern-pinned schedule would move twice a year and put a
+shifted collection window either side of the change.
+
+The scheduled function has no HTTP route and cannot be invoked by a request.
+`admin-run` is the only manual path and carries its own operator credential.
+Overlap is refused by the database, not by a check in the handler.

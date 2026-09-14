@@ -32,6 +32,8 @@ acceptance selects a vendor.
 | [0012](0012-corrections-supersede-they-do-not-overwrite.md) | Corrections supersede; they do not overwrite | **Accepted** (D24) | — |
 | [0013](0013-external-hosting-and-tenancy-boundary.md) | The Radar is externally hosted, with no Haskell-side runtime dependency | **Accepted** (D1, D2b — corrected) | — |
 | [0014](0014-d19-pilot-evidence-access-rule.md) | The pilot evidence-access rule: government material archived, corporate material by reference | **Accepted for the pilot** (D19, pilot scope only) | — |
+| [0015](0015-evidence-proxy-immediate-revocation.md) | Immediate revocation is scoped to the evidence proxy | **Accepted** | — |
+| [0016](0016-first-cohort-backfill-window.md) | The first cohort's backfill window is twelve months | **Accepted** | — |
 
 Records marked **revised** were changed by a later reconciliation pass.
 

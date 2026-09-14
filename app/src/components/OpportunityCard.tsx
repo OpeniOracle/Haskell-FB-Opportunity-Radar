@@ -68,10 +68,14 @@ export function OpportunityCard({
     : UNRESOLVED_LOCATION
 
   return (
-    <article className={`opp opp--${band}`} aria-labelledby={headingId}>
+    <article className={`opp opp--${band ?? 'unscored'}`} aria-labelledby={headingId}>
+      {/*
+        An unscored opportunity shows a dash and says so, rather than a zero.
+        A zero is a judgement; this record has not been judged.
+      */}
       <div className="opp__score">
-        <span className="opp__score-value">{scores.finalScore}</span>
-        <span className="opp__score-band">{PRIORITY_SHORT[band]}</span>
+        <span className="opp__score-value">{scores.finalScore ?? '\u2014'}</span>
+        <span className="opp__score-band">{band ? PRIORITY_SHORT[band] : 'Not scored'}</span>
       </div>
 
       <div className="opp__body">

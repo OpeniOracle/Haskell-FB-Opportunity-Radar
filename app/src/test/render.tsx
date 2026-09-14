@@ -4,6 +4,20 @@ import type { ReactElement } from 'react'
 import { App } from '@/App'
 import { AuthProvider } from '@/auth/AuthProvider'
 import { FakeAuth, signedIn } from '@/test/authFake'
+import { createFixtureDataSource, isFixtureScenario } from '@/data/fixtureDataSource'
+import type { DataSource } from '@/data/DataSource'
+
+/**
+ * Fixtures are handed IN, never reached by default.
+ *
+ * The application's own provider is the live one. A surface test wants the
+ * fixture corpus, so the helper supplies it explicitly — which is also what
+ * keeps the fixture modules out of the production import graph entirely.
+ */
+export function fixtureSource(scenario: string | undefined): DataSource {
+  const candidate = scenario ?? null
+  return createFixtureDataSource(isFixtureScenario(candidate) ? candidate : 'ready')
+}
 
 /**
  * Rendering the application in tests, now that there is a gate in front of it.
@@ -28,6 +42,8 @@ import { FakeAuth, signedIn } from '@/test/authFake'
 export interface RenderAppOptions {
   /** Supply a fake in a particular state. Defaults to signed in and invited. */
   readonly auth?: FakeAuth
+  /** Supply a data source. Defaults to the fixture corpus for the `?state=`. */
+  readonly data?: DataSource | ((scenario: string | undefined) => DataSource)
 }
 
 /** Render the whole application at a given URL, as a user would arrive at it. */
@@ -35,7 +51,7 @@ export function renderApp(initialEntry = '/', options: RenderAppOptions = {}) {
   const auth = options.auth ?? signedIn()
   const result = render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <App authPort={auth} />
+      <App authPort={auth} dataSource={options.data ?? fixtureSource} />
     </MemoryRouter>,
   )
   return Object.assign(result, { auth })
@@ -54,7 +70,7 @@ export function renderAppWithHistory(initialEntry = '/', options: RenderAppOptio
   window.history.pushState({}, '', initialEntry)
   const result = render(
     <BrowserRouter>
-      <App authPort={auth} />
+      <App authPort={auth} dataSource={options.data ?? fixtureSource} />
     </BrowserRouter>,
   )
   return Object.assign(result, { auth })

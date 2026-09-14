@@ -361,10 +361,7 @@ Apply before enabling the flag. It adds the database half of all of this:
   address;
 - and only on an address Microsoft asserted as **verified**.
 
-**Numbering note.** This is `0020`, and `0019` is on the paused live-data branch
-(PR #10) and is not applied. The migrator applies whatever is unapplied in
-filename order, so the gap is harmless and 0019 will simply apply later. The two
-touch entirely disjoint objects and the order between them does not matter.
+**Numbering note.** This is `0020`. The live-data migration that was drafted as `0019` was never applied, and has been renumbered to `0021` so that version order and application order agree: the hosted path is 0018, then 0020, then 0021. This migration is unaffected and is not reapplied.
 
 ---
 

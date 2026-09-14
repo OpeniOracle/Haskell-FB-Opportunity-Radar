@@ -294,3 +294,191 @@ describe('environment reporting', () => {
     expect(find('INGEST_SHARED_SECRET').present).toBe(false)
   })
 })
+
+/* ==========================================================================
+   /api/admin-run — the manual trigger, and the source filter it declares.
+   ========================================================================== */
+
+type AdminHandler = (event: unknown) => Promise<{
+  statusCode: number
+  headers: Record<string, string>
+  body: string
+}>
+
+async function loadAdminRun(): Promise<AdminHandler> {
+  const module = await import('../../netlify/functions/admin-run.ts')
+  return module.handler as AdminHandler
+}
+
+function adminRequest(body: unknown, headers: Record<string, string> = {}) {
+  return {
+    httpMethod: 'POST',
+    headers: { 'x-radar-operator-secret': FAKE_ENV.INGEST_SHARED_SECRET!, ...headers },
+    path: '/api/admin-run',
+    queryStringParameters: {},
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }
+}
+
+const parse = (response: { body: string }) => JSON.parse(response.body) as Record<string, unknown>
+
+describe('/api/admin-run source filter', () => {
+  /*
+     THE DEFECT THIS SECTION EXISTS TO PREVENT.
+
+     `sources` was declared in the request interface, the runner has always
+     supported `onlySources`, and nothing connected the two. `collect(window)`
+     was called with no filter, so `{"sources":["sec-edgar"]}` ran every enabled
+     source and reported success without ever mentioning that it had ignored the
+     request.
+
+     Harmless while exactly one source is enabled. Exactly wrong on the day a
+     second one is -- an operator asking for one source silently gets both,
+     which is the opposite of a controlled activation.
+  */
+  it('passes the requested sources through to the collector', async () => {
+    const text = await import('../../netlify/functions/admin-run.ts?raw').then(
+      (m) => (m as { default: string }).default,
+    )
+    // The wiring, asserted at the call site rather than only through behaviour,
+    // because the failure mode is a parameter that goes nowhere.
+    expect(text.length).toBeGreaterThan(500)
+    expect(text).toMatch(/collect\(window,\s*onlySources\)/)
+    expect(text).toContain('parseSources')
+  })
+
+  it('refuses a request with no operator secret, and says nothing more', async () => {
+    setEnv(FAKE_ENV)
+    const handler = await loadAdminRun()
+    const response = await handler({
+      httpMethod: 'POST',
+      headers: {},
+      path: '/api/admin-run',
+      queryStringParameters: {},
+      body: JSON.stringify({ dryRun: true }),
+    })
+    expect(response.statusCode).toBe(401)
+    expectJson(response)
+    // A wrong secret and a missing one must be indistinguishable.
+    expect(parse(response).message ?? parse(response).error).toBeTruthy()
+    expect(response.body).not.toMatch(/missing|absent|no secret/i)
+  })
+
+  it('refuses a wrong operator secret identically', async () => {
+    setEnv(FAKE_ENV)
+    const handler = await loadAdminRun()
+    const wrong = await handler(
+      adminRequest({ dryRun: true }, { 'x-radar-operator-secret': 'not-the-secret' }),
+    )
+    const missing = await handler({
+      httpMethod: 'POST',
+      headers: {},
+      path: '/api/admin-run',
+      queryStringParameters: {},
+      body: JSON.stringify({ dryRun: true }),
+    })
+    expect(wrong.statusCode).toBe(401)
+    expect(wrong.body).toBe(missing.body)
+  })
+
+  it('refuses a non-POST before looking at anything else', async () => {
+    setEnv(FAKE_ENV)
+    const handler = await loadAdminRun()
+    const response = await handler({
+      httpMethod: 'GET',
+      headers: {},
+      path: '/api/admin-run',
+      queryStringParameters: {},
+    })
+    expect(response.statusCode).toBe(405)
+    expectJson(response)
+  })
+
+  for (const [name, value] of [
+    ['a bare string', 'sec-edgar'],
+    ['a number', 7],
+    ['an array holding a number', ['sec-edgar', 3]],
+    ['an object', { id: 'sec-edgar' }],
+  ] as const) {
+    it(`rejects ${name} as sources with a JSON 400`, async () => {
+      setEnv(FAKE_ENV)
+      const handler = await loadAdminRun()
+      const response = await handler(adminRequest({ dryRun: true, sources: value }))
+      expect(response.statusCode).toBe(400)
+      expectJson(response)
+      expect(response.body).toMatch(/array of source ids/i)
+    })
+  }
+
+  it('rejects an empty sources array rather than silently running nothing', async () => {
+    setEnv(FAKE_ENV)
+    const handler = await loadAdminRun()
+    const response = await handler(adminRequest({ dryRun: true, sources: [] }))
+    expect(response.statusCode).toBe(400)
+    expect(response.body).toMatch(/must not be empty/i)
+  })
+
+  /*
+     A DRY RUN MUST VALIDATE WHAT THE REAL RUN WILL USE.
+
+     `sources` is parsed BEFORE the dry-run branch. If it were parsed after, a
+     dry run would accept a malformed value and the operator would discover the
+     problem during the backfill instead.
+  */
+  it('validates sources during a dry run, not only during a real one', async () => {
+    setEnv(FAKE_ENV)
+    const handler = await loadAdminRun()
+    const response = await handler(adminRequest({ dryRun: true, sources: [42] }))
+    expect(response.statusCode).toBe(400)
+  })
+
+  it('refuses a window outside the documented bound, dry run included', async () => {
+    setEnv(FAKE_ENV)
+    const handler = await loadAdminRun()
+    for (const windowDays of [0, -1, 401, 4000]) {
+      const response = await handler(adminRequest({ dryRun: true, windowDays }))
+      expect(response.statusCode, `windowDays=${windowDays}`).toBe(400)
+      expectJson(response)
+    }
+  })
+
+  it('refuses a body that is not JSON', async () => {
+    setEnv(FAKE_ENV)
+    const handler = await loadAdminRun()
+    const response = await handler({
+      httpMethod: 'POST',
+      headers: { 'x-radar-operator-secret': FAKE_ENV.INGEST_SHARED_SECRET! },
+      path: '/api/admin-run',
+      queryStringParameters: {},
+      body: 'not json',
+    })
+    expect(response.statusCode).toBe(400)
+    expectJson(response)
+  })
+
+  it('reports the ingest scope by name when SEC_EDGAR_USER_AGENT is absent', async () => {
+    setEnv({ ...FAKE_ENV, SEC_EDGAR_USER_AGENT: undefined })
+    const handler = await loadAdminRun()
+    const response = await handler(adminRequest({ dryRun: true }))
+    expect(response.statusCode).toBe(503)
+    expectJson(response)
+    expect(response.body).toContain('SEC_EDGAR_USER_AGENT')
+  })
+
+  it('the dry run reports which sources a real run would touch', async () => {
+    // Asserted on the handler's source: the read needs a live project, and the
+    // property that matters is that the answer NAMES the intersection rather
+    // than only echoing the window back.
+    const module = await import('../../netlify/functions/admin-run.ts?raw').then(
+      (m) => (m as { default: string }).default,
+    )
+    // No `.catch(() => '')`: a swallowed import would make every assertion
+    // below pass against an empty string.
+    expect(module.length).toBeGreaterThan(500)
+    for (const field of ['requestedSources', 'enabledSources', 'wouldRun', 'requestedButNotEnabled']) {
+      expect(module, `${field} missing from the dry-run response`).toContain(field)
+    }
+    // And it must say so plainly when the answer is "nothing".
+    expect(module).toMatch(/NO source would run/)
+  })
+})

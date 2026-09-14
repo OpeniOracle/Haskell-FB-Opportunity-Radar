@@ -51,8 +51,9 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'OperatorGuards.psm1') -Force
 
 # --------------------------------------------------------------------------
-# Not secret. Committed in netlify.toml; it grants nothing on its own, and RLS
-# is what protects the data.
+# Not secret; it grants nothing on its own, and RLS is what protects the data.
+# Hard-coded here rather than read from the environment: this script talks to
+# the hosted project directly and does not run inside a Netlify context.
 $SupabaseUrl  = 'https://dutmdlbangsthclgtkhy.supabase.co'
 $Publishable  = 'sb_publishable_kE97uOb8HCo51uT_e0mxqg_So2Z0dwH'
 $Bucket       = 'evidence-raw'
@@ -328,7 +329,19 @@ try {
         Write-Host ($status.Body | ConvertFrom-Json | ConvertTo-Json -Depth 6)
         Check 'foundation ok'                    ((Field $s 'ok') -eq $true)
         Check 'database reachable as the caller' ((Field $s 'database.reachable') -eq $true)
-        Check 'schema version is 0018'           ((Field $s 'schema.version') -eq '0018') "got '$(Field $s 'schema.version')'"
+        # A FLOOR, NOT AN EXACT MATCH. The schema version only moves forward, so
+        # pinning it exactly means every migration silently breaks this
+        # validator -- which is what had happened: it demanded 0018 while the
+        # project was at 0020. The floor is the highest migration whose
+        # behaviour this script actually checks.
+        $schemaFloor = 20
+        $schemaVersion = Field $s 'schema.version'
+        $schemaOk = $false
+        if ($schemaVersion) {
+            $parsed = 0
+            if ([int]::TryParse([string]$schemaVersion, [ref] $parsed)) { $schemaOk = $parsed -ge $schemaFloor }
+        }
+        Check "schema version is at least 00$schemaFloor" $schemaOk "got '$schemaVersion'"
         Check 'evidence bucket is private'       ((Field $s 'storage.private') -eq $true)
         Check 'model credential configured'      ((Field $s 'modelConfigured') -eq $true)
         Check 'SEC contact confirmed'            ((Field $s 'sec.contactConfirmed') -eq $true)
