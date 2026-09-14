@@ -57,6 +57,42 @@ export interface IngestionCounters {
   rejectionReasons: Record<string, number>
 }
 
+/**
+ * A database refusal, said out loud.
+ *
+ * THIRTY-NINE DOCUMENTS WERE REJECTED WITH THE WORD "23514" AND NOTHING ELSE.
+ *
+ * Every write in this file reported `error.code ?? error.message`, and
+ * PostgREST always supplies a code -- so the message, which is the half that
+ * names the constraint, was never reached. "23514" says "a check constraint
+ * failed" and there are more than twenty on `evidence`. Diagnosing it meant
+ * reading the connector and the schema side by side.
+ *
+ * WHAT IS INCLUDED: the code, the message (which names the constraint), the
+ * hint, and the constraint name pulled out separately so it is greppable.
+ *
+ * WHAT IS NOT: `details`. PostgreSQL puts the ENTIRE FAILING ROW in there --
+ * `Failing row contains (...)` -- which for evidence means titles, URLs and an
+ * excerpt of the document. This string reaches an operator's terminal, a run
+ * record and a log, so the row itself stays out of it.
+ */
+export function describeDbError(error: {
+  code?: string | null
+  message?: string | null
+  hint?: string | null
+}): string {
+  const parts: string[] = []
+  if (error.code) parts.push(error.code)
+
+  const message = error.message ?? ''
+  const constraint = /constraint "([^"]+)"/.exec(message)?.[1]
+  if (constraint) parts.push(`constraint ${constraint}`)
+  if (message) parts.push(message.slice(0, 300))
+  if (error.hint) parts.push(`hint: ${String(error.hint).slice(0, 200)}`)
+
+  return parts.length > 0 ? parts.join(' — ') : 'unknown database error'
+}
+
 export function emptyCounters(): IngestionCounters {
   return {
     documentsDiscovered: 0,
@@ -105,16 +141,78 @@ function reject(counters: IngestionCounters, reason: string): void {
  * `retrievedAt` is deliberately not a parameter any more. It cannot influence
  * the published value, so it has no business being in scope here.
  */
-export function normalizePublished(
-  document: DiscoveredDocument,
-): { publishedAt: string | null; precision: string | null; basis: string } {
+/**
+ * The DATABASE's precision vocabulary, which is not the connector's.
+ *
+ * A connector describes a timestamp as it found it -- SEC states an acceptance
+ * instant to the minute, a feed states a pubDate to the minute, a filing index
+ * states only a date. The `evidence_published_precision_check` constraint
+ * (migration 0004) names a different set, because it describes HOW PRECISELY
+ * THE DATE IS KNOWN rather than how many fields the timestamp carried:
+ *
+ *   exact_day, month, quarter, season, half_year, year, range, relative, unknown
+ *
+ * There is no sub-day member and there does not need to be one. A timestamp
+ * known to the minute is a day known exactly, and the minute itself is not lost
+ * -- it is in `published_at`, and the connector's own word for it is recorded
+ * in `evidence_locator.publishedPrecisionObserved`.
+ *
+ * THIS MAPPING DID NOT EXIST, AND THAT WAS THE BUG. The pipeline wrote the
+ * connector's vocabulary straight into the column, so every SEC filing carried
+ * `published_precision = 'minute'` and was refused by the check constraint.
+ */
+const PRECISION_FOR_COLUMN: Record<string, string> = {
+  minute: 'exact_day',
+  hour: 'exact_day',
+  day: 'exact_day',
+  month: 'month',
+  quarter: 'quarter',
+  year: 'year',
+}
+
+/** The allowed members, so a caller can assert against them. */
+export const PUBLISHED_PRECISION_VALUES = [
+  'exact_day',
+  'month',
+  'quarter',
+  'season',
+  'half_year',
+  'year',
+  'range',
+  'relative',
+  'unknown',
+] as const
+
+/** `evidence_published_basis_check`. Three members, and none of them is prose. */
+export const PUBLISHED_BASIS_VALUES = ['stated', 'inferred', 'unknown'] as const
+
+export function publishedPrecisionForColumn(precision: string | null | undefined): string | null {
+  if (!precision) return null
+  // An unrecognised precision becomes `unknown` rather than being written
+  // through. A connector adding a new word must not be able to fail every
+  // insert in the run -- which is exactly what happened here.
+  return PRECISION_FOR_COLUMN[precision] ?? 'unknown'
+}
+
+export function normalizePublished(document: DiscoveredDocument): {
+  publishedAt: string | null
+  precision: string | null
+  basis: string
+  observedPrecision: string | null
+} {
   if (!document.publishedAt) {
-    return { publishedAt: null, precision: null, basis: 'source_stated_none' }
+    // The source stated no date. The basis of the absent date is `unknown`;
+    // `source_stated_none` was prose, and prose is not in the vocabulary.
+    return { publishedAt: null, precision: null, basis: 'unknown', observedPrecision: null }
   }
   return {
     publishedAt: document.publishedAt,
-    precision: document.publishedPrecision ?? 'day',
-    basis: 'source_declared',
+    // A date with no stated precision is a day known exactly -- that is what
+    // having a date means. Never invented upward to an instant.
+    precision: publishedPrecisionForColumn(document.publishedPrecision ?? 'day'),
+    // The source declared it, which the schema calls `stated`.
+    basis: 'stated',
+    observedPrecision: document.publishedPrecision ?? null,
   }
 }
 
@@ -161,7 +259,7 @@ export async function upsertEvidence(
     .is('superseded_at', null)
     .maybeSingle()
 
-  if (readError) throw new Error(`evidence lookup failed: ${readError.code ?? readError.message}`)
+  if (readError) throw new Error(`evidence lookup failed: ${describeDbError(readError)}`)
 
   if (existing && (retrieved.unchanged || existing.content_hash === retrieved.contentHash)) {
     // The ONLY column a re-observation moves.
@@ -169,7 +267,7 @@ export async function upsertEvidence(
       .from('evidence')
       .update({ last_seen_at: input.now })
       .eq('id', existing.id)
-    if (error) throw new Error(`evidence touch failed: ${error.code ?? error.message}`)
+    if (error) throw new Error(`evidence touch failed: ${describeDbError(error)}`)
     return { evidenceId: existing.id as string, created: false, superseded: false, unchanged: true }
   }
 
@@ -195,7 +293,15 @@ export async function upsertEvidence(
     extractor_version: PIPELINE_VERSION,
     transformation_version: PIPELINE_VERSION,
     evidence_excerpt: input.excerpt,
-    evidence_locator: { documentType: document.documentType, ...document.metadata },
+    evidence_locator: {
+      documentType: document.documentType,
+      // What the SOURCE stated, kept because the column's vocabulary has no
+      // sub-day member. Nothing is lost by mapping `minute` to `exact_day`.
+      ...(published.observedPrecision
+        ? { publishedPrecisionObserved: published.observedPrecision }
+        : {}),
+      ...document.metadata,
+    },
     access_mode: input.accessMode,
     data_sensitivity_class: 'public',
     classification_status: input.classificationStatus,
@@ -217,7 +323,7 @@ export async function upsertEvidence(
       .from('evidence')
       .update({ superseded_at: input.now })
       .eq('id', existing.id)
-    if (error) throw new Error(`retiring the prior version failed: ${error.code ?? error.message}`)
+    if (error) throw new Error(`retiring the prior version failed: ${describeDbError(error)}`)
   }
 
   const { data: inserted, error: insertError } = await client
@@ -232,7 +338,7 @@ export async function upsertEvidence(
     if (existing) {
       await client.from('evidence').update({ superseded_at: null }).eq('id', existing.id)
     }
-    throw new Error(`evidence insert failed: ${insertError.code ?? insertError.message}`)
+    throw new Error(`evidence insert failed: ${describeDbError(insertError)}`)
   }
   const newId = inserted!.id as string
 
@@ -243,7 +349,7 @@ export async function upsertEvidence(
       .from('evidence')
       .update({ superseded_by_evidence_id: newId })
       .eq('id', existing.id)
-    if (error) throw new Error(`supersession link failed: ${error.code ?? error.message}`)
+    if (error) throw new Error(`supersession link failed: ${describeDbError(error)}`)
     return { evidenceId: newId, created: true, superseded: true, unchanged: false }
   }
 

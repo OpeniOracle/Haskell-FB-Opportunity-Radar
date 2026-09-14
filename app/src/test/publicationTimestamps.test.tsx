@@ -49,7 +49,10 @@ describe('1. equal timestamps are accepted, not discarded', () => {
   it('keeps a source-stated publication time that happens to equal retrieval', () => {
     const result = normalizePublished(document({ publishedAt: RETRIEVED_AT }))
     expect(result.publishedAt).toBe(RETRIEVED_AT)
-    expect(result.basis).toBe('source_declared')
+    // `stated` is the schema's word for "the source declared it". This read
+    // `source_declared`, which is not a member of evidence_published_basis_check
+    // and refused every insert of the first live backfill.
+    expect(result.basis).toBe('stated')
   })
 
   it('does not carry any notion of rejecting equality', () => {
@@ -59,7 +62,7 @@ describe('1. equal timestamps are accepted, not discarded', () => {
     )
     expect(source).not.toContain('rejected_equal_to_retrieval')
     // The function cannot compare against a value it is not given.
-    expect(source).toMatch(/export function normalizePublished\(\s*document: DiscoveredDocument,\s*\)/)
+    expect(source).toMatch(/export function normalizePublished\(document: DiscoveredDocument\)/)
   })
 
   it('is not forbidden by the schema either', () => {
@@ -84,7 +87,9 @@ describe('2. a missing publication timestamp stays null', () => {
     const result = normalizePublished(document({ publishedAt: null }))
     expect(result.publishedAt).toBeNull()
     expect(result.precision).toBeNull()
-    expect(result.basis).toBe('source_stated_none')
+    // The basis of an absent date is `unknown`. `source_stated_none` was prose,
+    // and prose is not in the column's vocabulary.
+    expect(result.basis).toBe('unknown')
   })
 
   it('treats an empty string from the source as absent, not as a value', () => {
@@ -122,12 +127,34 @@ describe('4. a source-provided publication timestamp is preserved exactly', () =
     }
   })
 
-  it('keeps the precision the source actually supported', () => {
-    expect(normalizePublished(document({ publishedPrecision: 'minute' })).precision).toBe('minute')
-    expect(normalizePublished(document({ publishedPrecision: 'day' })).precision).toBe('day')
-    // No precision stated alongside a real date: recorded as a day, which is
-    // the weakest honest reading, never invented upward to a timestamp.
-    expect(normalizePublished(document({ publishedPrecision: null })).precision).toBe('day')
+  /*
+     THE LABEL IS MAPPED; THE INSTANT IS NOT.
+
+     `published_precision` describes how precisely the DATE is known, and its
+     vocabulary (migration 0004) has no sub-day member: exact_day, month,
+     quarter, season, half_year, year, range, relative, unknown. A timestamp
+     known to the minute is a day known exactly.
+
+     This test used to assert the connector's word went into the column
+     unchanged, which is the bug that refused 39 of 39 SEC filings. What must
+     survive is the INSTANT, and it does -- in `publishedAt`, asserted above,
+     and the source's own word is kept in `evidence_locator`.
+  */
+  it('maps the precision onto the column vocabulary without losing the instant', () => {
+    const minute = normalizePublished(
+      document({ publishedPrecision: 'minute', publishedAt: '2026-03-04T16:31:07.123Z' }),
+    )
+    expect(minute.precision).toBe('exact_day')
+    expect(minute.observedPrecision).toBe('minute')
+    expect(minute.publishedAt).toBe('2026-03-04T16:31:07.123Z')
+
+    expect(normalizePublished(document({ publishedPrecision: 'day' })).precision).toBe('exact_day')
+    expect(normalizePublished(document({ publishedPrecision: 'month' })).precision).toBe('month')
+    expect(normalizePublished(document({ publishedPrecision: 'year' })).precision).toBe('year')
+
+    // No precision stated alongside a real date: the day is what we have, and
+    // it is never invented upward to an instant.
+    expect(normalizePublished(document({ publishedPrecision: null })).precision).toBe('exact_day')
   })
 })
 

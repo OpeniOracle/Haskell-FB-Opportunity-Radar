@@ -117,6 +117,15 @@ const ENV_MODULES = [
  *                         right shape. Every value in it is fabricated — the URL
  *                         resolves to nothing and the keys are zeroes — and the
  *                         file asserts that none of them reaches the output
+ *   evidencePayload.test.ts
+ *                         builds the exact evidence row the SEC connector
+ *                         produces for a real Tyson Foods 8-K and checks every
+ *                         constrained column against the vocabularies parsed
+ *                         out of the migrations. The representative payload IS
+ *                         the test: a fabricated filer with a fabricated
+ *                         accession number would not be the row that was
+ *                         refused 39 times, so it names the filer and the
+ *                         sec.gov archive URLs its transport actually uses
  *   sourceConnectivity.test.ts
  *                         asserts the pre-flight connectivity decision -- that a
  *                         404 on one guessed Mars feed candidate must not
@@ -168,6 +177,7 @@ const SELF_REFERENTIAL = [
   'runtimeConfiguration.test.ts',
   'modelDependency.test.ts',
   'sourceConnectivity.test.ts',
+  'evidencePayload.test.ts',
 ]
 
 const files = walk(srcDir)
