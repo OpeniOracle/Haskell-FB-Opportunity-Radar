@@ -31,7 +31,7 @@
 -- CHECKSUM (whitespace-normalised per line, sha256 -- the rule
 -- db/migrate.mjs uses, so a database migrated this way verifies clean)
 --
---   0024  43aba8ef4afa496e46b9265a6217ba44cbe3d87d6fbe9d2dd08b442989c818d1
+--   0024  57487a237a20d6e72530424d7377aaae0a22ba117511a5163e1038b0418b8ab6
 -- =====================================================================
 
 do $operator_0024$
@@ -58,7 +58,8 @@ begin
 
 -- >>>>>>>>>>>>>>>>>>>>>> CANONICAL PAYLOAD BEGINS <<<<<<<<<<<<<<<<<<<<<<
 -- Verbatim from db/migrations/0024_spyglass_media_intelligence.up.sql, minus its own
--- begin;/commit; lines.
+-- begin;/commit; lines. DDL ONLY -- the rows this feature needs are
+-- seeded separately; see the note at the end of this file.
 
 -- 0024 — Openi Spyglass: a configurable dashboard link and reviewed snapshot embeds.
 --
@@ -263,25 +264,26 @@ create policy spyglass_widgets_admin_delete on public.spyglass_widgets
     for delete to authenticated using (public.is_app_administrator());
 
 -- ---------------------------------------------------------------------------
--- 4. The default destination.
+-- 4. NO ROWS ARE WRITTEN HERE.
 --
--- Seeded so the surface works on the first load. It is a DEFAULT, not a
--- constant: an administrator repoints it from the interface and no deployment
--- is involved, which is the requirement this whole table exists to meet.
+-- The default dashboard destination is DATA. See
+-- db/seed/0008_spyglass_defaults.sql.
 --
--- NO WIDGET IS SEEDED. An embed URL has to be generated from the dashboard by a
--- person who chose the date range it freezes, and inventing one here would put a
--- snapshot on screen that nobody reviewed.
+-- It is a DEFAULT, not a constant: an administrator repoints it from the
+-- interface and no deployment is involved, which is the requirement this table
+-- exists to meet. Until the seed runs, the surface says it is not configured —
+-- which is true, and is a state it renders properly.
+--
+-- NO WIDGET IS SEEDED ANYWHERE. An embed URL has to be generated from the
+-- dashboard by a person who chose the date range it freezes, and inventing one
+-- would put a snapshot on screen that nobody reviewed.
 -- ---------------------------------------------------------------------------
-insert into spyglass_settings (id, dashboard_url, dashboard_label, updated_by)
-values ('default', 'https://zign.al/urgnr9l3', 'Openi Spyglass', 'migration 0024')
-on conflict (id) do nothing;
 
 -- >>>>>>>>>>>>>>>>>>>>>>> CANONICAL PAYLOAD ENDS <<<<<<<<<<<<<<<<<<<<<<<
 
     -- ------------------------------------------------------------- ledger row
     insert into public.schema_migrations (version, name, checksum, stamped)
-    values ('0024', 'spyglass_media_intelligence', '43aba8ef4afa496e46b9265a6217ba44cbe3d87d6fbe9d2dd08b442989c818d1', false);
+    values ('0024', 'spyglass_media_intelligence', '57487a237a20d6e72530424d7377aaae0a22ba117511a5163e1038b0418b8ab6', false);
 
     -- ----------------------------------------------------------- postconditions
     if to_regclass('public.spyglass_settings') is null
@@ -316,9 +318,12 @@ on conflict (id) do nothing;
         raise exception 'ABORT: the administrator-only update policy is missing.';
     end if;
 
-    if (select dashboard_url from public.spyglass_settings where id = 'default')
-       not like 'https://%' then
-        raise exception 'ABORT: the seeded dashboard address is not an https URL.';
+    -- NO ROWS WERE WRITTEN. The default destination is seeded separately, and
+    -- the constraint that keeps it on an approved origin is what this file
+    -- installed.
+    if exists (select 1 from public.spyglass_settings)
+       or exists (select 1 from public.spyglass_widgets) then
+        raise exception 'ABORT: a Spyglass row exists already. This migration writes none.';
     end if;
 
     -- The allowlist stays unreadable by a signed-in session (migration 0016).
@@ -337,3 +342,21 @@ on conflict (id) do nothing;
     raise notice 'Migration 0024 applied. Spyglass configured; administrator writes are policy-gated and the administrator table is server-side only.';
 end
 $operator_0024$;
+
+-- =====================================================================
+-- AFTERWARDS: seed the default Spyglass destination.
+--
+--   Supabase SQL Editor -> paste db/seed/0008_spyglass_defaults.sql -> Run
+--   Or: node db/seed.mjs 0008
+--
+-- Until it runs, the Media Intelligence surface says Spyglass is not
+-- configured. That is true, and it is a state the surface renders properly
+-- rather than a blank page.
+--
+-- The seed uses `on conflict do nothing`: if an administrator has already
+-- repointed the dashboard from the interface, re-running it must not drag
+-- the address back.
+--
+-- NO WIDGET IS SEEDED, by either file. An embed snippet has to be generated
+-- from the dashboard by a person who chose the date range it freezes.
+-- =====================================================================

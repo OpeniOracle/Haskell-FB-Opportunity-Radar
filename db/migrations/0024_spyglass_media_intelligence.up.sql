@@ -202,18 +202,19 @@ create policy spyglass_widgets_admin_delete on public.spyglass_widgets
     for delete to authenticated using (public.is_app_administrator());
 
 -- ---------------------------------------------------------------------------
--- 4. The default destination.
+-- 4. NO ROWS ARE WRITTEN HERE.
 --
--- Seeded so the surface works on the first load. It is a DEFAULT, not a
--- constant: an administrator repoints it from the interface and no deployment
--- is involved, which is the requirement this whole table exists to meet.
+-- The default dashboard destination is DATA. See
+-- db/seed/0008_spyglass_defaults.sql.
 --
--- NO WIDGET IS SEEDED. An embed URL has to be generated from the dashboard by a
--- person who chose the date range it freezes, and inventing one here would put a
--- snapshot on screen that nobody reviewed.
+-- It is a DEFAULT, not a constant: an administrator repoints it from the
+-- interface and no deployment is involved, which is the requirement this table
+-- exists to meet. Until the seed runs, the surface says it is not configured —
+-- which is true, and is a state it renders properly.
+--
+-- NO WIDGET IS SEEDED ANYWHERE. An embed URL has to be generated from the
+-- dashboard by a person who chose the date range it freezes, and inventing one
+-- would put a snapshot on screen that nobody reviewed.
 -- ---------------------------------------------------------------------------
-insert into spyglass_settings (id, dashboard_url, dashboard_label, updated_by)
-values ('default', 'https://zign.al/urgnr9l3', 'Openi Spyglass', 'migration 0024')
-on conflict (id) do nothing;
 
 commit;

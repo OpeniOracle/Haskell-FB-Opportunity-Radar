@@ -45,3 +45,10 @@ insert into evidence (
 
 insert into research_batches (id, source_file, tool_or_author, record_count)
     values ('00000000-0000-4000-8000-000000000040', 'structural-test.jsonl', 'test', 0);
+
+-- The Spyglass settings row, so the contract tests that operate on it act on a
+-- row that exists. Without it an UPDATE matches nothing and "succeeds", which
+-- would make both the origin-constraint test and the administrator-policy test
+-- pass vacuously — asserting nothing while looking green.
+insert into spyglass_settings (id, dashboard_url, dashboard_label, updated_by)
+values ('default', 'https://zign.al/structural-test', 'Structural fixture', 'fixtures');

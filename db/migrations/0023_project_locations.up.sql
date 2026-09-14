@@ -204,28 +204,16 @@ create policy opportunity_locations_read_authenticated on public.opportunity_loc
 -- browser by construction, not by omission.
 
 -- ---------------------------------------------------------------------------
--- 3. Headquarters, as public addresses with no coordinates.
+-- 3. NO ROWS ARE WRITTEN HERE.
 --
--- These three are matters of public record — each company's own corporate
--- address, as published. They are seeded as TEXT ONLY: `precision` stays
--- 'unresolved' and latitude and longitude stay null until the geocoder resolves
--- them, because a coordinate typed by hand has no source to check it against.
+-- The three cohort headquarters are DATA, and data lives in db/seed. A
+-- migration that carries rows runs on every environment including production
+-- without anyone deciding that it should, which is why CI fails a migration
+-- containing an insert — and why this one was caught doing exactly that.
 --
--- `source_note` carries where the address came from. `on conflict do nothing`
--- so re-running this migration against a database that already holds them is a
--- no-op rather than a duplicate-key failure.
+-- See db/seed/0007_cohort_headquarters.sql. It seeds postal addresses and NO
+-- COORDINATES: latitude and longitude are written by the geocoder or not at
+-- all, because a hand-typed coordinate has no source to check it against.
 -- ---------------------------------------------------------------------------
-
-insert into organization_locations
-    (organization_id, location_type, label, address_text, locality, region, country, source_note)
-select o.id, 'corporate_headquarters', v.label, v.address_text, v.locality, v.region, 'United States',
-       'Publicly published corporate headquarters address. Account context only; never a project location.'
-from (values
-    ('PepsiCo, Inc.',     'PepsiCo corporate headquarters',     '700 Anderson Hill Road',        'Purchase',   'New York'),
-    ('Tyson Foods, Inc.', 'Tyson Foods corporate headquarters', '2200 West Don Tyson Parkway',   'Springdale', 'Arkansas'),
-    ('Mars, Incorporated','Mars corporate headquarters',        '6885 Elm Street',               'McLean',     'Virginia')
-) as v(canonical_name, label, address_text, locality, region)
-join organizations o on o.canonical_name = v.canonical_name
-on conflict (organization_id, location_type, label) do nothing;
 
 commit;

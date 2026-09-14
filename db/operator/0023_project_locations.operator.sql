@@ -27,7 +27,7 @@
 -- CHECKSUM (whitespace-normalised per line, sha256 -- the rule
 -- db/migrate.mjs uses, so a database migrated this way verifies clean)
 --
---   0023  2bbf02b619819378b5b659fc86cfdda2d206e0d2931aa86812eaef617a134642
+--   0023  8151da04fd047b39caac72b62d44b894f073ca4d919ee9760225c565ae1ce8ae
 -- =====================================================================
 
 do $operator_0023$
@@ -58,7 +58,8 @@ begin
 
 -- >>>>>>>>>>>>>>>>>>>>>> CANONICAL PAYLOAD BEGINS <<<<<<<<<<<<<<<<<<<<<<
 -- Verbatim from db/migrations/0023_project_locations.up.sql, minus its own
--- begin;/commit; lines.
+-- begin;/commit; lines. DDL ONLY -- the rows this feature needs are
+-- seeded separately; see the note at the end of this file.
 
 -- 0023 — Where a project is, and how sure we are that it is there.
 --
@@ -265,35 +266,23 @@ create policy opportunity_locations_read_authenticated on public.opportunity_loc
 -- browser by construction, not by omission.
 
 -- ---------------------------------------------------------------------------
--- 3. Headquarters, as public addresses with no coordinates.
+-- 3. NO ROWS ARE WRITTEN HERE.
 --
--- These three are matters of public record — each company's own corporate
--- address, as published. They are seeded as TEXT ONLY: `precision` stays
--- 'unresolved' and latitude and longitude stay null until the geocoder resolves
--- them, because a coordinate typed by hand has no source to check it against.
+-- The three cohort headquarters are DATA, and data lives in db/seed. A
+-- migration that carries rows runs on every environment including production
+-- without anyone deciding that it should, which is why CI fails a migration
+-- containing an insert — and why this one was caught doing exactly that.
 --
--- `source_note` carries where the address came from. `on conflict do nothing`
--- so re-running this migration against a database that already holds them is a
--- no-op rather than a duplicate-key failure.
+-- See db/seed/0007_cohort_headquarters.sql. It seeds postal addresses and NO
+-- COORDINATES: latitude and longitude are written by the geocoder or not at
+-- all, because a hand-typed coordinate has no source to check it against.
 -- ---------------------------------------------------------------------------
-
-insert into organization_locations
-    (organization_id, location_type, label, address_text, locality, region, country, source_note)
-select o.id, 'corporate_headquarters', v.label, v.address_text, v.locality, v.region, 'United States',
-       'Publicly published corporate headquarters address. Account context only; never a project location.'
-from (values
-    ('PepsiCo, Inc.',     'PepsiCo corporate headquarters',     '700 Anderson Hill Road',        'Purchase',   'New York'),
-    ('Tyson Foods, Inc.', 'Tyson Foods corporate headquarters', '2200 West Don Tyson Parkway',   'Springdale', 'Arkansas'),
-    ('Mars, Incorporated','Mars corporate headquarters',        '6885 Elm Street',               'McLean',     'Virginia')
-) as v(canonical_name, label, address_text, locality, region)
-join organizations o on o.canonical_name = v.canonical_name
-on conflict (organization_id, location_type, label) do nothing;
 
 -- >>>>>>>>>>>>>>>>>>>>>>> CANONICAL PAYLOAD ENDS <<<<<<<<<<<<<<<<<<<<<<<
 
     -- ------------------------------------------------------------- ledger row
     insert into public.schema_migrations (version, name, checksum, stamped)
-    values ('0023', 'project_locations', '2bbf02b619819378b5b659fc86cfdda2d206e0d2931aa86812eaef617a134642', false);
+    values ('0023', 'project_locations', '8151da04fd047b39caac72b62d44b894f073ca4d919ee9760225c565ae1ce8ae', false);
 
     -- ----------------------------------------------------------- postconditions
     if to_regclass('public.opportunity_locations') is null
@@ -321,14 +310,11 @@ on conflict (organization_id, location_type, label) do nothing;
         raise exception 'ABORT: a session gained write access to a location table.';
     end if;
 
-    -- The seeded headquarters carry NO coordinates. If any arrived, something
-    -- other than the geocoder wrote them.
-    if exists (
-        select 1 from public.organization_locations
-         where location_type = 'corporate_headquarters' and latitude is not null
-           and resolved_at is null
-    ) then
-        raise exception 'ABORT: a headquarters carries a coordinate that no geocoder wrote.';
+    -- NO ROWS WERE WRITTEN. This file is DDL; the headquarters are seeded
+    -- separately. A location present here means something else wrote it.
+    if exists (select 1 from public.organization_locations)
+       or exists (select 1 from public.opportunity_locations) then
+        raise exception 'ABORT: a location row exists already. This migration writes none.';
     end if;
 
     -- The allowlist stays unreadable by a signed-in session (migration 0016).
@@ -347,3 +333,18 @@ on conflict (organization_id, location_type, label) do nothing;
     raise notice 'Migration 0023 applied. Location tables created; the geocode cache is server-side only and no coordinate was invented.';
 end
 $operator_0023$;
+
+-- =====================================================================
+-- AFTERWARDS: seed the cohort headquarters.
+--
+-- This file created the tables. The three headquarters rows are DATA and
+-- live in db/seed, because a migration that carries rows runs on every
+-- environment without anyone deciding that it should.
+--
+--   Supabase SQL Editor -> paste db/seed/0007_cohort_headquarters.sql -> Run
+--   Or: node db/seed.mjs 0007
+--
+-- It seeds POSTAL ADDRESSES AND NO COORDINATES. Latitude and longitude are
+-- written by POST /api/resolve-locations, which geocodes through Stadia --
+-- a hand-typed coordinate has no source to check it against.
+-- =====================================================================
