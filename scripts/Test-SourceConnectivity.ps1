@@ -50,6 +50,11 @@ $ErrorActionPreference = 'Stop'
 $script:Exit = 0
 $script:Source = $null
 
+# One entry per discovery candidate that answered 404, carrying the
+# connector_config array it lives in. Drives the remediation block at the end;
+# empty means nothing is printed.
+$script:Dead = @()
+
 function Say  ([string] $M) { Write-Host $M }
 function Pass ([string] $M) { Write-Host "  PASS  $M" -ForegroundColor Green }
 function Fail ([string] $M) { Write-Host "  FAIL  $M" -ForegroundColor Red }
@@ -73,6 +78,10 @@ function Test-Endpoint {
         [ValidateSet('required', 'discovery')] [string] $Role,
         [string] $Label,
         [string] $Uri,
+        # The connector_config array this candidate lives in, so a 404 can be
+        # turned into the exact statement that removes it. Empty for a required
+        # endpoint, which is not configuration and cannot be retired.
+        [string] $Array = '',
         [string] $Expect = ''
     )
 
@@ -135,6 +144,15 @@ function Test-Endpoint {
         if ($Role -eq 'discovery') { $script:Source.DiscoveryOk++ }
         Pass $Label
         return
+    }
+
+    # ONLY A 404 EARNS A REMOVAL. The remediation deletes a URL from
+    # configuration, so the bar is evidence the path is not there -- not
+    # evidence it did not answer this time. A 403 may be a WAF in front of a
+    # real page, a 429 is a rate limit, a redirect is the page moving, and a
+    # transport error is usually this machine.
+    if ($Role -eq 'discovery' -and $outcome -eq 'absent' -and $Array) {
+        $script:Dead += [pscustomobject] @{ Array = $Array; Url = $Uri }
     }
 
     # A miss on an OPTIONAL candidate is information about a guess, not a fault.
@@ -223,34 +241,52 @@ Complete-Source 'sec-edgar'
 
 Start-Source 'Mars (official corporate sources)'
 Test-Endpoint -Role required -Label 'robots.txt' -Uri 'https://www.mars.com/robots.txt'
-# Discovery candidates, in the connector's own order: feed, sitemap, index.
-# https://www.mars.com/rss.xml is NOT here: observed 404 on 2026-09-13 and
-# retired. See RETIRED_CANDIDATES in scripts/lib/connectivity-rules.mjs.
-Test-Endpoint -Role discovery -Label 'feed candidate (news-and-stories/rss)' -Uri 'https://www.mars.com/news-and-stories/rss'
-Test-Endpoint -Role discovery -Label 'feed candidate (feed)' -Uri 'https://www.mars.com/feed'
-Test-Endpoint -Role discovery -Label 'sitemap candidate' -Uri 'https://www.mars.com/sitemap.xml'
-Test-Endpoint -Role discovery -Label 'newsroom index' -Uri 'https://www.mars.com/news-and-stories'
-Test-Endpoint -Role discovery -Label 'index candidate (news)' -Uri 'https://www.mars.com/news'
-Test-Endpoint -Role discovery -Label 'index candidate (press-releases)' -Uri 'https://www.mars.com/press-releases'
+# Discovery, in the connector's own order: feed, sitemap, index.
+#
+# THERE IS NO FEED CANDIDATE, AND THAT IS A FINDING. All six guessed paths were
+# probed from direct egress and four are gone -- /rss.xml (2026-09-13), then
+# /news-and-stories/rss, /feed, /news and /press-releases (2026-09-14), every
+# one HTTP 404. feedCandidates is now legitimately empty and discovery starts
+# at the sitemap. See RETIRED_CANDIDATES in scripts/lib/connectivity-rules.mjs.
+Test-Endpoint -Role discovery -Label 'sitemap candidate' -Uri 'https://www.mars.com/sitemap.xml' -Array 'sitemapCandidates'
+Test-Endpoint -Role discovery -Label 'newsroom index' -Uri 'https://www.mars.com/news-and-stories' -Array 'indexCandidates'
 Complete-Source 'mars-newsroom'
 
-Write-Host ''
-Write-Host '== Retiring a dead candidate' -ForegroundColor Cyan
-Say '  Candidate URLs are configuration, not code. Remove one WITHOUT replacing'
-Say '  the rest of the object:'
-Say ''
-Say "    update sources"
-Say "       set connector_config = jsonb_set("
-Say "             connector_config, '{feedCandidates}',"
-Say "             coalesce((select jsonb_agg(value order by ordinality)"
-Say "                         from jsonb_array_elements_text(connector_config->'feedCandidates')"
-Say "                              with ordinality as c(value, ordinality)"
-Say "                        where value <> 'https://www.mars.com/rss.xml'), '[]'::jsonb)),"
-Say "           updated_at = now()"
-Say "     where id = 'mars-newsroom';"
-Say ''
-Say '  Do NOT use the `connector_config || ...` form unless you are supplying the'
-Say '  COMPLETE remaining array: that form replaces the whole key.'
-Say ''
+# ---------------------------------------------------------------------------
+# REMEDIATION IS DERIVED FROM THIS RUN, NOT PRINTED FROM A TEMPLATE.
+#
+# This block used to print the same example SQL every time, naming
+# https://www.mars.com/rss.xml -- a URL that had already been removed from the
+# hosted row. Advice that is irrelevant on every run after the first teaches an
+# operator to skip the section, which is exactly when a real one appears.
+#
+# If nothing 404ed, nothing is printed.
+# ---------------------------------------------------------------------------
+if ($script:Dead.Count -gt 0) {
+    Write-Host ''
+    Write-Host '== Candidates this run proved do not exist' -ForegroundColor Cyan
+    Say ''
+    Say '  Each of these answered 404. Remove them from connector_config; a'
+    Say '  dead candidate costs a request and a log line on every run.'
+    Say ''
+    foreach ($group in $script:Dead | Group-Object -Property Array) {
+        $urls = ($group.Group | ForEach-Object { "'" + $_.Url + "'" }) -join ', '
+        Say "    -- $($group.Name)"
+        Say '    update sources'
+        Say '       set connector_config = jsonb_set('
+        Say "             connector_config, '{$($group.Name)}',"
+        Say '             coalesce((select jsonb_agg(value order by ordinality)'
+        Say "                         from jsonb_array_elements_text(connector_config->'$($group.Name)')"
+        Say '                              with ordinality as c(value, ordinality)'
+        Say "                        where value not in ($urls)), '[]'::jsonb)),"
+        Say '           updated_at = now()'
+        Say "     where id = 'mars-newsroom';"
+        Say ''
+    }
+    Say '  One array per statement, so the others are untouched. Do NOT use the'
+    Say '  `connector_config || ...` form unless you are supplying the COMPLETE'
+    Say '  remaining array: that form replaces the whole key.'
+    Say ''
+}
 
 exit $script:Exit

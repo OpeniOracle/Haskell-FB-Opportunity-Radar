@@ -45,9 +45,17 @@ const runbook = read('docs/HOSTED_VALIDATION_RUNBOOK.md')
    operator scripts are checked against, not a copy of it.
 */
 type Rules = {
-  RETIRED_CANDIDATES: { url: string; observed: string; on: string; by: string }[]
-  PROBES: Record<string, { label: string; url: string; role: string; kind?: string; expect: string }[]>
+  RETIRED_CANDIDATES: { url: string; array: string; observed: string; on: string; by: string }[]
+  CANDIDATE_ARRAYS: string[]
+  PROBES: Record<
+    string,
+    { label: string; url: string; role: string; kind?: string; array?: string; expect: string }[]
+  >
   CHALLENGE_MARKERS: RegExp
+  remediationFor: (
+    results: { label?: string; role: string; outcome: string; url: string; array?: string }[],
+  ) => { array: string; urls: string[] }[]
+  removalSql: (array: string, urls: string[]) => string
   classifyProbe: (p: { status: number; body?: string; transportError?: string }) => string
   applyExpectation: (o: string, p: { body?: string; expect?: string }) => string
   sourceVerdict: (results: { label: string; role: string; outcome: string }[]) => {
@@ -322,28 +330,61 @@ describe('retired candidates', () => {
   */
   const retiredUrls = () => rules.RETIRED_CANDIDATES.map((c: { url: string }) => c.url)
 
-  it('is not in the connector default feedCandidates', () => {
+  /*
+     EXACT URLS, NOT SUBSTRINGS.
+
+     `https://www.mars.com/news` is a PREFIX of
+     `https://www.mars.com/news-and-stories`, so a `contains` check reports the
+     live newsroom index as a retired candidate. Quoting both ends is what makes
+     the two distinguishable -- the same trap that already caught a redirect
+     assertion in liveConnectors.test.ts.
+  */
+  const namesUrl = (text: string, url: string) =>
+    new RegExp(`['"\`]${url.replace(/[.*+?^$|()[\]{}\\]/g, '\\$&')}['"\`]`).test(text)
+
+  it('is not a live candidate in the connector defaults', () => {
     const block = connector.slice(
-      connector.indexOf('feedCandidates: ['),
-      connector.indexOf('sitemapCandidates:'),
+      connector.indexOf('export const MARS_DEFAULT_CONFIG'),
+      connector.indexOf('itemPathPattern'),
     )
-    expect(block.length).toBeGreaterThan(20)
-    for (const url of retiredUrls()) expect(block).not.toContain(url)
-  })
-
-  it('is not in the seed jsonb_build_array of candidates', () => {
-    const block = seed.slice(seed.indexOf("'feedCandidates', jsonb_build_array("))
-    const arrayOnly = block.slice(0, block.indexOf('),'))
-    expect(arrayOnly.length).toBeGreaterThan(20)
-    for (const url of retiredUrls()) expect(arrayOnly).not.toContain(url)
-  })
-
-  it('is named exactly once in the seed, in the retired list that removes it', () => {
+    expect(block.length).toBeGreaterThan(100)
+    const code = block
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l.trim()))
+      .join('\n')
     for (const url of retiredUrls()) {
-      const inValues = seed.includes(`values ('${url}')`) || seed.includes(`('${url}')`)
-      expect(inValues, `${url} is not in the seed's retired list`).toBe(true)
+      expect(namesUrl(code, url), `${url} is still a connector default`).toBe(false)
     }
-    expect(seed).toContain('retired(url)')
+  })
+
+  it('is not a live candidate in the seeded connector_config', () => {
+    const block = seed.slice(
+      seed.indexOf("'feedCandidates'"),
+      seed.indexOf("'itemPathPattern'"),
+    )
+    expect(block.length).toBeGreaterThan(100)
+    const code = block
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('--'))
+      .join('\n')
+    for (const url of retiredUrls()) {
+      expect(namesUrl(code, url), `${url} is still seeded as a candidate`).toBe(false)
+    }
+  })
+
+  it('is listed in the seed retirement table, with the array it lives in', () => {
+    const table = seed.slice(seed.indexOf('with retired(url, arr)'), seed.indexOf('arrays(arr)'))
+    for (const entry of rules.RETIRED_CANDIDATES) {
+      expect(table, `${entry.url} is not in the seed's retired list`).toContain(entry.url)
+      expect(table, `${entry.url} has no array in the seed`).toContain(entry.array)
+    }
+    expect(seed).toContain('with retired(url, arr)')
+  })
+
+  it('every retired candidate declares which array it lived in', () => {
+    for (const entry of rules.RETIRED_CANDIDATES) {
+      expect(rules.CANDIDATE_ARRAYS).toContain(entry.array)
+    }
   })
 
   for (const [name, text, probeToken] of [
@@ -351,24 +392,22 @@ describe('retired candidates', () => {
     ['PowerShell', ps, 'Test-Endpoint '],
   ] as const) {
     it(`the ${name} script never probes a retired URL`, () => {
-      const probeLines = text
-        .split('\n')
-        .filter((line) => line.trim().startsWith(probeToken))
-      expect(probeLines.length).toBeGreaterThan(5)
+      const probeLines = text.split('\n').filter((line) => line.trim().startsWith(probeToken))
+      expect(probeLines.length).toBeGreaterThan(2)
       for (const url of retiredUrls()) {
         for (const line of probeLines) {
-          expect(line, `${name} still probes ${url}`).not.toContain(url)
+          expect(namesUrl(line, url), `${name} still probes ${url}`).toBe(false)
         }
       }
     })
 
-    it(`the ${name} script explains the retirement rather than hiding it`, () => {
-      // It may name the URL in a comment or in the example removal SQL. What it
-      // must not do is leave a reader guessing why it disappeared.
-      for (const url of retiredUrls()) {
-        expect(text, `${name} does not mention ${url} at all`).toContain(url)
-      }
+    it(`the ${name} script explains why the feed candidates are gone`, () => {
+      // Requiring every retired URL verbatim would just be noise once the list
+      // grows. What a reader needs is the finding and where the list lives.
       expect(text).toMatch(/retire/i)
+      expect(text).toContain('RETIRED_CANDIDATES')
+      expect(text).toContain('scripts/lib/connectivity-rules.mjs')
+      expect(text).toMatch(/NO FEED CANDIDATE|feedCandidates is now legitimately empty/)
     })
   }
 })
@@ -458,7 +497,8 @@ describe('the rules module, the seed and both scripts agree', () => {
     const order = (rules.PROBES['mars-newsroom'] as { kind?: string }[])
       .filter((p) => p.kind)
       .map((p) => p.kind)
-    expect(order).toEqual(['feed', 'feed', 'sitemap', 'index', 'index', 'index'])
+    // No feed candidate survives, so the walk starts at the sitemap.
+    expect(order).toEqual(['sitemap', 'index'])
     const feedIdx = connector.indexOf('...config.feedCandidates.map')
     const siteIdx = connector.indexOf('...config.sitemapCandidates')
     const indexIdx = connector.indexOf('...config.indexCandidates.map')
@@ -473,44 +513,174 @@ describe('the rules module, the seed and both scripts agree', () => {
 // ---------------------------------------------------------------------------
 
 describe('reconciling the seed with hosted connector configuration', () => {
+  const reconcile = () => seed.slice(seed.indexOf('with retired(url, arr)'))
+
   it('the upsert never replaces connector_config wholesale', () => {
     // connector_config is OPERATOR state, corrected during a live run from a
     // machine that can reach the source. A seed that overwrote it would throw
     // away the one thing this repository cannot know.
-    const doUpdate = seed.slice(seed.indexOf('on conflict (id) do update set'))
+    const doUpdate = seed.slice(
+      seed.indexOf('on conflict (id) do update set'),
+      seed.indexOf('with retired(url, arr)'),
+    )
     expect(doUpdate).not.toMatch(/connector_config\s*=\s*excluded\.connector_config/)
   })
 
-  it('retirement reaches an existing row through a targeted array edit', () => {
-    expect(seed).toContain('jsonb_set(')
-    expect(seed).toContain("'{feedCandidates}'")
-    expect(seed).toContain('jsonb_array_elements_text')
-    // Not the `||` merge form, which replaces the whole key.
-    expect(seed).not.toMatch(/connector_config\s*\|\|\s*'\{"feedCandidates"/)
+  it('covers every array a retired candidate can live in', () => {
+    const stmt = reconcile()
+    for (const array of rules.CANDIDATE_ARRAYS) {
+      expect(stmt, `${array} is not named in the reconciliation`).toContain(array)
+    }
   })
 
-  it('the reconciliation is idempotent: a second run matches nothing', () => {
-    const stmt = seed.slice(seed.indexOf('with retired(url)'))
+  it('removes a URL only from the array it belongs to', () => {
+    // `where arr = k`. Without it, a URL retired from feedCandidates would be
+    // stripped from indexCandidates too if it happened to appear there.
+    expect(reconcile()).toContain('where arr = k')
+  })
+
+  it('edits arrays and passes every other value through untouched', () => {
+    const stmt = reconcile()
+    expect(stmt).toContain("jsonb_typeof(v) = 'array'")
+    expect(stmt).toContain('else v')
+    // Not the `||` merge form, which replaces a whole key.
+    expect(stmt).not.toMatch(/connector_config\s*\|\|\s*'\{"/)
+  })
+
+  it('preserves array order explicitly', () => {
+    // The connector tries candidates in order, so a reshuffle would silently
+    // change which discovery path is attempted first.
+    expect(reconcile()).toContain('order by c.ordinality')
+  })
+
+  it('is idempotent: the guard makes a second run match nothing', () => {
+    const stmt = reconcile()
     expect(stmt).toMatch(/where\s+s\.id\s*=\s*'mars-newsroom'/)
-    // The guard that makes re-running a no-op.
     expect(stmt).toContain('and exists (')
-    expect(stmt).toContain('in (select url from retired)')
+    expect(stmt).toContain('in (select url from retired where arr = k)')
   })
 
   it('touches only the mars-newsroom row', () => {
-    const stmt = seed.slice(seed.indexOf('with retired(url)'))
-    expect(stmt).toContain("s.id = 'mars-newsroom'")
+    expect(reconcile()).toContain("s.id = 'mars-newsroom'")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5b. Remediation output is derived from the run, never printed from a template.
+// ---------------------------------------------------------------------------
+
+describe('what the script tells the operator to fix', () => {
+  const d = (outcome: string, array: string, url: string) => ({
+    label: url,
+    role: 'discovery' as const,
+    outcome,
+    array,
+    url,
   })
 
-  it('both scripts print the targeted form and warn against the merge form', () => {
-    for (const [name, text] of [
-      ['bash', sh],
-      ['PowerShell', ps],
-    ] as const) {
-      expect(text, name).toContain('jsonb_set(')
-      expect(text, name).toMatch(/COMPLETE remaining array/)
-    }
+  /*
+     THE DEFECT. Both scripts used to print the same example SQL on every run,
+     naming https://www.mars.com/rss.xml -- a URL the operator had already
+     removed from the hosted row. Advice that is irrelevant on every run after
+     the first teaches an operator to skip the section, which is exactly when a
+     real one appears.
+  */
+  it('prints nothing when nothing is wrong', () => {
+    expect(
+      rules.remediationFor([
+        d('ok', 'sitemapCandidates', 'https://www.mars.com/sitemap.xml'),
+        d('ok', 'indexCandidates', 'https://www.mars.com/news-and-stories'),
+      ]),
+    ).toEqual([])
   })
+
+  it('names exactly the candidates that 404ed, in their own arrays', () => {
+    const out = rules.remediationFor([
+      d('absent', 'feedCandidates', 'https://www.mars.com/feed'),
+      d('absent', 'indexCandidates', 'https://www.mars.com/news'),
+      d('absent', 'indexCandidates', 'https://www.mars.com/press-releases'),
+      d('ok', 'sitemapCandidates', 'https://www.mars.com/sitemap.xml'),
+    ])
+    expect(out).toEqual([
+      { array: 'feedCandidates', urls: ['https://www.mars.com/feed'] },
+      {
+        array: 'indexCandidates',
+        urls: ['https://www.mars.com/news', 'https://www.mars.com/press-releases'],
+      },
+    ])
+  })
+
+  /*
+     ONLY A 404. The remediation DELETES a URL from configuration, so the bar is
+     evidence that the path is not there -- not evidence that it did not answer
+     this time. A 403 may be a WAF in front of a real page, a 429 is a rate
+     limit, a redirect is the page moving, and a transport error is usually the
+     operator's own network. Retiring on any of those deletes a working
+     candidate because of a bad afternoon.
+  */
+  for (const outcome of ['refused', 'challenge', 'rate_limited', 'redirect', 'local_network', 'unreachable', 'unexpected']) {
+    it(`never recommends removing a candidate that was "${outcome}"`, () => {
+      expect(
+        rules.remediationFor([d(outcome, 'indexCandidates', 'https://www.mars.com/news')]),
+      ).toEqual([])
+    })
+  }
+
+  it('never recommends removing a required endpoint', () => {
+    // robots.txt and the SEC APIs are not configuration and cannot be retired.
+    expect(
+      rules.remediationFor([
+        { label: 'robots', role: 'required', outcome: 'absent', url: 'https://www.mars.com/robots.txt' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('emits one statement per array, with every dead URL in it', () => {
+    const sql = rules.removalSql('indexCandidates', [
+      'https://www.mars.com/news',
+      'https://www.mars.com/press-releases',
+    ])
+    expect(sql).toContain("jsonb_set(")
+    expect(sql).toContain("'{indexCandidates}'")
+    expect(sql).toContain("'https://www.mars.com/news', 'https://www.mars.com/press-releases'")
+    expect(sql).toContain('order by ordinality')
+    expect(sql).toContain("where id = 'mars-newsroom';")
+    // One array, so the other two are untouched.
+    expect(sql).not.toContain('feedCandidates')
+    expect(sql).not.toContain('sitemapCandidates')
+  })
+
+  for (const [name, text] of [
+    ['bash', sh],
+    ['PowerShell', ps],
+  ] as const) {
+    it(`the ${name} script builds its remediation from the run`, () => {
+      // It must not carry a hard-coded URL in the advice it prints.
+      const advice = text.slice(text.indexOf('proved do not exist'))
+      expect(advice.length).toBeGreaterThan(100)
+      for (const url of rules.RETIRED_CANDIDATES.map((c: { url: string }) => c.url)) {
+        expect(advice, `${name} hard-codes ${url} in its advice`).not.toContain(url)
+      }
+    })
+
+    it(`the ${name} script prints nothing when nothing 404ed`, () => {
+      expect(text).toMatch(/Dead|DEAD/)
+      expect(text).toMatch(/if \[ -n "\$DEAD" \]|if \(\$script:Dead\.Count -gt 0\)/)
+    })
+
+    it(`the ${name} script only records a 404 for removal`, () => {
+      expect(text).toContain('absent')
+      expect(text).toMatch(/ONLY A 404/)
+    })
+
+    it(`the ${name} script still warns against the whole-key merge form`, () => {
+      // The two scripts wrap the sentence differently, so match on the words
+      // rather than on one script's line breaks and quoting.
+      expect(text).toContain('COMPLETE')
+      expect(text).toMatch(/remaining array/)
+      expect(text).toMatch(/replaces the whole key/)
+    })
+  }
 })
 
 // ---------------------------------------------------------------------------

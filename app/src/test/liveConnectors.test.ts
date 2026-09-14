@@ -419,36 +419,123 @@ describe('Mars: robots first, then the most structured path available', () => {
     const get = vi.fn(async (url: string) => {
       calls.push(url)
       if (url.endsWith('robots.txt')) return response(ROBOTS_OPEN, { headers: { 'content-type': 'text/plain' } })
-      if (url.endsWith('/news-and-stories/rss')) return response(RSS, { headers: { 'content-type': 'application/xml' } })
+      if (url.endsWith('sitemap.xml')) return response(RSS, { headers: { 'content-type': 'application/xml' } })
       return response('', { status: 404 })
     })
     await discoverMars(ctx({ get: get as unknown as ConnectorContext['get'] }))
     expect(calls[0]).toContain('robots.txt')
   })
 
+  /*
+     A FEED STILL SHORT-CIRCUITS THE WALK -- but one has to be CONFIGURED now.
+
+     Every guessed feed path 404ed from direct egress, so `feedCandidates` ships
+     empty and this test supplies one through `connector_config`, which is how a
+     feed would actually arrive: an operator finds the real URL on a live run
+     and updates the row, without a deploy.
+  */
+  const FEED_URL = 'https://www.mars.com/configured-feed.xml'
+
   it('prefers a working feed and stops rather than also crawling an index', async () => {
     const calls: string[] = []
     const get = vi.fn(async (url: string) => {
       calls.push(url)
       if (url.endsWith('robots.txt')) return response(ROBOTS_OPEN, { headers: { 'content-type': 'text/plain' } })
-      if (url.endsWith('/news-and-stories/rss')) return response(RSS, { headers: { 'content-type': 'application/xml' } })
+      if (url === FEED_URL) return response(RSS, { headers: { 'content-type': 'application/xml' } })
       return response('<html></html>', { headers: { 'content-type': 'text/html' } })
     })
-    const outcome = await discoverMars(ctx({ get: get as unknown as ConnectorContext['get'] }))
+    const outcome = await discoverMars(
+      ctx({
+        get: get as unknown as ConnectorContext['get'],
+        config: { feedCandidates: [FEED_URL] },
+      }),
+    )
     expect(outcome.kind).toBe('documents')
     if (outcome.kind === 'documents') {
       expect(outcome.documents[0]!.canonicalUrl).toBe('https://www.mars.com/news/mars-opens-plant')
       expect(outcome.documents[0]!.discoveryPath).toBe('mars:feed')
       expect(outcome.documents[0]!.publishedAt).toBe('2026-03-04T10:00:00.000Z')
     }
-    /*
-       Exact match, not `includes`. The first feed candidate is
-       `/news-and-stories/rss` and the index candidate is `/news-and-stories`,
-       so a substring test would now match the feed the connector is SUPPOSED
-       to have fetched and assert the opposite of what it means.
-    */
+    // Exact match, not `includes`: the sitemap and index candidates share
+    // prefixes with each other, so a substring test would match the wrong URL.
+    expect(calls).toContain(FEED_URL)
     expect(calls).not.toContain('https://www.mars.com/news-and-stories')
-    expect(calls).toContain('https://www.mars.com/news-and-stories/rss')
+    expect(calls).not.toContain('https://www.mars.com/sitemap.xml')
+  })
+
+  /*
+     THE SHIPPED CONFIGURATION HAS NO FEED AT ALL, AND MUST STILL DISCOVER.
+
+     `feedCandidates: []` is a real configuration, not a missing value. The
+     connector concatenates the three arrays to build its walk, so an empty one
+     contributes nothing and discovery begins at the sitemap. If an empty array
+     were ever treated as "unset" and replaced by a default -- or if the walk
+     short-circuited on it -- Mars would silently stop collecting.
+  */
+  it('falls through an empty feed array to the sitemap', async () => {
+    const calls: string[] = []
+    const get = vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.endsWith('robots.txt')) return response(ROBOTS_OPEN, { headers: { 'content-type': 'text/plain' } })
+      if (url.endsWith('sitemap.xml')) {
+        return response(
+          `<?xml version="1.0"?><urlset><url>
+             <loc>https://www.mars.com/news-and-stories/mars-opens-plant</loc>
+             <lastmod>2026-03-04</lastmod></url></urlset>`,
+          { headers: { 'content-type': 'application/xml' } },
+        )
+      }
+      return response('<html></html>', { headers: { 'content-type': 'text/html' } })
+    })
+    const outcome = await discoverMars(
+      ctx({ get: get as unknown as ConnectorContext['get'], config: { feedCandidates: [] } }),
+    )
+    expect(outcome.kind).toBe('documents')
+    if (outcome.kind === 'documents') {
+      expect(outcome.documents[0]!.discoveryPath).toBe('mars:sitemap')
+    }
+    expect(calls).toContain('https://www.mars.com/sitemap.xml')
+  })
+
+  it('falls through an empty feed AND an empty sitemap to the newsroom index', async () => {
+    const calls: string[] = []
+    const get = vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.endsWith('robots.txt')) {
+        // No Sitemap: line, so robots contributes no sitemap either.
+        return response('User-agent: *\nDisallow: /private\n', {
+          headers: { 'content-type': 'text/plain' },
+        })
+      }
+      if (url === 'https://www.mars.com/news-and-stories') {
+        return response(
+          '<html><body><a href="/news-and-stories/mars-opens-plant">Mars opens plant</a></body></html>',
+          { headers: { 'content-type': 'text/html' } },
+        )
+      }
+      return response('<html></html>', { headers: { 'content-type': 'text/html' } })
+    })
+    const outcome = await discoverMars(
+      ctx({
+        get: get as unknown as ConnectorContext['get'],
+        config: { feedCandidates: [], sitemapCandidates: [] },
+      }),
+    )
+    expect(outcome.kind).toBe('documents')
+    expect(calls).toContain('https://www.mars.com/news-and-stories')
+  })
+
+  it('keeps an explicitly empty array empty instead of restoring the default', () => {
+    // `{ ...defaults, ...raw }` is a spread, so `[]` REPLACES the default. If
+    // the merge ever became `raw.feedCandidates ?? defaults.feedCandidates`
+    // with a truthiness test, an empty array would silently resurrect dead URLs.
+    expect(marsConfig({ feedCandidates: [] }).feedCandidates).toEqual([])
+    expect(marsConfig({ sitemapCandidates: [] }).sitemapCandidates).toEqual([])
+    expect(marsConfig({ indexCandidates: [] }).indexCandidates).toEqual([])
+    // And the shipped default is itself empty.
+    expect(marsConfig({}).feedCandidates).toEqual([])
+    expect(marsConfig({}).sitemapCandidates).toEqual(['https://www.mars.com/sitemap.xml'])
+    expect(marsConfig({}).indexCandidates).toEqual(['https://www.mars.com/news-and-stories'])
   })
 
   it('obeys a robots rule instead of fetching the disallowed path', async () => {
@@ -500,8 +587,8 @@ describe('Mars: robots first, then the most structured path available', () => {
   it('separates "nothing published" from "could not ask"', async () => {
     const get = vi.fn(async (url: string) => {
       if (url.endsWith('robots.txt')) return response(ROBOTS_OPEN, { headers: { 'content-type': 'text/plain' } })
-      if (url.endsWith('/news-and-stories/rss')) {
-        return response('<?xml version="1.0"?><rss><channel></channel></rss>', {
+      if (url.endsWith('sitemap.xml')) {
+        return response('<?xml version="1.0"?><urlset></urlset>', {
           headers: { 'content-type': 'application/xml' },
         })
       }

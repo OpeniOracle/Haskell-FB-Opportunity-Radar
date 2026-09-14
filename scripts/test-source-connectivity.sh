@@ -55,6 +55,10 @@ ANSWERED=0
 CHALLENGES=0
 EXIT=0
 
+# "<array> <url>" per line, for every discovery candidate that answered 404.
+# Drives the remediation block at the end; empty means nothing is printed.
+DEAD=""
+
 begin_source() {
   blue ""
   blue "== $1"
@@ -62,9 +66,13 @@ begin_source() {
   LOCAL_FAILURES=0; ANSWERED=0; CHALLENGES=0
 }
 
-# probe <role> <label> <url> [expected-substring]
+# probe <role> <label> <url> <array-or-dash> [expected-substring]
+#
+# <array-or-dash> names the connector_config array this candidate lives in, so
+# a 404 can be turned into the exact statement that removes it. `-` for a
+# required endpoint, which is not configuration and cannot be retired.
 probe() {
-  local role="$1" label="$2" url="$3" expect="${4:-}"
+  local role="$1" label="$2" url="$3" arr="$4" expect="${5:-}"
   [ "$role" = "discovery" ] && DISCOVERY_TOTAL=$((DISCOVERY_TOTAL + 1))
 
   local tmp status outcome
@@ -113,6 +121,17 @@ probe() {
     [ "$role" = "discovery" ] && DISCOVERY_OK=$((DISCOVERY_OK + 1))
     pass "$label"
     return
+  fi
+
+  # ONLY A 404 EARNS A REMOVAL. The remediation deletes a URL from
+  # configuration, so the bar is evidence the path is not there -- not evidence
+  # it did not answer this time. A 403 may be a WAF in front of a real page, a
+  # 429 is a rate limit, a redirect is the page moving, and a transport error is
+  # usually this machine. Retiring on any of those deletes a working candidate
+  # because of a bad afternoon.
+  if [ "$role" = "discovery" ] && [ "$outcome" = "absent" ] && [ "$arr" != "-" ]; then
+    DEAD="${DEAD}${arr} ${url}
+"
   fi
 
   # A miss on an OPTIONAL candidate is information about a guess, not a fault.
@@ -192,43 +211,61 @@ else
 fi
 
 begin_source "SEC EDGAR (documented JSON APIs)"
-probe required "company_tickers.json"   "https://www.sec.gov/files/company_tickers.json"        "cik_str"
-probe required "submissions API"        "https://data.sec.gov/submissions/CIK0000100493.json"   "filings"
-probe required "archive folder index"   "https://www.sec.gov/Archives/edgar/data/100493/"
+probe required "company_tickers.json"   "https://www.sec.gov/files/company_tickers.json"      - "cik_str"
+probe required "submissions API"        "https://data.sec.gov/submissions/CIK0000100493.json" - "filings"
+probe required "archive folder index"   "https://www.sec.gov/Archives/edgar/data/100493/"     -
 end_source "sec-edgar"
 
 begin_source "Mars (official corporate sources)"
-probe required  "robots.txt"                              "https://www.mars.com/robots.txt"
-# Discovery candidates, in the connector's own order: feed, sitemap, index.
-# https://www.mars.com/rss.xml is NOT here: observed 404 on 2026-09-13 and
-# retired. See RETIRED_CANDIDATES in scripts/lib/connectivity-rules.mjs.
-probe discovery "feed candidate (news-and-stories/rss)"   "https://www.mars.com/news-and-stories/rss"
-probe discovery "feed candidate (feed)"                   "https://www.mars.com/feed"
-probe discovery "sitemap candidate"                       "https://www.mars.com/sitemap.xml"
-probe discovery "newsroom index"                          "https://www.mars.com/news-and-stories"
-probe discovery "index candidate (news)"                  "https://www.mars.com/news"
-probe discovery "index candidate (press-releases)"        "https://www.mars.com/press-releases"
+probe required  "robots.txt"        "https://www.mars.com/robots.txt"        -
+# Discovery, in the connector's own order: feed, sitemap, index.
+#
+# THERE IS NO FEED CANDIDATE, AND THAT IS A FINDING. All six guessed paths were
+# probed from direct egress and four are gone -- /rss.xml (2026-09-13), then
+# /news-and-stories/rss, /feed, /news and /press-releases (2026-09-14), every
+# one HTTP 404. `feedCandidates` is now legitimately empty and discovery starts
+# at the sitemap. See RETIRED_CANDIDATES in scripts/lib/connectivity-rules.mjs.
+probe discovery "sitemap candidate" "https://www.mars.com/sitemap.xml"       sitemapCandidates
+probe discovery "newsroom index"    "https://www.mars.com/news-and-stories"  indexCandidates
 end_source "mars-newsroom"
 
-blue ""
-blue "== Retiring a dead candidate"
-cat <<'SQL'
-  Candidate URLs are configuration, not code. Remove one WITHOUT replacing the
-  rest of the object:
+# ---------------------------------------------------------------------------
+# REMEDIATION IS DERIVED FROM THIS RUN, NOT PRINTED FROM A TEMPLATE.
+#
+# This block used to print the same example SQL every time, naming
+# https://www.mars.com/rss.xml -- a URL that had already been removed from the
+# hosted row. Advice that is irrelevant on every run after the first teaches an
+# operator to skip the section, which is exactly when a real one appears.
+#
+# So: if nothing 404ed, nothing is printed. If something did, the statement
+# below names those URLs, in the array they actually live in.
+# ---------------------------------------------------------------------------
+if [ -n "$DEAD" ]; then
+  blue ""
+  blue "== Candidates this run proved do not exist"
+  echo ''
+  echo '  Each of these answered 404. Remove them from connector_config; a'
+  echo '  dead candidate costs a request and a log line on every run.'
+  echo ''
+  for arr in $(printf '%s' "$DEAD" | awk 'NF {print $1}' | sort -u); do
+    # Every URL for this array, single-quoted and comma-separated.
+    urls="$(printf '%s' "$DEAD" | awk -v a="$arr" '$1 == a {print $2}' \
+            | sed "s/^/'/; s/\$/'/" | paste -sd, - | sed 's/,/, /g')"
+    printf '    -- %s\n' "$arr"
+    printf '    update sources\n'
+    printf '       set connector_config = jsonb_set(\n'
+    printf "             connector_config, '{%s}',\n" "$arr"
+    printf '             coalesce((select jsonb_agg(value order by ordinality)\n'
+    printf "                         from jsonb_array_elements_text(connector_config->'%s')\n" "$arr"
+    printf '                              with ordinality as c(value, ordinality)\n'
+    printf '                        where value not in (%s)), %s)),\n' "$urls" "'[]'::jsonb"
+    printf '           updated_at = now()\n'
+    printf "     where id = 'mars-newsroom';\n\n"
+  done
+  echo '  One array per statement, so the others are untouched. Do NOT use the'
+  echo "  \`connector_config || '{...}'\` form unless you are supplying the"
+  echo '  COMPLETE remaining array: that form replaces the whole key.'
+  echo ''
+fi
 
-    update sources
-       set connector_config = jsonb_set(
-             connector_config, '{feedCandidates}',
-             coalesce((select jsonb_agg(value order by ordinality)
-                         from jsonb_array_elements_text(connector_config->'feedCandidates')
-                              with ordinality as c(value, ordinality)
-                        where value <> 'https://www.mars.com/rss.xml'), '[]'::jsonb)),
-           updated_at = now()
-     where id = 'mars-newsroom';
-
-  Do NOT write `connector_config || '{"feedCandidates":[...]}'` unless you are
-  supplying the COMPLETE remaining array: that form replaces the whole key.
-SQL
-
-echo ''
 exit "$EXIT"

@@ -76,20 +76,27 @@ const MAX_ITEMS_PER_RUN = 120
 export const MARS_DEFAULT_CONFIG = {
   origin: 'https://www.mars.com',
   robotsUrl: 'https://www.mars.com/robots.txt',
-  // `https://www.mars.com/rss.xml` was here. Retired 2026-09-13 on an observed
-  // HTTP 404 from a network with direct egress. A default that is known not to
-  // exist costs a request and a log line on every single run, and teaches
-  // whoever reads the run report to ignore misses.
-  feedCandidates: [
-    'https://www.mars.com/news-and-stories/rss',
-    'https://www.mars.com/feed',
-  ],
+  /*
+     MARS PUBLISHES NO FEED WE CAN FIND, AND AN EMPTY ARRAY SAYS SO.
+
+     All six guessed paths were probed from direct egress. `/rss.xml` on
+     2026-09-13, then `/news-and-stories/rss`, `/feed`, `/news` and
+     `/press-releases` on 2026-09-14 -- every one HTTP 404. What answers is the
+     sitemap and the newsroom index, both 200.
+
+     `feedCandidates: []` is deliberate and is NOT a missing value. The
+     connector concatenates the three arrays to build its walk, so an empty one
+     contributes nothing and discovery starts at the sitemap. Leaving a dead
+     guess in would cost a request and a log line on every run and teach whoever
+     reads the report to ignore misses.
+
+     Feeds remain fully supported: `sources.connector_config` can supply
+     `feedCandidates` at any time, without a deploy, and a working feed still
+     short-circuits the rest of the walk.
+  */
+  feedCandidates: [] as readonly string[],
   sitemapCandidates: ['https://www.mars.com/sitemap.xml'],
-  indexCandidates: [
-    'https://www.mars.com/news-and-stories',
-    'https://www.mars.com/news',
-    'https://www.mars.com/press-releases',
-  ],
+  indexCandidates: ['https://www.mars.com/news-and-stories'],
   /** A sitemap or index link must look like editorial content to be followed. */
   itemPathPattern: '(news|press|stor|release|announce)',
   entityKey: 'radar:mars-incorporated',

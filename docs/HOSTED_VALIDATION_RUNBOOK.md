@@ -972,7 +972,10 @@ disabled from behind a corporate proxy.
 | `NOT VIABLE — required endpoint(s)` | SEC changed shape, or robots.txt is unreachable | Stop. Record the status and URL. |
 | `429` | Rate limited | Wait. The connector honours `Retry-After`; you should too. |
 
-### Observed 2026-09-13, from a network with direct egress
+### Observed from a network with direct egress — the full sweep
+
+Every guessed path has now been probed. **Four of the six do not exist**,
+including both feed candidates.
 
 | Endpoint | Role | Result |
 | --- | --- | --- |
@@ -980,42 +983,78 @@ disabled from behind a corporate proxy.
 | SEC submissions API | required | **200** |
 | SEC archive folder index | required | **200** |
 | Mars `/robots.txt` | required | **200** |
-| Mars `/news-and-stories` | discovery (index) | **200** |
 | Mars `/sitemap.xml` | discovery (sitemap) | **200** |
-| Mars `/rss.xml` | discovery (feed) | **404 — retired** |
+| Mars `/news-and-stories` | discovery (index) | **200** |
+| Mars `/rss.xml` | feed | **404 — retired 2026-09-13** |
+| Mars `/news-and-stories/rss` | feed | **404 — retired 2026-09-14** |
+| Mars `/feed` | feed | **404 — retired 2026-09-14** |
+| Mars `/news` | index | **404 — retired 2026-09-14** |
+| Mars `/press-releases` | index | **404 — retired 2026-09-14** |
 
-Under the corrected rules that is **sec-edgar VIABLE** and **mars-newsroom
-VIABLE with one warning**. There was no CAPTCHA, no access refusal and no
-network block.
+**sec-edgar VIABLE. mars-newsroom VIABLE**, through the sitemap and the
+newsroom index. No CAPTCHA, no access refusal, no network block — the four
+missing paths simply are not there.
 
-`/news-and-stories/rss`, `/feed`, `/news` and `/press-releases` have **not been
-observed by anyone** and remain unverified candidates. They are neither claimed
-to work nor retired.
+### Mars publishes no feed we can find
+
+That is a finding, not a gap, and the configuration says so:
+
+| Array | Contents |
+| --- | --- |
+| `feedCandidates` | **`[]`** |
+| `sitemapCandidates` | `https://www.mars.com/sitemap.xml` |
+| `indexCandidates` | `https://www.mars.com/news-and-stories` |
+
+**An empty feed array is a real configuration, not a missing value.** The
+connector concatenates the three arrays to build its walk, so an empty one
+contributes nothing and discovery begins at the sitemap. Three tests in
+`liveConnectors.test.ts` hold that: an empty feed array falls through to the
+sitemap, an empty feed *and* sitemap fall through to the newsroom index, and an
+explicitly empty array is never replaced by the default.
+
+Feeds remain fully supported. If a real Mars feed is ever found, adding it to
+`connector_config` restores the short-circuit behaviour — and no deploy is
+needed, because candidate URLs are data.
 
 ### Retiring a dead candidate
 
-Candidate URLs are configuration, not code. Remove one **without replacing the
-rest of the object**:
+**The script tells you which ones, and prints the statement for exactly those.**
+It used to print the same example every run naming `/rss.xml`, long after that
+had been removed — advice that is irrelevant every time teaches you to skip the
+section, which is exactly when a real one appears. Now: nothing 404ed, nothing
+printed.
+
+Only a **404** earns a removal. A 403 may be a WAF in front of a real page, a
+429 is a rate limit, a redirect is the page moving, and a transport error is
+usually your own network. Retiring on any of those deletes a working candidate
+because of a bad afternoon.
+
+The statement edits **one array**, leaving the others alone:
 
 ```sql
 update sources
    set connector_config = jsonb_set(
-         connector_config, '{feedCandidates}',
+         connector_config, '{indexCandidates}',
          coalesce((select jsonb_agg(value order by ordinality)
-                     from jsonb_array_elements_text(connector_config->'feedCandidates')
+                     from jsonb_array_elements_text(connector_config->'indexCandidates')
                           with ordinality as c(value, ordinality)
-                    where value <> 'https://www.mars.com/rss.xml'), '[]'::jsonb)),
+                    where value not in ('https://www.mars.com/news',
+                                        'https://www.mars.com/press-releases')), '[]'::jsonb)),
        updated_at = now()
  where id = 'mars-newsroom';
 ```
 
-**Do not** write `connector_config || '{"feedCandidates":[…]}'` unless you are
+**Do not** write `connector_config || '{"indexCandidates":[…]}'` unless you are
 supplying the *complete* remaining array — that form replaces the whole key.
 
 The repository records retirements in `RETIRED_CANDIDATES`
-(`scripts/lib/connectivity-rules.mjs`) with the observed status and date, and
-`db/seed/0006_live_cohort_sources.sql` reconciles them onto an existing row with
-the same targeted edit. `app/src/test/sourceConnectivity.test.ts` fails if a
+(`scripts/lib/connectivity-rules.mjs`) with the observed status, the date and
+the array each one lived in, and `db/seed/0006_live_cohort_sources.sql`
+reconciles all of them onto an existing row — removing each URL only from the
+array it was retired from, preserving array order, operator-added candidates,
+operator-written keys and every non-array value.
+`db/tests/seed-reconciliation.sh` proves that against a real database on both
+PostgreSQL versions, and `app/src/test/sourceConnectivity.test.ts` fails if a
 retired URL reappears as a candidate in the seed, the connector defaults, or
 either script.
 

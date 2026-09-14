@@ -100,20 +100,22 @@ insert into sources (
     jsonb_build_object(
         'origin', 'https://www.mars.com',
         'robotsUrl', 'https://www.mars.com/robots.txt',
-        -- https://www.mars.com/rss.xml WAS HERE AND IS RETIRED.
-        -- Observed HTTP 404 on 2026-09-13 from a network with direct egress.
-        -- A candidate confirmed dead is removed rather than left to fail on
-        -- every run; the retirement is reconciled onto existing rows below.
-        'feedCandidates', jsonb_build_array(
-            'https://www.mars.com/news-and-stories/rss',
-            'https://www.mars.com/feed'
-        ),
+        -- MARS PUBLISHES NO FEED WE CAN FIND, AND THE EMPTY ARRAY SAYS SO.
+        --
+        -- All six guessed paths were probed from direct egress and four are
+        -- gone: /rss.xml (2026-09-13), then /news-and-stories/rss, /feed,
+        -- /news and /press-releases (2026-09-14), every one HTTP 404. What
+        -- answers is the sitemap and the newsroom index.
+        --
+        -- An empty feedCandidates is a real configuration, not a missing one:
+        -- the connector concatenates the three arrays, so discovery simply
+        -- starts at the sitemap. A feed can be added later through
+        -- connector_config without a deploy, and would short-circuit the walk.
+        --
+        -- The retirements are reconciled onto an existing row further down.
+        'feedCandidates', '[]'::jsonb,
         'sitemapCandidates', jsonb_build_array('https://www.mars.com/sitemap.xml'),
-        'indexCandidates', jsonb_build_array(
-            'https://www.mars.com/news-and-stories',
-            'https://www.mars.com/news',
-            'https://www.mars.com/press-releases'
-        ),
+        'indexCandidates', jsonb_build_array('https://www.mars.com/news-and-stories'),
         'itemPathPattern', '(news|press|stor|release|announce)',
         'entityKey', 'radar:mars-incorporated',
         'canonicalName', 'Mars, Incorporated',
@@ -158,28 +160,52 @@ on conflict (id) do update set
 -- which db/verify.sh checks by running every seed twice.
 -- ===========================================================================
 
-with retired(url) as (
-    -- Confirmed dead by observation. Keep in step with RETIRED_CANDIDATES in
-    -- scripts/lib/connectivity-rules.mjs; a test fails if they disagree.
-    values ('https://www.mars.com/rss.xml')
+with retired(url, arr) as (
+    -- Confirmed dead by observation, with the array each one lives in. Keep in
+    -- step with RETIRED_CANDIDATES in scripts/lib/connectivity-rules.mjs; a
+    -- test fails if the two disagree.
+    values ('https://www.mars.com/rss.xml',              'feedCandidates'),
+           ('https://www.mars.com/news-and-stories/rss', 'feedCandidates'),
+           ('https://www.mars.com/feed',                 'feedCandidates'),
+           ('https://www.mars.com/news',                 'indexCandidates'),
+           ('https://www.mars.com/press-releases',       'indexCandidates')
+),
+arrays(arr) as (
+    -- Named explicitly rather than derived, so a new array cannot be edited by
+    -- accident. sitemapCandidates is listed and has nothing retired in it --
+    -- which is the point: the statement is proved not to touch it.
+    values ('feedCandidates'), ('sitemapCandidates'), ('indexCandidates')
 )
 update sources s
-   set connector_config = jsonb_set(
-           s.connector_config,
-           '{feedCandidates}',
-           coalesce(
-               (select jsonb_agg(c.value order by c.ordinality)
-                  from jsonb_array_elements_text(s.connector_config -> 'feedCandidates')
-                       with ordinality as c(value, ordinality)
-                 where c.value not in (select url from retired)),
-               '[]'::jsonb
+   set connector_config = (
+           select coalesce(
+               jsonb_object_agg(
+                   k,
+                   case
+                       when k in (select arr from arrays)
+                            and jsonb_typeof(v) = 'array'
+                       then coalesce(
+                           (select jsonb_agg(c.value order by c.ordinality)
+                              from jsonb_array_elements_text(v)
+                                   with ordinality as c(value, ordinality)
+                             where c.value not in (select url from retired where arr = k)),
+                           '[]'::jsonb
+                       )
+                       else v
+                   end
+               ),
+               '{}'::jsonb
            )
+             from jsonb_each(s.connector_config) as e(k, v)
        ),
        updated_at = now()
  where s.id = 'mars-newsroom'
-   and s.connector_config ? 'feedCandidates'
    and exists (
+       -- The guard that makes a second run a no-op: something retired is still
+       -- present, in the array it belongs to.
        select 1
-         from jsonb_array_elements_text(s.connector_config -> 'feedCandidates') as c(value)
-        where c.value in (select url from retired)
+         from jsonb_each(s.connector_config) as e(k, v),
+              jsonb_array_elements_text(v) as c(value)
+        where jsonb_typeof(v) = 'array'
+          and c.value in (select url from retired where arr = k)
    );

@@ -51,11 +51,46 @@
 export const RETIRED_CANDIDATES = [
   {
     url: 'https://www.mars.com/rss.xml',
+    array: 'feedCandidates',
     observed: 'HTTP 404',
     on: '2026-09-13',
     by: 'operator, from a network with direct egress',
   },
+  // The full sweep. Every remaining guessed path was probed on 2026-09-14 and
+  // four of the six did not exist. MARS PUBLISHES NO FEED WE CAN FIND: both
+  // feed candidates are gone and `feedCandidates` is now legitimately empty.
+  {
+    url: 'https://www.mars.com/news-and-stories/rss',
+    array: 'feedCandidates',
+    observed: 'HTTP 404',
+    on: '2026-09-14',
+    by: 'operator, from a network with direct egress',
+  },
+  {
+    url: 'https://www.mars.com/feed',
+    array: 'feedCandidates',
+    observed: 'HTTP 404',
+    on: '2026-09-14',
+    by: 'operator, from a network with direct egress',
+  },
+  {
+    url: 'https://www.mars.com/news',
+    array: 'indexCandidates',
+    observed: 'HTTP 404',
+    on: '2026-09-14',
+    by: 'operator, from a network with direct egress',
+  },
+  {
+    url: 'https://www.mars.com/press-releases',
+    array: 'indexCandidates',
+    observed: 'HTTP 404',
+    on: '2026-09-14',
+    by: 'operator, from a network with direct egress',
+  },
 ]
+
+/** The three arrays a discovery candidate can live in, in the connector's order. */
+export const CANDIDATE_ARRAYS = ['feedCandidates', 'sitemapCandidates', 'indexCandidates']
 
 /**
  * Every endpoint the pre-flight checks, with the role that decides its weight.
@@ -84,6 +119,18 @@ export const PROBES = {
       expect: '',
     },
   ],
+  /*
+     MARS HAS NO FEED, AND THAT IS A FINDING RATHER THAN A GAP.
+
+     All six guessed paths were probed from direct egress. Four did not exist,
+     including BOTH feed candidates, so `feedCandidates` is now empty and this
+     table has nothing to probe for it. Discovery runs on the sitemap and the
+     newsroom index, which both answer 200.
+
+     An empty feed array is a supported configuration: the connector builds its
+     candidate list by concatenating the three arrays, so an empty one
+     contributes nothing and the walk starts at the sitemap.
+  */
   'mars-newsroom': [
     {
       label: 'robots.txt',
@@ -91,20 +138,13 @@ export const PROBES = {
       role: 'required',
       expect: '',
     },
-    // Tried in the connector's own order: feed, then sitemap, then index.
-    {
-      label: 'feed candidate (news-and-stories/rss)',
-      url: 'https://www.mars.com/news-and-stories/rss',
-      role: 'discovery',
-      kind: 'feed',
-      expect: '',
-    },
-    { label: 'feed candidate (feed)', url: 'https://www.mars.com/feed', role: 'discovery', kind: 'feed', expect: '' },
+    // In the connector's own order: feed (none), then sitemap, then index.
     {
       label: 'sitemap candidate',
       url: 'https://www.mars.com/sitemap.xml',
       role: 'discovery',
       kind: 'sitemap',
+      array: 'sitemapCandidates',
       expect: '',
     },
     {
@@ -112,14 +152,7 @@ export const PROBES = {
       url: 'https://www.mars.com/news-and-stories',
       role: 'discovery',
       kind: 'index',
-      expect: '',
-    },
-    { label: 'index candidate (news)', url: 'https://www.mars.com/news', role: 'discovery', kind: 'index', expect: '' },
-    {
-      label: 'index candidate (press-releases)',
-      url: 'https://www.mars.com/press-releases',
-      role: 'discovery',
-      kind: 'index',
+      array: 'indexCandidates',
       expect: '',
     },
   ],
@@ -219,4 +252,54 @@ export function sourceVerdict(results) {
 export function exitCode(verdicts) {
   const decisive = Object.values(verdicts).filter((v) => v.conclusive)
   return decisive.every((v) => v.viable) ? 0 : 1
+}
+
+/**
+ * Which candidates a run has just proved do not exist.
+ *
+ * ONLY A 404. The remediation this drives removes a URL from configuration, so
+ * the bar is evidence that the path is not there -- not evidence that it did
+ * not answer this time. A 403 may be a WAF in front of a real page, a 429 is a
+ * rate limit, a redirect is the page moving, and a transport error is usually
+ * the operator's own network. Retiring a URL on any of those would delete a
+ * working candidate because of a bad afternoon.
+ *
+ * Returns [{ array, urls }] grouped by the array each URL lives in, so the SQL
+ * edits one array per statement and leaves the others alone. Empty when there
+ * is nothing to fix -- and a script that has nothing to fix must print nothing,
+ * rather than printing an example that names a URL the operator already
+ * removed.
+ */
+export function remediationFor(results) {
+  const dead = results.filter((r) => r.role === 'discovery' && r.outcome === 'absent' && r.array)
+  const byArray = new Map()
+  for (const entry of dead) {
+    if (!byArray.has(entry.array)) byArray.set(entry.array, [])
+    byArray.get(entry.array).push(entry.url)
+  }
+  return CANDIDATE_ARRAYS.filter((a) => byArray.has(a)).map((array) => ({
+    array,
+    urls: byArray.get(array),
+  }))
+}
+
+/**
+ * The removal statement for one array, as the operator should run it.
+ *
+ * `jsonb_set` over ONE array. Not `connector_config || '{...}'`, which replaces
+ * the whole key and would silently drop any candidate the operator added.
+ */
+export function removalSql(array, urls) {
+  const list = urls.map((u) => `'${u}'`).join(', ')
+  return [
+    'update sources',
+    `   set connector_config = jsonb_set(`,
+    `         connector_config, '{${array}}',`,
+    `         coalesce((select jsonb_agg(value order by ordinality)`,
+    `                     from jsonb_array_elements_text(connector_config->'${array}')`,
+    `                          with ordinality as c(value, ordinality)`,
+    `                    where value not in (${list})), '[]'::jsonb)),`,
+    '       updated_at = now()',
+    " where id = 'mars-newsroom';",
+  ].join('\n')
 }
