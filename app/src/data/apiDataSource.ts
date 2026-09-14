@@ -97,6 +97,26 @@ export const FAILURE = {
       'The Radar is missing a database permission this view needs. Your access is unaffected; this is a deployment fault.',
     blockedBy: 'configuration',
   },
+  /*
+     A TABLE THAT DOES NOT EXIST YET IS NOT AN OUTAGE.
+
+     `42P01` is undefined_table, and it has exactly one cause here: the code is
+     deployed and a migration has not been applied. That is a two-minute
+     operator task, and it happens routinely in the window between a merge and
+     an operator reaching the SQL editor.
+
+     It used to fall through to `requestFailed` — "The Radar could not be
+     reached. Nothing below is current." — which points at the network, at
+     Supabase, at anything except the one thing that is actually true. Somebody
+     would have spent an afternoon on connectivity. Same lesson as `42501` in
+     migration 0022: PostgreSQL states the fault precisely and the interface was
+     throwing that away.
+  */
+  notMigrated: {
+    reason:
+      'This view needs a database table that has not been created yet. The code is deployed and a migration is outstanding; nothing else on the Radar is affected.',
+    blockedBy: 'migration_pending',
+  },
   requestFailed: {
     reason: 'The Radar could not be reached. Nothing below is current.',
     blockedBy: 'service',
@@ -132,6 +152,9 @@ function classifyError(error: { code?: string; message?: string } | null): Fail 
      -- and neither is a statement about this person.
   */
   if (code === '42501' || /permission denied/i.test(message)) return FAILURE.notPermitted
+
+  // undefined_table. A pending migration, not an unreachable service.
+  if (code === '42P01' || /does not exist/i.test(message)) return FAILURE.notMigrated
 
   return FAILURE.requestFailed
 }
