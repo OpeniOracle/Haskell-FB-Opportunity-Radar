@@ -76,8 +76,11 @@ const MAX_ITEMS_PER_RUN = 120
 export const MARS_DEFAULT_CONFIG = {
   origin: 'https://www.mars.com',
   robotsUrl: 'https://www.mars.com/robots.txt',
+  // `https://www.mars.com/rss.xml` was here. Retired 2026-09-13 on an observed
+  // HTTP 404 from a network with direct egress. A default that is known not to
+  // exist costs a request and a log line on every single run, and teaches
+  // whoever reads the run report to ignore misses.
   feedCandidates: [
-    'https://www.mars.com/rss.xml',
     'https://www.mars.com/news-and-stories/rss',
     'https://www.mars.com/feed',
   ],

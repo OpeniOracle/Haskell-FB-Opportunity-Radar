@@ -920,20 +920,104 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-SourceConnect
 bash scripts/test-source-connectivity.sh
 ```
 
-**Expected:** `HTTP 200` for `company_tickers.json`, the submissions API, and at
-least one Mars candidate.
+### A candidate has a role, and the role decides the weight
 
-**Stop conditions:**
+This check used to count every probe the same way: any non-200 became a failure
+and the script exited 1. On 2026-09-13 that reported Mars as a **failure** while
+robots.txt, the newsroom index and the sitemap all answered 200 — because one
+**guessed** RSS path answered 404. The source was entirely viable.
+
+| Role | Which endpoints | Rule |
+| --- | --- | --- |
+| **required** | SEC's three documented APIs; Mars `robots.txt` | every one must answer |
+| **discovery** | Mars feed, sitemap and index candidates | tried in order, **one is enough**; each miss is a **warning** |
+
+**A source is viable when every required endpoint answered and at least one
+discovery path did.** A failed optional candidate never disables a source.
+
+That mirrors the connector: `discoverMars` walks feed → sitemap → index,
+records each miss, and continues, reporting a problem only when *nothing* was
+discovered by any path. A pre-flight stricter than the thing it predicts is
+wrong in the worst direction — it argues for disabling a source that works.
+
+**One deliberate asymmetry.** `robots.txt` is *required* here, while the
+connector treats an unreachable robots.txt as "no policy" and proceeds. A
+pre-flight that passed with robots.txt unreachable would greenlight a run whose
+compliance posture is unknown, and finding that out first is the point of
+running this.
+
+### Verdicts
+
+| Verdict | Meaning | Exit |
+| --- | --- | --- |
+| **VIABLE** | required all answered, ≥1 discovery path usable | 0 |
+| **VIABLE**, with warnings | same, and some optional candidates missed | 0 |
+| **NOT VIABLE** | a required endpoint failed, or no discovery path answered | 1 |
+| **INCONCLUSIVE** | nothing answered at all from this machine | 0 |
+
+**INCONCLUSIVE is not a verdict about the source.** If every probe failed with
+a proxy or transport error, the run says something about *your network* and
+nothing about Mars or SEC. Re-run from a machine with direct egress before
+concluding anything. This is the case that would otherwise get a working source
+disabled from behind a corporate proxy.
+
+### Stop conditions
 
 | What you see | What it means | What to do |
 | --- | --- | --- |
-| `this machine's network refused the connection` | Your proxy, not the source | Run from a machine with direct egress, or allow the hosts. **Do not disable the source.** |
-| `403` / `503` with a challenge marker | A WAF or interstitial | Do not work around it. Look for an official feed, sitemap or IR distribution endpoint and record the exact URL and status. |
-| `404` on a Mars candidate | The guessed path is wrong | Expected. Correct it in F6. |
+| `INCONCLUSIVE` | Your proxy, not the source | Run from a machine with direct egress. **Do not disable the source.** |
+| `warn … 404` on a discovery candidate | A guessed path that does not exist | Retire it from `connector_config` — see below. Not a failure. |
+| `warn … interstitial challenge` | A WAF or interstitial | **The one warning class to act on.** Do not work around it; find an official feed, sitemap or IR endpoint and record the exact URL and status. |
+| `NOT VIABLE — no discovery path answered` | Every candidate is wrong, or the newsroom moved | Correct `connector_config`; do not enable the source. |
+| `NOT VIABLE — required endpoint(s)` | SEC changed shape, or robots.txt is unreachable | Stop. Record the status and URL. |
 | `429` | Rate limited | Wait. The connector honours `Retry-After`; you should too. |
 
-The three SEC endpoints failing while Mars succeeds (or vice versa) is
-informative — record which.
+### Observed 2026-09-13, from a network with direct egress
+
+| Endpoint | Role | Result |
+| --- | --- | --- |
+| SEC `company_tickers.json` | required | **200** |
+| SEC submissions API | required | **200** |
+| SEC archive folder index | required | **200** |
+| Mars `/robots.txt` | required | **200** |
+| Mars `/news-and-stories` | discovery (index) | **200** |
+| Mars `/sitemap.xml` | discovery (sitemap) | **200** |
+| Mars `/rss.xml` | discovery (feed) | **404 — retired** |
+
+Under the corrected rules that is **sec-edgar VIABLE** and **mars-newsroom
+VIABLE with one warning**. There was no CAPTCHA, no access refusal and no
+network block.
+
+`/news-and-stories/rss`, `/feed`, `/news` and `/press-releases` have **not been
+observed by anyone** and remain unverified candidates. They are neither claimed
+to work nor retired.
+
+### Retiring a dead candidate
+
+Candidate URLs are configuration, not code. Remove one **without replacing the
+rest of the object**:
+
+```sql
+update sources
+   set connector_config = jsonb_set(
+         connector_config, '{feedCandidates}',
+         coalesce((select jsonb_agg(value order by ordinality)
+                     from jsonb_array_elements_text(connector_config->'feedCandidates')
+                          with ordinality as c(value, ordinality)
+                    where value <> 'https://www.mars.com/rss.xml'), '[]'::jsonb)),
+       updated_at = now()
+ where id = 'mars-newsroom';
+```
+
+**Do not** write `connector_config || '{"feedCandidates":[…]}'` unless you are
+supplying the *complete* remaining array — that form replaces the whole key.
+
+The repository records retirements in `RETIRED_CANDIDATES`
+(`scripts/lib/connectivity-rules.mjs`) with the observed status and date, and
+`db/seed/0006_live_cohort_sources.sql` reconciles them onto an existing row with
+the same targeted edit. `app/src/test/sourceConnectivity.test.ts` fails if a
+retired URL reappears as a candidate in the seed, the connector defaults, or
+either script.
 
 ## F4. Confirm the deployed environment
 

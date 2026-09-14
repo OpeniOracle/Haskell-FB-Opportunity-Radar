@@ -117,6 +117,14 @@ const ENV_MODULES = [
  *                         right shape. Every value in it is fabricated — the URL
  *                         resolves to nothing and the keys are zeroes — and the
  *                         file asserts that none of them reaches the output
+ *   sourceConnectivity.test.ts
+ *                         asserts the pre-flight connectivity decision -- that a
+ *                         404 on one guessed Mars feed candidate must not
+ *                         disable a source whose robots.txt, sitemap and
+ *                         newsroom index all answer. Proving that means naming
+ *                         the real SEC and Mars endpoints, because the rule
+ *                         under test is which of THOSE endpoints is required and
+ *                         which is optional
  *   modelDependency.test.ts
  *                         runs the ingestion pipeline under every permutation of
  *                         the four MODEL_ variables to prove the model is not on
@@ -159,6 +167,7 @@ const SELF_REFERENTIAL = [
   'liveDataMode.test.ts',
   'runtimeConfiguration.test.ts',
   'modelDependency.test.ts',
+  'sourceConnectivity.test.ts',
 ]
 
 const files = walk(srcDir)

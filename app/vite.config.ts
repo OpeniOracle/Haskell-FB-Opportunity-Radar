@@ -53,5 +53,21 @@ export default defineConfig(({ command }) => ({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
+    /*
+      Tests may read and EXECUTE files from the repository root, not just from
+      `app/`.
+
+      `scripts/lib/connectivity-rules.mjs` holds the source-connectivity
+      decision that both operator scripts implement. Asserting that logic
+      against a copy pasted into a test would assert the copy; importing the
+      real module is the only version of the test worth having. Vite's default
+      root is `app/`, so the parent has to be allowed explicitly.
+
+      This widens what the TEST server may read. It does not affect `vite build`
+      and puts nothing new into the bundle.
+    */
+  },
+  server: {
+    fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('..', import.meta.url))] },
   },
 }))

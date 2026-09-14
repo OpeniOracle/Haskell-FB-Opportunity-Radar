@@ -100,8 +100,11 @@ insert into sources (
     jsonb_build_object(
         'origin', 'https://www.mars.com',
         'robotsUrl', 'https://www.mars.com/robots.txt',
+        -- https://www.mars.com/rss.xml WAS HERE AND IS RETIRED.
+        -- Observed HTTP 404 on 2026-09-13 from a network with direct egress.
+        -- A candidate confirmed dead is removed rather than left to fail on
+        -- every run; the retirement is reconciled onto existing rows below.
         'feedCandidates', jsonb_build_array(
-            'https://www.mars.com/rss.xml',
             'https://www.mars.com/news-and-stories/rss',
             'https://www.mars.com/feed'
         ),
@@ -133,3 +136,50 @@ on conflict (id) do update set
     connector_id      = excluded.connector_id,
     license_notes     = excluded.license_notes,
     updated_at        = now();
+
+-- ===========================================================================
+-- RECONCILE RETIRED CANDIDATES ONTO AN EXISTING ROW
+--
+-- The upsert above deliberately does NOT list `connector_config` in its
+-- `do update set` clause, and that is correct: connector_config is operator
+-- state. It is corrected during a live run, from a machine that can actually
+-- reach the source, and a seed that overwrote it would throw away the one
+-- thing this repository cannot know.
+--
+-- But that leaves no way for a retirement to reach a row that already exists,
+-- so a URL confirmed dead would live on in the hosted configuration forever.
+--
+-- This reconciles the two WITHOUT replacing the object: it removes retired
+-- URLs from the arrays they appear in and touches nothing else. Any candidate
+-- the operator added, any key this seed has never heard of, and the ordering
+-- of everything that remains, all survive.
+--
+-- Idempotent by construction -- the `where` clause makes a second run a no-op,
+-- which db/verify.sh checks by running every seed twice.
+-- ===========================================================================
+
+with retired(url) as (
+    -- Confirmed dead by observation. Keep in step with RETIRED_CANDIDATES in
+    -- scripts/lib/connectivity-rules.mjs; a test fails if they disagree.
+    values ('https://www.mars.com/rss.xml')
+)
+update sources s
+   set connector_config = jsonb_set(
+           s.connector_config,
+           '{feedCandidates}',
+           coalesce(
+               (select jsonb_agg(c.value order by c.ordinality)
+                  from jsonb_array_elements_text(s.connector_config -> 'feedCandidates')
+                       with ordinality as c(value, ordinality)
+                 where c.value not in (select url from retired)),
+               '[]'::jsonb
+           )
+       ),
+       updated_at = now()
+ where s.id = 'mars-newsroom'
+   and s.connector_config ? 'feedCandidates'
+   and exists (
+       select 1
+         from jsonb_array_elements_text(s.connector_config -> 'feedCandidates') as c(value)
+        where c.value in (select url from retired)
+   );

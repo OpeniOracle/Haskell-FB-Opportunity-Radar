@@ -419,7 +419,7 @@ describe('Mars: robots first, then the most structured path available', () => {
     const get = vi.fn(async (url: string) => {
       calls.push(url)
       if (url.endsWith('robots.txt')) return response(ROBOTS_OPEN, { headers: { 'content-type': 'text/plain' } })
-      if (url.endsWith('rss.xml')) return response(RSS, { headers: { 'content-type': 'application/xml' } })
+      if (url.endsWith('/news-and-stories/rss')) return response(RSS, { headers: { 'content-type': 'application/xml' } })
       return response('', { status: 404 })
     })
     await discoverMars(ctx({ get: get as unknown as ConnectorContext['get'] }))
@@ -431,7 +431,7 @@ describe('Mars: robots first, then the most structured path available', () => {
     const get = vi.fn(async (url: string) => {
       calls.push(url)
       if (url.endsWith('robots.txt')) return response(ROBOTS_OPEN, { headers: { 'content-type': 'text/plain' } })
-      if (url.endsWith('rss.xml')) return response(RSS, { headers: { 'content-type': 'application/xml' } })
+      if (url.endsWith('/news-and-stories/rss')) return response(RSS, { headers: { 'content-type': 'application/xml' } })
       return response('<html></html>', { headers: { 'content-type': 'text/html' } })
     })
     const outcome = await discoverMars(ctx({ get: get as unknown as ConnectorContext['get'] }))
@@ -441,7 +441,14 @@ describe('Mars: robots first, then the most structured path available', () => {
       expect(outcome.documents[0]!.discoveryPath).toBe('mars:feed')
       expect(outcome.documents[0]!.publishedAt).toBe('2026-03-04T10:00:00.000Z')
     }
-    expect(calls.some((u) => u.includes('news-and-stories'))).toBe(false)
+    /*
+       Exact match, not `includes`. The first feed candidate is
+       `/news-and-stories/rss` and the index candidate is `/news-and-stories`,
+       so a substring test would now match the feed the connector is SUPPOSED
+       to have fetched and assert the opposite of what it means.
+    */
+    expect(calls).not.toContain('https://www.mars.com/news-and-stories')
+    expect(calls).toContain('https://www.mars.com/news-and-stories/rss')
   })
 
   it('obeys a robots rule instead of fetching the disallowed path', async () => {
@@ -493,7 +500,7 @@ describe('Mars: robots first, then the most structured path available', () => {
   it('separates "nothing published" from "could not ask"', async () => {
     const get = vi.fn(async (url: string) => {
       if (url.endsWith('robots.txt')) return response(ROBOTS_OPEN, { headers: { 'content-type': 'text/plain' } })
-      if (url.endsWith('rss.xml')) {
+      if (url.endsWith('/news-and-stories/rss')) {
         return response('<?xml version="1.0"?><rss><channel></channel></rss>', {
           headers: { 'content-type': 'application/xml' },
         })
