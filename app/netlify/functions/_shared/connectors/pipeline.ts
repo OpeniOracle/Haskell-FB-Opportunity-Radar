@@ -43,8 +43,22 @@ export interface CompanyRow {
 export interface IngestionCounters {
   documentsDiscovered: number
   documentsRetrieved: number
+  /** Produced at least one qualifying signal. */
   documentsAccepted: number
+  /**
+   * NOT STORED. Retrieval failed, the source answered an error, the write was
+   * refused, or the document was about a company outside the cohort.
+   *
+   * It used to also count every document that WAS stored but carried no
+   * qualifying signal, so the first successful SEC run reported
+   * `evidenceCreated: 39` and `documentsRejected: 39` at the same time -- which
+   * reads as "we stored 39 things and threw all 39 away".
+   */
   documentsRejected: number
+  /** Stored and evaluated, and the text carried no qualifying signal. */
+  documentsStoredWithoutSignal: number
+  /** An existing evidence row gained text, a locator or a classification. */
+  documentsEnriched: number
   documentsUnchanged: number
   duplicatesPrevented: number
   evidenceCreated: number
@@ -99,6 +113,8 @@ export function emptyCounters(): IngestionCounters {
     documentsRetrieved: 0,
     documentsAccepted: 0,
     documentsRejected: 0,
+    documentsStoredWithoutSignal: 0,
+    documentsEnriched: 0,
     documentsUnchanged: 0,
     duplicatesPrevented: 0,
     evidenceCreated: 0,
@@ -112,9 +128,29 @@ export function emptyCounters(): IngestionCounters {
   }
 }
 
+/**
+ * A bound on what is kept in `body_text`.
+ *
+ * A 10-K runs to hundreds of pages. The text is kept so a document can be
+ * RE-CLASSIFIED without re-fetching it from SEC -- which is the whole point of
+ * storing it -- and two hundred thousand characters is far past where a
+ * facility announcement would be found while staying a sane row size.
+ *
+ * `body_text` is server-side only: migration 0015 deliberately withholds it
+ * from the `authenticated` grant. What a reviewer sees is `evidence_excerpt`,
+ * the matched window, which IS granted.
+ */
+export const MAX_BODY_TEXT_CHARS = 200_000
+
+/** Why a document produced nothing, counted by reason. */
+function bumpReason(counters: IngestionCounters, reason: string): void {
+  counters.rejectionReasons[reason] = (counters.rejectionReasons[reason] ?? 0) + 1
+}
+
+/** Not stored. See `documentsRejected`. */
 function reject(counters: IngestionCounters, reason: string): void {
   counters.documentsRejected += 1
-  counters.rejectionReasons[reason] = (counters.rejectionReasons[reason] ?? 0) + 1
+  bumpReason(counters, reason)
 }
 
 /* ------------------------------------------------------------ normalise */
@@ -218,11 +254,33 @@ export function normalizePublished(document: DiscoveredDocument): {
 
 /* ---------------------------------------------------------------- write */
 
+/**
+ * The columns a re-observation needs in order to decide what is missing.
+ *
+ * Named explicitly because PostgREST infers nothing useful from a select list
+ * assembled as a string, and an `any` here would hide a typo in a column name
+ * until it reached a database.
+ */
+interface ExistingEvidenceRow {
+  id: string
+  content_hash: string | null
+  first_seen_at: string | null
+  evidence_family_id: string | null
+  body_text: string | null
+  locator: string | null
+  evidence_excerpt: string | null
+  classification_status: string | null
+  extraction_status: string | null
+  evidence_locator: Record<string, unknown> | null
+}
+
 export interface EvidenceWriteResult {
   readonly evidenceId: string
   readonly created: boolean
   readonly superseded: boolean
   readonly unchanged: boolean
+  /** An existing row gained text, a locator, an excerpt or a classification. */
+  readonly enriched?: boolean
 }
 
 /**
@@ -251,24 +309,87 @@ export async function upsertEvidence(
   const { document, retrieved } = input
   const published = normalizePublished(document)
 
-  const { data: existing, error: readError } = await client
+  /*
+     THE OFFICIAL DOCUMENT, THE TEXT, AND THE METADATA -- computed once and used
+     by both the insert and the enrichment path, so a row written today and a
+     row enriched tomorrow cannot disagree about what they hold.
+  */
+  const officialUrl = retrieved.finalUrl || document.url
+  const bodyText = retrieved.extractedText
+    ? retrieved.extractedText.slice(0, MAX_BODY_TEXT_CHARS)
+    : null
+  const locatorMetadata = {
+    documentType: document.documentType,
+    ...(published.observedPrecision
+      ? { publishedPrecisionObserved: published.observedPrecision }
+      : {}),
+    ...document.metadata,
+  }
+
+  const { data: existingRow, error: readError } = await client
     .from('evidence')
-    .select('id, content_hash, first_seen_at, evidence_family_id')
+    .select(
+      'id, content_hash, first_seen_at, evidence_family_id, body_text, locator, ' +
+        'evidence_excerpt, classification_status, extraction_status, evidence_locator',
+    )
     .eq('source_id', input.sourceId)
     .eq('source_document_id', document.sourceDocumentId)
     .is('superseded_at', null)
     .maybeSingle()
 
   if (readError) throw new Error(`evidence lookup failed: ${describeDbError(readError)}`)
+  const existing = (existingRow ?? null) as ExistingEvidenceRow | null
 
   if (existing && (retrieved.unchanged || existing.content_hash === retrieved.contentHash)) {
-    // The ONLY column a re-observation moves.
-    const { error } = await client
-      .from('evidence')
-      .update({ last_seen_at: input.now })
-      .eq('id', existing.id)
-    if (error) throw new Error(`evidence touch failed: ${describeDbError(error)}`)
-    return { evidenceId: existing.id as string, created: false, superseded: false, unchanged: true }
+    /*
+       SAME BYTES IS NOT THE SAME AS NOTHING TO DO.
+
+       This used to move `last_seen_at` and nothing else, which is right when
+       the stored row is already complete. It is wrong when it is not -- and the
+       first successful SEC run produced exactly that: 39 rows with no text, no
+       locator and `classification_status = 'unclassified'`, because the earlier
+       FAILED run had already written the content hashes into
+       `source_document_cache`. The retry saw "unchanged", skipped everything,
+       and the 39 documents were frozen half-finished.
+
+       So a re-observation now ENRICHES: it fills in what is missing and leaves
+       alone what is not. It never touches identity -- `source_document_id`,
+       `content_hash`, `first_seen_at` and the supersession columns are not in
+       this update -- so deduplication and history are unaffected.
+    */
+    const enrichment: Record<string, unknown> = { last_seen_at: input.now }
+
+    if (!existing.body_text && bodyText) enrichment.body_text = bodyText
+    if (!existing.locator && officialUrl) enrichment.locator = officialUrl
+    if (!existing.evidence_excerpt && input.excerpt) enrichment.evidence_excerpt = input.excerpt
+
+    // A row that was never evaluated, or that a re-read now has something to
+    // say about. `unclassified` means "not yet looked at", so it is always
+    // worth replacing with a verdict.
+    const wasUnevaluated = (existing.classification_status ?? 'unclassified') === 'unclassified'
+    if (wasUnevaluated && input.classificationStatus !== 'unclassified') {
+      enrichment.classification_status = input.classificationStatus
+    }
+    if (existing.extraction_status !== retrieved.extractionStatus && retrieved.extractedText) {
+      enrichment.extraction_status = retrieved.extractionStatus
+    }
+    if (!existing.evidence_locator || Object.keys(existing.evidence_locator).length === 0) {
+      enrichment.evidence_locator = locatorMetadata
+    }
+
+    const { error } = await client.from('evidence').update(enrichment).eq('id', existing.id)
+    if (error) throw new Error(`evidence enrichment failed: ${describeDbError(error)}`)
+
+    // More than `last_seen_at` moved, so the caller can report it and the
+    // document can go on to the signal stage rather than being skipped.
+    const enriched = Object.keys(enrichment).length > 1
+    return {
+      evidenceId: existing.id as string,
+      created: false,
+      superseded: false,
+      unchanged: true,
+      enriched,
+    }
   }
 
   const row = {
@@ -293,15 +414,24 @@ export async function upsertEvidence(
     extractor_version: PIPELINE_VERSION,
     transformation_version: PIPELINE_VERSION,
     evidence_excerpt: input.excerpt,
-    evidence_locator: {
-      documentType: document.documentType,
-      // What the SOURCE stated, kept because the column's vocabulary has no
-      // sub-day member. Nothing is lost by mapping `minute` to `exact_day`.
-      ...(published.observedPrecision
-        ? { publishedPrecisionObserved: published.observedPrecision }
-        : {}),
-      ...document.metadata,
-    },
+    // What the SOURCE stated about precision is kept here, because the
+    // column's vocabulary has no sub-day member.
+    evidence_locator: locatorMetadata,
+    /*
+       THE TEXT AND THE OFFICIAL URL.
+
+       `body_text` holds the extracted filing text so a document can be
+       re-classified without going back to SEC. Migration 0015 deliberately
+       withholds it from the `authenticated` grant -- a reviewer sees
+       `evidence_excerpt`, the matched window, which IS granted, alongside
+       `locator`, the official document URL.
+
+       `structured_primary` permits both. `evidence_reference_only_has_no_body`
+       and `evidence_metadata_only_has_no_locator` bind the other two modes, and
+       neither is weakened here.
+    */
+    body_text: bodyText,
+    locator: officialUrl,
     access_mode: input.accessMode,
     data_sensitivity_class: 'public',
     classification_status: input.classificationStatus,
@@ -657,12 +787,30 @@ export async function runConnectorPass(
       return
     }
 
-    const classification = retrieved.unchanged
-      ? { matches: [], rejectionReason: null }
-      : classifyText(retrieved.extractedText ?? '')
+    /*
+       CLASSIFY WHENEVER THERE IS TEXT, EVEN IF THE BYTES ARE UNCHANGED.
+
+       This used to skip classification entirely on `unchanged`, which is how 39
+       SEC filings came to be stored as `unclassified` with no excerpt. The
+       earlier FAILED run had already written their content hashes into
+       `source_document_cache`; the retry fetched each document, saw a matching
+       hash, declared it unchanged and never looked at the text it was holding.
+
+       Unchanged bytes only mean the document did not change. It says nothing
+       about whether WE have finished with it. The one case where there is
+       genuinely nothing to read is a 304, where the body was never sent --
+       there `extractedText` is null and the stored classification stands.
+    */
+    const classification = retrieved.extractedText
+      ? classifyText(retrieved.extractedText)
+      : { matches: [], rejectionReason: null }
 
     const status =
-      classification.matches.length > 0 ? 'candidate_signal' : retrieved.unchanged ? 'unclassified' : 'not_relevant'
+      classification.matches.length > 0
+        ? 'candidate_signal'
+        : retrieved.extractedText
+          ? 'not_relevant'
+          : 'unclassified'
 
     let write: EvidenceWriteResult
     try {
@@ -687,14 +835,40 @@ export async function runConnectorPass(
     if (write.unchanged) {
       counters.documentsUnchanged += 1
       counters.duplicatesPrevented += 1
-      return
-    }
-    counters.evidenceCreated += 1
-    if (write.superseded) counters.evidenceSuperseded += 1
+      if (write.enriched) counters.documentsEnriched += 1
 
-    if (classification.matches.length === 0) {
-      reject(counters, classification.rejectionReason ?? 'no qualifying signal in the document')
-      return
+      /*
+         AN ENRICHED ROW STILL HAS TO REACH THE SIGNAL STAGE.
+
+         Returning here is right for a document we have already finished with,
+         and wrong for one that has only just been classified. Without this, a
+         rerun would fill in the text and the verdict and then stop, and the 39
+         filings would never produce a signal however many times it ran.
+      */
+      if (classification.matches.length === 0) {
+        if (retrieved.extractedText) {
+          counters.documentsStoredWithoutSignal += 1
+          bumpReason(counters, classification.rejectionReason ?? 'no qualifying signal in the document')
+        }
+        return
+      }
+    } else {
+      counters.evidenceCreated += 1
+      if (write.superseded) counters.evidenceSuperseded += 1
+
+      if (classification.matches.length === 0) {
+        /*
+           STORED, EVALUATED, AND CARRYING NOTHING. That is not a rejection.
+
+           This called `reject()`, so the first successful SEC run reported
+           `evidenceCreated: 39` and `documentsRejected: 39` together -- which
+           reads as "we stored 39 documents and threw all 39 away". Rejected now
+           means NOT STORED.
+        */
+        counters.documentsStoredWithoutSignal += 1
+        bumpReason(counters, classification.rejectionReason ?? 'no qualifying signal in the document')
+        return
+      }
     }
     counters.documentsAccepted += 1
 

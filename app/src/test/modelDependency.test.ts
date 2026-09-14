@@ -334,7 +334,11 @@ describe('the ingestion pipeline is identical with and without model configurati
     expect(rows('evidence')).toHaveLength(2)
     expect(result.counters.evidenceCreated).toBe(2)
     expect(result.counters.documentsAccepted).toBe(1)
-    expect(result.counters.documentsRejected).toBe(1)
+    // STORED AND EVALUATED, carrying nothing. Not a rejection -- `rejected`
+    // now means NOT STORED, so a run can no longer report 39 stored and 39
+    // rejected at the same time.
+    expect(result.counters.documentsStoredWithoutSignal).toBe(1)
+    expect(result.counters.documentsRejected).toBe(0)
 
     expect(rows('signals')).toHaveLength(1)
     expect(rows('opportunities')).toHaveLength(1)
@@ -408,7 +412,8 @@ describe('a source run succeeds even when no document qualifies', () => {
     expect(result.errors).toEqual([])
     expect(result.counters.evidenceCreated).toBe(1)
     expect(result.counters.documentsAccepted).toBe(0)
-    expect(result.counters.documentsRejected).toBe(1)
+    expect(result.counters.documentsStoredWithoutSignal).toBe(1)
+    expect(result.counters.documentsRejected).toBe(0)
     expect(result.counters.opportunitiesCreated).toBe(0)
     expect(rows('evidence')).toHaveLength(1)
     expect(rows('signals')).toHaveLength(0)

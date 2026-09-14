@@ -164,16 +164,45 @@ describe('5. re-ingestion does not change the original publication timestamp', (
     'utf8',
   )
 
-  it('touches only last_seen_at when a document is unchanged', () => {
-    const touch = /\.update\(\{ last_seen_at: input\.now \}\)/
-    expect(source).toMatch(touch)
-    // The unchanged branch updates nothing else — no published_at, no
-    // first_seen_at, no retrieved_at.
-    const branch = source.slice(source.indexOf('if (existing && (retrieved.unchanged'))
-    const untilReturn = branch.slice(0, branch.indexOf('return { evidenceId: existing.id'))
-    expect(untilReturn).not.toMatch(/published_at/)
-    expect(untilReturn).not.toMatch(/first_seen_at/)
-    expect(untilReturn).not.toMatch(/retrieved_at/)
+  it('never moves an identity or history column on a re-observation', () => {
+    const source = readFileSync(
+      join(APP_ROOT, 'netlify/functions/_shared/connectors/pipeline.ts'),
+      'utf8',
+    )
+    /*
+       THE RULE CHANGED SHAPE, NOT SUBSTANCE.
+
+       This asserted `.update({ last_seen_at: input.now })` literally -- the
+       whole re-observation path in one expression. That path now ENRICHES: a
+       row stored without text, without a locator and `unclassified` gains them
+       on the next run, which is how 39 half-finished SEC filings get completed
+       without being re-inserted.
+
+       What must never move is identity and history, so that is what is
+       asserted. `published_at` belongs to the source, `first_seen_at` to
+       history, `content_hash` and `source_document_id` to deduplication.
+    */
+    const enrichment = source.slice(
+      source.indexOf('const enrichment: Record<string, unknown>'),
+      source.indexOf('const { error } = await client.from(\'evidence\').update(enrichment)'),
+    )
+    expect(enrichment.length).toBeGreaterThan(200)
+    for (const forbidden of [
+      'published_at',
+      'published_precision',
+      'published_basis',
+      'first_seen_at',
+      'content_hash',
+      'source_document_id',
+      'superseded_at',
+      'superseded_by_evidence_id',
+    ]) {
+      expect(enrichment, `${forbidden} must not move on a re-observation`).not.toContain(
+        `${forbidden}:`,
+      )
+    }
+    // And `last_seen_at` is still the one that always moves.
+    expect(enrichment).toContain('last_seen_at: input.now')
   })
 
   it('carries the original first_seen_at forward onto a superseding version', () => {

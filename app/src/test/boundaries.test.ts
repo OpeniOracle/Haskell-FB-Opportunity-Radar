@@ -117,6 +117,14 @@ const ENV_MODULES = [
  *                         right shape. Every value in it is fabricated — the URL
  *                         resolves to nothing and the keys are zeroes — and the
  *                         file asserts that none of them reaches the output
+ *   secOpportunityPath.test.ts
+ *                         drives the whole path a demonstration depends on --
+ *                         SEC filing to readable text to signal to candidate
+ *                         opportunity -- against a recorded 8-K exhibit. It
+ *                         must name the real filer and the real sec.gov archive
+ *                         URLs, because what it asserts is that the OFFICIAL
+ *                         document URL is built from the filing's own
+ *                         archiveFolder and primaryDocument
  *   evidencePayload.test.ts
  *                         builds the exact evidence row the SEC connector
  *                         produces for a real Tyson Foods 8-K and checks every
@@ -178,6 +186,7 @@ const SELF_REFERENTIAL = [
   'modelDependency.test.ts',
   'sourceConnectivity.test.ts',
   'evidencePayload.test.ts',
+  'secOpportunityPath.test.ts',
 ]
 
 const files = walk(srcDir)

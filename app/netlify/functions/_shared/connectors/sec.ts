@@ -51,6 +51,28 @@ export const SEC_HOSTS = ['data.sec.gov', 'www.sec.gov'] as const
 const MIN_REQUEST_INTERVAL_MS = 220
 const FETCH_CONCURRENCY = 3
 
+/**
+ * The official filing document, from the two fields EDGAR gives us.
+ *
+ * `archiveFolder` is the filing's own directory under /Archives/edgar/data,
+ * and `primaryDocument` is the file SEC itself designates as the filing. Joined
+ * with a single slash, that is the canonical URL of the document a person would
+ * read -- not the index page listing it.
+ *
+ * Falls back to the accession index ONLY when SEC states no primary document.
+ * That is a real case for some older filings, and the index is then genuinely
+ * the best available document rather than a shortcut.
+ */
+export function officialFilingUrl(
+  archiveFolder: string,
+  primaryDocument: string | null | undefined,
+  accession: string,
+): string {
+  const folder = archiveFolder.replace(/\/+$/, '')
+  const primary = (primaryDocument ?? '').replace(/^\/+/, '').trim()
+  return primary ? `${folder}/${primary}` : `${folder}/${accession}-index.htm`
+}
+
 const COMPANY_TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json'
 const SUBMISSIONS_URL = (cik: string) => `https://data.sec.gov/submissions/CIK${cik}.json`
 const SUBMISSIONS_PAGE_URL = (name: string) => `https://data.sec.gov/submissions/${name}`
@@ -244,7 +266,8 @@ export function filingsFromSubmissions(
 
     out.push({
       sourceDocumentId: accession,
-      url: primary ? `${base}/${primary}` : `${base}/${accession}-index.htm`,
+      // The document, not the index page that lists it.
+      url: officialFilingUrl(base, primary, accession),
       canonicalUrl: `${base}/${accession}-index.htm`,
       title: `${form} — ${target.canonicalName}${
         recent.primaryDocDescription?.[i] ? ` — ${recent.primaryDocDescription[i]}` : ''

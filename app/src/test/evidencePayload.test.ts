@@ -193,12 +193,20 @@ describe('the SEC evidence payload satisfies every evidence check constraint', (
     expect(row.connector_version).toBe('1.0.0')
   })
 
-  it('does not carry a body or archive URI against structured_primary', async () => {
+  it('carries the filing text and the official URL, which structured_primary permits', async () => {
     const row = await secEvidenceRow()
     expect(row.access_mode).toBe('structured_primary')
-    // The reference_only / metadata_only constraints do not apply here, but a
-    // change of access_mode without a change of payload would trip them.
-    expect(row.body_text ?? null).toBeNull()
+
+    // `evidence_reference_only_has_no_body` forbids a body under
+    // reference_only and metadata_only. structured_primary is neither, and
+    // storing the text is what lets a document be re-classified without going
+    // back to SEC.
+    expect(row.body_text).toContain('Tyson Foods announced')
+    expect(row.locator).toBe(SEC_DOCUMENT.url)
+
+    // Nothing was archived to storage, so archive_uri stays null. A change of
+    // access_mode without a change of payload would trip the constraint, which
+    // is why this is asserted rather than assumed.
     expect(row.archive_uri ?? null).toBeNull()
   })
 

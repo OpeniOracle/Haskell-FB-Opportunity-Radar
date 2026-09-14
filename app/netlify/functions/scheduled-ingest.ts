@@ -82,7 +82,13 @@ export async function collect(
       evidenceCreated: r.counters.evidenceCreated,
       documentsDiscovered: r.counters.documentsDiscovered,
       documentsAccepted: r.counters.documentsAccepted,
+      // Stored and evaluated, carrying no qualifying signal. Reported apart
+      // from `documentsRejected`, which now means NOT STORED -- the two were
+      // conflated, so a run could report 39 stored and 39 rejected at once.
+      documentsStoredWithoutSignal: r.counters.documentsStoredWithoutSignal,
+      documentsEnriched: r.counters.documentsEnriched,
       documentsRejected: r.counters.documentsRejected,
+      rejectionReasons: r.counters.rejectionReasons,
       duplicatesPrevented: r.counters.duplicatesPrevented,
       opportunitiesCreated: r.counters.opportunitiesCreated,
       opportunitiesSuppressed: r.counters.opportunitiesSuppressed,

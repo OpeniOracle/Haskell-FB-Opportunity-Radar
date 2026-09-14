@@ -21,7 +21,7 @@ import {
   type EgressResult,
   type RetryingGetOptions,
 } from '../egress.js'
-import { runConnectorPass, type CompanyRow, type SourcePassResult } from './pipeline.js'
+import { emptyCounters, runConnectorPass, type CompanyRow, type SourcePassResult } from './pipeline.js'
 import { MARS_PACING, MARS_SOURCE_ID, marsConnector } from './mars.js'
 import { SEC_PACING, SEC_SOURCE_ID, secConnector, type SecCompanyTarget } from './sec.js'
 
@@ -353,21 +353,11 @@ export async function runIngestion(
   return results
 }
 
-function emptyCountersRef() {
-  return {
-    documentsDiscovered: 0,
-    documentsRetrieved: 0,
-    documentsAccepted: 0,
-    documentsRejected: 0,
-    documentsUnchanged: 0,
-    duplicatesPrevented: 0,
-    evidenceCreated: 0,
-    evidenceSuperseded: 0,
-    signalsCreated: 0,
-    signalsUpdated: 0,
-    opportunitiesCreated: 0,
-    opportunitiesUpdated: 0,
-    opportunitiesSuppressed: 0,
-    rejectionReasons: {} as Record<string, number>,
-  }
-}
+/**
+ * A SECOND COPY OF THE COUNTER SHAPE USED TO LIVE HERE.
+ *
+ * It drifted the moment `pipeline.ts` gained `documentsStoredWithoutSignal` and
+ * `documentsEnriched`, and only the typechecker noticed. There is one factory
+ * now, and adding a counter can no longer half-apply.
+ */
+const emptyCountersRef = emptyCounters
