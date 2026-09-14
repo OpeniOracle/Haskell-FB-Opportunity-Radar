@@ -29,7 +29,13 @@ import type {
   DiscoveredDocument,
   RetrievedDocument,
 } from './types.js'
-import { classifyText, clusterKey, type ClassificationMatch } from './classify.js'
+import {
+  classifyText,
+  clusterKey,
+  type ClassificationMatch,
+  type ClassificationResult,
+  type SignalFamilyCode,
+} from './classify.js'
 import { mapWithLimit } from '../egress.js'
 
 export const PIPELINE_VERSION = '1.0.0'
@@ -230,6 +236,135 @@ export function publishedPrecisionForColumn(precision: string | null | undefined
   return PRECISION_FOR_COLUMN[precision] ?? 'unknown'
 }
 
+/**
+ * A SOURCE-STATED DATE, in the vocabulary `signals` uses.
+ *
+ * `signals_event_date_precision_check` and `signals_event_date_basis_check`
+ * name the SAME two vocabularies as the evidence columns, and `upsertSignal`
+ * had its own inline copy that wrote `'day'` and `'source_declared'` -- the
+ * identical prose bug that had just been fixed in `normalizePublished`, in a
+ * second place nobody looked.
+ *
+ * So there is one function now. A third caller cannot drift.
+ */
+export function eventDateForSignal(eventDate: string | null | undefined): {
+  date: string | null
+  precision: string | null
+  basis: string
+} {
+  if (!eventDate) {
+    // `signals_event_date_requires_precision` only bites when a date exists.
+    return { date: null, precision: null, basis: 'unknown' }
+  }
+  return {
+    date: eventDate.slice(0, 10),
+    // A date the source stated is a day known exactly. The vocabulary has no
+    // finer member, and the full instant is on the evidence row.
+    precision: 'exact_day',
+    basis: 'stated',
+  }
+}
+
+/**
+ * THE CLASSIFIER'S TAXONOMY IS NOT THE DATABASE'S, AND `signal_family` IS A
+ * FOREIGN KEY.
+ *
+ * `signals.signal_family` references `signal_families(code)` and
+ * `signals.event_type` references `signal_event_types(code)` (migration 0013).
+ * The reference vocabulary is seeded by `db/seed/0001_reference_vocabulary.sql`
+ * and holds nine families and twenty-seven event types -- none of which, bar
+ * `new_facility_announced`, is a code the classifier produces.
+ *
+ * So SEVEN of the eight classifier families and seven of the eight event types
+ * would have been refused by a FOREIGN KEY, with SQLSTATE 23503.
+ *
+ * That was not the error the hosted run reported, and that is the point.
+ * PostgreSQL evaluates CHECK constraints before foreign keys, so the two prose
+ * values in `event_date_precision` and `event_date_basis` failed first with
+ * 23514 and the run never reached the foreign key. Fixing only what the error
+ * named would have produced a different failure on the very next run.
+ *
+ * The mapping is exhaustive by type: `Record<SignalFamilyCode, ...>` will not
+ * compile if the classifier gains a family and this is not updated.
+ */
+export const SIGNAL_TAXONOMY: Record<
+  SignalFamilyCode,
+  { readonly family: string; readonly eventType: string }
+> = {
+  // A new plant is the one code that already agreed.
+  facility_construction: { family: 'facility_capacity', eventType: 'new_facility_announced' },
+  facility_expansion: { family: 'facility_capacity', eventType: 'facility_expansion' },
+  // Modernisation is a process upgrade, not more capacity. Mapping it to
+  // `facility_expansion` would claim growth the filing did not announce.
+  facility_modernization: { family: 'process_systems', eventType: 'process_upgrade' },
+  // The patterns here are "increase capacity", "double output", "scale up
+  // production" -- a physical change to what the site can make.
+  capacity_change: { family: 'facility_capacity', eventType: 'production_line_added' },
+  distribution_logistics: {
+    family: 'distribution_supply_chain',
+    eventType: 'distribution_centre_project',
+  },
+  site_acquisition: { family: 'corporate_capital', eventType: 'acquisition_completed' },
+  // The patterns are wastewater, substations, boilers, cogeneration and solar.
+  utility_infrastructure: { family: 'utilities_sustainability', eventType: 'energy_project' },
+  closure_consolidation: { family: 'facility_capacity', eventType: 'facility_closure' },
+}
+
+/**
+ * The seeded codes, for a caller that wants to assert against them without
+ * reaching into the map.
+ */
+export const SEEDED_SIGNAL_FAMILIES = [
+  ...new Set(Object.values(SIGNAL_TAXONOMY).map((t) => t.family)),
+] as const
+
+export function signalTaxonomyFor(family: string): { family: string; eventType: string } {
+  const mapped = SIGNAL_TAXONOMY[family as SignalFamilyCode]
+  if (mapped) return mapped
+  /*
+     An unmapped family must not be able to fail every insert in a run -- which
+     is what an unmapped value has now done twice. `facility_capacity` and
+     `capacity_guidance` are the least specific pair that exists in the seeded
+     vocabulary, so the signal is recorded rather than lost, and the excerpt and
+     reasoning travel with it for a reviewer to correct.
+
+     The type on SIGNAL_TAXONOMY means this is unreachable from the classifier
+     as it stands. It exists for the day somebody adds a family and ships.
+  */
+  return { family: 'facility_capacity', eventType: 'capacity_guidance' }
+}
+
+/**
+ * CLASSIFIER CONFIDENCE INTO THE SIGNALS VOCABULARY, EXPLICITLY.
+ *
+ * The two vocabularies coincide today -- `gradeConfidence` returns `possible`
+ * or `probable`, and `signals_confidence_check` admits both plus `confirmed`.
+ * Passing one straight into the other anyway is how the precision and basis
+ * bugs happened: a coincidence that nobody wrote down, until one side moved.
+ *
+ * `confirmed` is deliberately unreachable from here. A single document read by
+ * a machine is never confirmed; that grade requires a second independent source
+ * or an analyst, and `upsertOpportunity` is where that judgement lives.
+ */
+export const SIGNAL_CONFIDENCE_VALUES = ['possible', 'probable', 'confirmed'] as const
+
+export function signalConfidenceFor(classifierConfidence: string): string {
+  switch (classifierConfidence) {
+    case 'probable':
+      return 'probable'
+    case 'possible':
+      return 'possible'
+    case 'confirmed':
+      // The classifier cannot produce this today. If it ever did, a single
+      // machine read still is not confirmation.
+      return 'probable'
+    default:
+      // An unrecognised grade must not be able to fail every insert in a run,
+      // which is exactly what an unmapped value did to 39 documents.
+      return 'possible'
+  }
+}
+
 export function normalizePublished(document: DiscoveredDocument): {
   publishedAt: string | null
   precision: string | null
@@ -281,6 +416,16 @@ export interface EvidenceWriteResult {
   readonly unchanged: boolean
   /** An existing row gained text, a locator, an excerpt or a classification. */
   readonly enriched?: boolean
+  /**
+   * The text already on the stored row, when this run has none of its own.
+   *
+   * A 304 sends no body, so `extractedText` is null and there is nothing to
+   * classify -- but the text from the run that DID fetch it is sitting in
+   * `body_text`. Handing it back lets the pipeline resume from storage instead
+   * of demanding a cache deletion and a re-fetch of documents SEC has already
+   * served once.
+   */
+  readonly storedBodyText?: string | null
 }
 
 /**
@@ -389,6 +534,8 @@ export async function upsertEvidence(
       superseded: false,
       unchanged: true,
       enriched,
+      // What the row holds, including anything this run just wrote into it.
+      storedBodyText: (enrichment.body_text as string | undefined) ?? existing.body_text,
     }
   }
 
@@ -513,6 +660,8 @@ export async function upsertSignal(
     eventDate: input.eventDate,
     matchedAsset: input.match.matchedAsset,
   })
+  const eventDate = eventDateForSignal(input.eventDate)
+  const taxonomy = signalTaxonomyFor(input.match.family)
 
   const { data: existing, error: readError } = await client
     .from('signals')
@@ -520,7 +669,7 @@ export async function upsertSignal(
     .eq('organization_id', input.organizationId)
     .eq('cluster_key', key)
     .maybeSingle()
-  if (readError) throw new Error(`signal lookup failed: ${readError.code ?? readError.message}`)
+  if (readError) throw new Error(`signal lookup failed: ${describeDbError(readError)}`)
 
   let signalId: string
   let created = false
@@ -543,7 +692,7 @@ export async function upsertSignal(
           : ((existing.independent_source_count as number) ?? 1),
       })
       .eq('id', signalId)
-    if (error) throw new Error(`signal update failed: ${error.code ?? error.message}`)
+    if (error) throw new Error(`signal update failed: ${describeDbError(error)}`)
   } else {
     const { data: inserted, error } = await client
       .from('signals')
@@ -551,14 +700,29 @@ export async function upsertSignal(
         organization_id: input.organizationId,
         title: input.title.slice(0, 300),
         summary: input.match.excerpt.slice(0, 2000),
-        signal_family: input.match.family,
-        event_type: input.match.eventType,
-        event_date: input.eventDate ? input.eventDate.slice(0, 10) : null,
-        event_date_precision: input.eventDate ? 'day' : null,
-        event_date_basis: input.eventDate ? 'source_declared' : null,
+        // Mapped onto the SEEDED reference vocabulary, because both columns
+        // are foreign keys into it. See SIGNAL_TAXONOMY.
+        signal_family: taxonomy.family,
+        event_type: taxonomy.eventType,
+        /*
+           THE THREE TEMPORAL COLUMNS, WRITTEN TOGETHER.
+
+           They were `'day'` and `'source_declared'` -- neither is a member of
+           its constraint's vocabulary, so EVERY signal insert was refused with
+           23514 and eight accepted filings produced nothing. Derived from one
+           function now, so the date, its precision and its basis cannot
+           disagree and a fourth copy cannot appear.
+        */
+        event_date: eventDate.date,
+        event_date_precision: eventDate.precision,
+        event_date_basis: eventDate.basis,
+        // `signals_observation_window_valid` requires last >= first. Same
+        // value, so the window is a point rather than an inversion.
         first_observed_at: input.now,
         last_observed_at: input.now,
-        confidence: input.match.confidence,
+        // Mapped, never passed through. See `signalConfidenceFor`.
+        confidence: signalConfidenceFor(input.match.confidence),
+        // `independent_source_count >= 1`. This evidence is the first source.
         independent_source_count: 1,
         negative_signal: input.match.negative,
         cluster_key: key,
@@ -566,6 +730,11 @@ export async function upsertSignal(
         // derivation is a number somebody will later mistake for a measurement.
         model_metadata: {
           derivedBy: `pipeline@${PIPELINE_VERSION}`,
+          // What the CLASSIFIER called it, kept because the stored family is a
+          // mapping onto the seeded vocabulary and the two are not the same
+          // taxonomy. A reviewer can see both.
+          classifierFamily: input.match.family,
+          classifierEventType: input.match.eventType,
           reasoning: input.match.reasoning,
           matchedAction: input.match.matchedAction,
           matchedAsset: input.match.matchedAsset,
@@ -575,7 +744,7 @@ export async function upsertSignal(
       })
       .select('id')
       .single()
-    if (error) throw new Error(`signal insert failed: ${error.code ?? error.message}`)
+    if (error) throw new Error(`signal insert failed: ${describeDbError(error)}`)
     signalId = inserted!.id as string
     created = true
   }
@@ -591,7 +760,7 @@ export async function upsertSignal(
     },
     { onConflict: 'signal_id,evidence_id' },
   )
-  if (linkError) throw new Error(`signal_evidence link failed: ${linkError.code ?? linkError.message}`)
+  if (linkError) throw new Error(`signal_evidence link failed: ${describeDbError(linkError)}`)
 
   return { signalId, created }
 }
@@ -643,7 +812,7 @@ export async function upsertOpportunity(
     .eq('organization_id', input.organizationId)
     .eq('opportunity_key', key)
     .maybeSingle()
-  if (readError) throw new Error(`opportunity lookup failed: ${readError.code ?? readError.message}`)
+  if (readError) throw new Error(`opportunity lookup failed: ${describeDbError(readError)}`)
 
   const title = `${humanFamily(input.match.family)} — ${input.match.matchedAsset}`
 
@@ -652,8 +821,8 @@ export async function upsertOpportunity(
       .from('opportunities')
       .update({ updated_at: input.now, last_material_change_at: input.now, derived_at: input.now })
       .eq('id', existing.id)
-    if (error) throw new Error(`opportunity update failed: ${error.code ?? error.message}`)
-    await linkOpportunitySignal(client, existing.id as string, input.signalId)
+    if (error) throw new Error(`opportunity update failed: ${describeDbError(error)}`)
+    await linkOpportunitySignal(client, existing.id as string, input.signalId, input.match.negative)
     return { opportunityId: existing.id as string, created: false, suppressed: null }
   }
 
@@ -678,24 +847,48 @@ export async function upsertOpportunity(
     })
     .select('id')
     .single()
-  if (error) throw new Error(`opportunity insert failed: ${error.code ?? error.message}`)
+  if (error) throw new Error(`opportunity insert failed: ${describeDbError(error)}`)
 
-  await linkOpportunitySignal(client, inserted!.id as string, input.signalId)
+  await linkOpportunitySignal(client, inserted!.id as string, input.signalId, input.match.negative)
   return { opportunityId: inserted!.id as string, created: true, suppressed: null }
+}
+
+/**
+ * THE ROLE A SIGNAL PLAYS IN AN OPPORTUNITY, in the vocabulary that column
+ * actually admits.
+ *
+ * `opportunity_signals.signal_role` admits trigger | supporting | corroborating
+ * | negative | closing. It was written as `'primary'`, which is the vocabulary
+ * of the OTHER link table -- `signal_evidence.evidence_role`, where `primary`
+ * IS a member. Two link tables, two vocabularies, one word borrowed from the
+ * wrong one.
+ *
+ * A signal the pipeline derived an opportunity FROM is the trigger. A negative
+ * signal -- a closure or a consolidation -- is recorded as `negative`, because
+ * a closure creating relocation work is not the same thing as a plant being
+ * built, and flattening the two would misrepresent both.
+ */
+export function opportunitySignalRole(negative: boolean): string {
+  return negative ? 'negative' : 'trigger'
 }
 
 async function linkOpportunitySignal(
   client: SupabaseClient,
   opportunityId: string,
   signalId: string,
+  negative: boolean,
 ): Promise<void> {
   const { error } = await client
     .from('opportunity_signals')
     .upsert(
-      { opportunity_id: opportunityId, signal_id: signalId, signal_role: 'primary' },
+      {
+        opportunity_id: opportunityId,
+        signal_id: signalId,
+        signal_role: opportunitySignalRole(negative),
+      },
       { onConflict: 'opportunity_id,signal_id' },
     )
-  if (error) throw new Error(`opportunity_signals link failed: ${error.code ?? error.message}`)
+  if (error) throw new Error(`opportunity_signals link failed: ${describeDbError(error)}`)
 }
 
 function humanFamily(family: string): string {
@@ -801,7 +994,7 @@ export async function runConnectorPass(
        genuinely nothing to read is a 304, where the body was never sent --
        there `extractedText` is null and the stored classification stands.
     */
-    const classification = retrieved.extractedText
+    let classification: ClassificationResult = retrieved.extractedText
       ? classifyText(retrieved.extractedText)
       : { matches: [], rejectionReason: null }
 
@@ -838,6 +1031,32 @@ export async function runConnectorPass(
       if (write.enriched) counters.documentsEnriched += 1
 
       /*
+         RESUME FROM STORED TEXT.
+
+         SEC answered 304, so this run holds no bytes and classified nothing --
+         but the text is on the row from the run that did fetch it. Without
+         this, a document whose signal insert failed could only be recovered by
+         deleting the cache and re-fetching it from SEC, which is traffic a
+         fair-access source should not be asked for twice to fix our own bug.
+
+         Only when this run has no text of its own. Fresh text always wins.
+      */
+      if (!retrieved.extractedText && write.storedBodyText) {
+        classification = classifyText(write.storedBodyText)
+        if (classification.matches.length > 0) {
+          const { error } = await client
+            .from('evidence')
+            .update({
+              classification_status: 'candidate_signal',
+              evidence_excerpt: classification.matches[0]!.excerpt.slice(0, 2000),
+            })
+            .eq('id', write.evidenceId)
+          if (error) throw new Error(`evidence reclassification failed: ${describeDbError(error)}`)
+          counters.documentsEnriched += write.enriched ? 0 : 1
+        }
+      }
+
+      /*
          AN ENRICHED ROW STILL HAS TO REACH THE SIGNAL STAGE.
 
          Returning here is right for a document we have already finished with,
@@ -846,7 +1065,10 @@ export async function runConnectorPass(
          filings would never produce a signal however many times it ran.
       */
       if (classification.matches.length === 0) {
-        if (retrieved.extractedText) {
+        // Evaluated against text from EITHER source. A 304 with nothing stored
+        // is the one case where there was genuinely nothing to read, and it is
+        // not counted as "evaluated and empty".
+        if (retrieved.extractedText || write.storedBodyText) {
           counters.documentsStoredWithoutSignal += 1
           bumpReason(counters, classification.rejectionReason ?? 'no qualifying signal in the document')
         }
