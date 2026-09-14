@@ -128,6 +128,10 @@ step "3e. An accepted SEC filing's signal and opportunity are accepted"
 bash "$ROOT/db/tests/signal-payload.sh"
 
 # --------------------------------------------------------------------------
+step "3f. The interface can read the columns it asks for"
+bash "$ROOT/db/tests/client-column-grants.sh"
+
+# --------------------------------------------------------------------------
 step "5. The Supabase SQL Editor operator file for 0021"
 # Run here rather than as a separate CI job so that it is exercised on every
 # PostgreSQL version in the matrix. The file an operator pastes into the
