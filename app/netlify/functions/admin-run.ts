@@ -21,6 +21,7 @@ import type { Handler } from '@netlify/functions'
 import { failure, json, methodNotAllowed } from './_shared/http.js'
 import { UnauthorizedError, requireOperator } from './_shared/auth.js'
 import { MissingEnvError, serverEnv } from './_shared/env.js'
+import { supabaseAdmin } from './_shared/supabaseAdmin.js'
 import { collect, collectionWindow } from './scheduled-ingest.js'
 
 /** Twelve months. The documented backfill depth for the first cohort. */
@@ -36,6 +37,33 @@ interface RunRequest {
   windowDays?: number
   sources?: string[]
   dryRun?: boolean
+}
+
+/**
+ * `sources`, validated.
+ *
+ * IT USED TO BE DECLARED AND IGNORED. The field was in this interface, the
+ * runner has always supported `onlySources`, and nothing connected the two --
+ * so `{"sources":["sec-edgar"]}` ran every enabled source and said nothing.
+ * Harmless while only one source is enabled, and exactly wrong on the day a
+ * second one is: an operator asking for one source would silently get both.
+ *
+ * It NARROWS, never widens. The runner intersects it with the enabled rows, so
+ * a disabled source stays disabled whatever is passed, and the worst a wrong id
+ * can do is collect nothing -- which is reported rather than swallowed.
+ */
+function parseSources(raw: unknown): { ok: true; value?: string[] } | { ok: false; why: string } {
+  if (raw === undefined || raw === null) return { ok: true }
+  if (!Array.isArray(raw) || raw.some((v) => typeof v !== 'string')) {
+    return { ok: false, why: 'sources must be an array of source ids.' }
+  }
+  const value = (raw as string[]).map((v) => v.trim()).filter((v) => v !== '')
+  if (value.length === 0) {
+    // `[]` would silently mean "no source", which is not something anybody
+    // means on purpose. Omit the field to run every enabled source.
+    return { ok: false, why: 'sources must not be empty. Omit it to run every enabled source.' }
+  }
+  return { ok: true, value }
 }
 
 export const handler: Handler = async (event) => {
@@ -84,18 +112,50 @@ export const handler: Handler = async (event) => {
 
   const window = days === 1 ? collectionWindow(new Date()) : backfillWindow(new Date(), days)
 
+  // Parsed BEFORE the dry-run branch, so a dry run validates the same input the
+  // real run will use. A dry run that skipped this would accept a typo and let
+  // the operator discover it during the backfill.
+  const parsed = parseSources(body.sources)
+  if (!parsed.ok) return failure(400, 'bad_request', parsed.why)
+  const onlySources = parsed.value
+
   if (body.dryRun) {
-    // A connectivity and configuration check that writes nothing. What an
-    // operator wants before committing to a twelve-month backfill.
+    /*
+       A dry run has to answer "what would this actually do", not just "are my
+       credentials right". It previously reported only the window, which told an
+       operator nothing about WHICH sources a real run would touch -- the one
+       question a controlled activation turns on.
+
+       So it reads the enabled set, read-only, and reports the intersection. It
+       writes nothing, opens no run, and contacts no source.
+    */
+    const { data, error } = await supabaseAdmin()
+      .from('sources')
+      .select('id, enabled, health_status')
+      .eq('enabled', true)
+    if (error) {
+      return failure(502, 'collection_failed', `sources unreadable: ${error.code ?? error.message}`)
+    }
+    const enabled = (data ?? []).map((r) => r.id as string).sort()
+    const wouldRun = onlySources ? enabled.filter((id) => onlySources.includes(id)) : enabled
+    const requestedButNotEnabled = (onlySources ?? []).filter((id) => !enabled.includes(id))
+
     return json(200, {
       dryRun: true,
       window,
-      note: 'Configuration and credentials accepted. No collection was performed.',
+      requestedSources: onlySources ?? null,
+      enabledSources: enabled,
+      wouldRun,
+      requestedButNotEnabled,
+      note:
+        wouldRun.length === 0
+          ? 'Configuration and credentials accepted, but NO source would run. Nothing was collected.'
+          : `Configuration and credentials accepted. A real run would collect from: ${wouldRun.join(', ')}. No collection was performed.`,
     })
   }
 
   try {
-    const result = await collect(window)
+    const result = await collect(window, onlySources)
     return json(200, result)
   } catch (error) {
     // The message may name a source or a status; it never carries a body, a

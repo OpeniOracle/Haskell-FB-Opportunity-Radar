@@ -35,7 +35,18 @@ export function collectionWindow(now: Date): { start: string; end: string } {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
-export async function collect(window: { start: string; end: string }) {
+/**
+ * Run a collection.
+ *
+ * `onlySources` NARROWS an already-enabled set; it can never widen one. A
+ * source that is disabled stays disabled whatever is passed here, because the
+ * runner intersects this with the enabled rows. That ordering is what makes it
+ * safe to hand an operator: the worst a wrong id can do is collect nothing.
+ */
+export async function collect(
+  window: { start: string; end: string },
+  onlySources?: readonly string[],
+) {
   const env = serverEnv('ingest')
   const client = supabaseAdmin()
 
@@ -43,6 +54,7 @@ export async function collect(window: { start: string; end: string }) {
     window,
     userAgent: env.secEdgarUserAgent!,
     allowlist: env.egressAllowlist,
+    onlySources,
     log: (message) => console.log(message),
   })
 
@@ -51,7 +63,9 @@ export async function collect(window: { start: string; end: string }) {
       ok: true,
       window,
       sources: [],
-      note: 'No source is enabled. Nothing was collected, and this is a coverage gap rather than a success.',
+      note: onlySources
+        ? `No enabled source matched ${onlySources.join(', ')}. Nothing was collected.`
+        : 'No source is enabled. Nothing was collected, and this is a coverage gap rather than a success.',
     }
   }
 

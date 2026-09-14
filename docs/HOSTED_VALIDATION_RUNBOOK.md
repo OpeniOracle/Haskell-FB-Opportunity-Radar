@@ -1130,28 +1130,174 @@ authenticates you and Supabase then refuses the redirect — which fails *after*
 the identity provider has already succeeded, and reads like a broken
 application rather than a missing configuration line.
 
-## F5. Enable the sources
+## F5a. Enable sec-edgar ONLY
 
-```sql
-update sources set enabled = true, health_status = 'healthy' where id in ('sec-edgar', 'mars-newsroom');
-```
-
-## F6. Correct the Mars retrieval strategy, if F3 showed you the real paths
-
-The candidate URLs are **configuration, not code**. There is no deploy.
+**One source at a time.** Enabling both at once means a first live run where two
+connectors, two rate-limit regimes and two failure modes are new simultaneously,
+and a run report you cannot attribute. SEC first because it is a documented API
+with a published fair-access policy; Mars is a newsroom crawl and goes second,
+after SEC is proven end to end.
 
 ```sql
 update sources
-   set connector_config = connector_config || jsonb_build_object(
-         'feedCandidates', jsonb_build_array('<the real feed URL>'),
-         'indexCandidates', jsonb_build_array('<the real newsroom URL>'),
-         'confirmedOnFirstLiveRun', true)
+   set enabled = true, health_status = 'healthy', updated_at = now()
+ where id = 'sec-edgar';
+```
+
+**Verify immediately** — read-only:
+
+```sql
+select s.id, s.enabled, s.health_status, s.last_success_at, s.consecutive_failures,
+       (select count(*) from source_runs r
+         where r.source_id = s.id and r.run_status = 'running')     as active_runs,
+       (select max(r.started_at) from source_runs r
+         where r.source_id = s.id)                                   as last_run_started
+  from sources s
+ where s.id in ('sec-edgar', 'mars-newsroom')
+ order by s.id;
+```
+
+**Expected:** `sec-edgar` enabled `true`, health `healthy`, `active_runs = 0`,
+`last_run_started` null. **`mars-newsroom` must still read `enabled = false`,
+`health_status = disabled`.** If Mars is enabled here, stop and disable it
+before going further.
+
+## F5b. Enable mars-newsroom — NOT YET
+
+Only after the SEC dry run, the SEC backfill and its repeat run have been
+reviewed. The statement is kept here so nobody improvises it:
+
+```sql
+-- DO NOT RUN until SEC is validated end to end.
+update sources
+   set enabled = true, health_status = 'healthy', updated_at = now()
  where id = 'mars-newsroom';
 ```
 
-The development environment that wrote this connector could not reach mars.com,
-so the seeded candidates are conventional guesses. Confirming them is part of
-this run, not a defect.
+## F6. Mars retrieval strategy — already confirmed, nothing to correct
+
+This section used to tell you to write the real Mars URLs into
+`connector_config` after the first live run, because the environment that wrote
+the connector could not reach mars.com. **That has now been done by direct-egress
+probing**, and the hosted row is reconciled:
+
+| Array | Contents |
+| --- | --- |
+| `feedCandidates` | `[]` — every guessed feed path returned 404 |
+| `sitemapCandidates` | `https://www.mars.com/sitemap.xml` |
+| `indexCandidates` | `https://www.mars.com/news-and-stories` |
+
+**Do not run the `connector_config || jsonb_build_object(...)` statement that
+used to be here.** That form replaces whole keys, so it would re-add the five
+retired candidates and undo the reconciliation. If a candidate ever needs
+changing, use the targeted `jsonb_set` form in F3.
+
+`confirmedOnFirstLiveRun` is still `false`, and correctly so: reachability has
+been confirmed, but no document has yet been *retrieved and parsed* from Mars.
+Flip it only after a Mars run actually produces evidence.
+
+## F6a. The SEC dry run
+
+**Do this before any backfill, and report the result before going further.**
+
+A dry run authenticates, validates the environment and the request, reads which
+sources are enabled, and reports what a real run would collect. **It writes
+nothing, opens no run row, and contacts no source.**
+
+Endpoint — the Deploy Preview for PR #10:
+
+```
+POST https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/api/admin-run
+```
+
+`/api/admin-run` is the only HTTP path into collection. The scheduled collector
+has no route at all, deliberately, so there is no public invocation path.
+
+### Authentication
+
+`X-Radar-Operator-Secret`, holding `INGEST_SHARED_SECRET`, compared in constant
+time. **It is not a user session**: a signed-in reviewer cannot force a
+collection, and this secret cannot read the dashboard. A missing secret and a
+wrong one return the identical 401 — distinguishing them would be a free hint to
+whoever is guessing.
+
+**The secret never goes on a command line.** An argument is visible in `ps` to
+every other process on the machine and lands in shell history.
+
+```powershell
+$secret = Read-Host -Prompt 'INGEST_SHARED_SECRET' -AsSecureString
+$bstr   = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+try {
+  $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+  Invoke-RestMethod -Method Post `
+    -Uri 'https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/api/admin-run' `
+    -Headers @{ 'X-Radar-Operator-Secret' = $plain; 'Content-Type' = 'application/json' } `
+    -Body '{"dryRun":true,"sources":["sec-edgar"],"windowDays":365}' |
+    ConvertTo-Json -Depth 6
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+  Remove-Variable plain -ErrorAction SilentlyContinue
+}
+```
+
+```bash
+read -rs -p 'INGEST_SHARED_SECRET: ' SECRET; printf '\n'
+printf '%s\n' \
+  'url = "https://deploy-preview-10--haskell-fb-opportunity-radar.netlify.app/api/admin-run"' \
+  "header = \"X-Radar-Operator-Secret: $SECRET\"" \
+  'header = "Content-Type: application/json"' \
+  'request = "POST"' \
+  'data = "{\"dryRun\":true,\"sources\":[\"sec-edgar\"],\"windowDays\":365}"' \
+  'silent' 'show-error' 'write-out = "\n%{http_code}\n"' \
+  | curl --config -
+unset SECRET
+```
+
+`curl --config -` takes the header on **stdin** — the one channel that is
+neither the argument vector nor the environment.
+
+### The expected response
+
+**HTTP 200**, `application/json`:
+
+```json
+{
+  "dryRun": true,
+  "window": { "start": "2025-09-15T00:00:00.000Z", "end": "2026-09-15T00:00:00.000Z" },
+  "requestedSources": ["sec-edgar"],
+  "enabledSources": ["sec-edgar"],
+  "wouldRun": ["sec-edgar"],
+  "requestedButNotEnabled": [],
+  "note": "Configuration and credentials accepted. A real run would collect from: sec-edgar. No collection was performed."
+}
+```
+
+| Field | What to check |
+| --- | --- |
+| `window` | A 365-day span ending tomorrow, UTC. `windowDays: 1` would give the daily window instead. |
+| `enabledSources` | **`["sec-edgar"]` and nothing else.** If `mars-newsroom` appears, F5a was applied wrongly — stop. |
+| `wouldRun` | `["sec-edgar"]`. This is the intersection of what you asked for and what is enabled. |
+| `requestedButNotEnabled` | `[]`. A non-empty value means a typo in the source id. |
+| `note` | Names the sources a real run would collect from. "**NO source would run**" means the intersection is empty. |
+
+### Stop conditions
+
+| Response | Meaning | Action |
+| --- | --- | --- |
+| `401 unauthorized` | Wrong or missing operator secret | Check `INGEST_SHARED_SECRET` in Netlify, Functions scope, and that the preview was redeployed after it was set. Do not retry blindly. |
+| `503 not_configured` | A Functions-scope variable is missing | The message **names** it. Add it, redeploy this context, re-run. |
+| `400 bad_request` | Malformed body, bad `sources`, or `windowDays` outside 1–400 | The message says which. |
+| `405` | Wrong method | It is POST. |
+| `404` or an HTML body | The request did not reach a function | A `_redirects` file may be shadowing `netlify.toml`. |
+| `wouldRun` empty | Nothing would be collected | F5a did not take effect, or the source id is wrong. |
+| `mars-newsroom` in `enabledSources` | Mars was enabled by accident | Disable it before proceeding. |
+
+**A dry run proves configuration and authorization. It does not contact SEC**,
+so it says nothing about whether EDGAR will answer — F3 covers that, and it
+passed. Nothing is written, so there is nothing to clean up.
+
+**Report the dry-run output before running a backfill.** The backfill command is
+deliberately not in this section.
 
 ## F7. Run the backfill
 
@@ -1184,6 +1330,79 @@ Twelve months is the window recorded in **ADR 0016**.
 **Expected on the repeat run:** `evidenceCreated: 0` for every source and
 `duplicatesPrevented` greater than zero. The script says so explicitly. If the
 repeat run creates records, stop and investigate before trusting any count.
+
+## F7b. Verify the run in the database
+
+Read-only. Run these after any collection, dry run included — after a dry run
+every count must still be zero, which is how you prove it wrote nothing.
+
+```sql
+-- 1. Runs. `run_status = 'running'` is an ACTIVE run; the partial unique index
+--    source_runs_single_active_uidx permits at most one per source.
+select id, source_id, run_status, status,
+       collection_window_start, collection_window_end,
+       started_at, completed_at,
+       discovered_count, fetched_count, extracted_count,
+       rejected_count, duplicate_count, items_seen, items_stored,
+       error_code, error_summary
+  from source_runs
+ where source_id = 'sec-edgar'
+ order by started_at desc nulls last
+ limit 10;
+
+-- 2. Per-attempt detail: what was actually requested, and what came back.
+select a.attempt_number, a.outcome, a.http_status, a.error_class,
+       a.error_detail, a.bytes_fetched, a.started_at, a.finished_at
+  from source_run_attempts a
+  join source_runs r on r.id = a.source_run_id
+ where r.source_id = 'sec-edgar'
+ order by a.started_at desc
+ limit 50;
+
+-- 3. Conditional-request validators. Populated only by a real retrieval;
+--    a dry run leaves this empty. Never holds a response body.
+select source_id, request_url, etag, last_modified, status, hit_count, fetched_at
+  from source_document_cache
+ where source_id = 'sec-edgar'
+ order by fetched_at desc
+ limit 20;
+
+-- 4. Evidence, with provenance. missing_document_id MUST be 0: a stable source
+--    identity is what makes a repeat run a no-op.
+select source_id, connector_id, connector_version,
+       count(*)                                                  as documents,
+       count(*) filter (where superseded_at is null)              as current_documents,
+       count(*) filter (where source_document_id is null)         as missing_document_id,
+       count(*) filter (where published_at is null)               as no_published_date,
+       min(first_seen_at) as first_seen, max(last_seen_at) as last_seen
+  from evidence
+ where source_id = 'sec-edgar'
+ group by 1, 2, 3;
+
+-- 5. Health and failure events, with what each one implies for coverage.
+select h.created_at, h.source_id, h.event_type,
+       h.prior_status, h.new_status,
+       h.summary, h.coverage_impact, h.action_required, h.resolved_at
+  from source_health_events h
+ where h.source_id = 'sec-edgar'
+ order by h.created_at desc
+ limit 20;
+```
+
+**After a dry run, expected:** every one of the five returns **zero rows** for
+`sec-edgar`, and `sources.last_success_at` is still null. A dry run that left a
+`source_runs` row behind is a defect — report it rather than continuing.
+
+**Before any backfill, stop if:**
+
+| What you see | Why it stops the run |
+| --- | --- |
+| any `source_runs` row with `run_status = 'running'` | A run is already in flight, or a previous one died without completing. A second would be refused by the database, but find out why first. |
+| a dry run left any row in `source_runs` or `source_document_cache` | It is documented to write nothing. |
+| `mars-newsroom` enabled | One source at a time. |
+| `missing_document_id > 0` | Document identity is broken; a repeat run would duplicate rather than deduplicate. |
+| `source_health_events` carrying `action_required` | Something wants a decision before more traffic is sent. |
+| `/api/status` not returning 200 | The deployment changed under you. |
 
 ## F8. Verify in the database
 
