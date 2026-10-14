@@ -12,6 +12,7 @@ import {
   opportunitySignalRole,
   signalTaxonomyFor,
   upsertEvidence,
+  evidenceAccessPolicy,
   upsertSignal,
 } from '../../netlify/functions/_shared/connectors/pipeline'
 import { SIGNAL_PATTERNS } from '../../netlify/functions/_shared/connectors/classify'
@@ -26,6 +27,13 @@ import type {
   DiscoveredDocument,
   RetrievedDocument,
 } from '../../netlify/functions/_shared/connectors/types'
+
+/**
+ * What the SEC source registry row permits: U.S. government material, archived
+ * in full under ADR 0014, open licence. `runConnectorPass` takes this as a
+ * required argument, so these tests state it rather than inherit a default.
+ */
+const SEC_ACCESS = { accessMode: 'archived_full_text', licenseMode: 'open' } as const
 
 /**
  * SEC filing -> readable text -> signal -> candidate opportunity.
@@ -234,7 +242,7 @@ async function writeEvidence(
     retrieved: doc,
     excerpt,
     classificationStatus: status,
-    accessMode: 'structured_primary',
+    access: evidenceAccessPolicy(SEC_ACCESS),
     now: '2026-03-05T06:00:00.000Z',
   })
 }
@@ -490,6 +498,7 @@ describe('SEC filing to candidate opportunity', () => {
       [COMPANY],
       'run-1',
       1,
+      SEC_ACCESS,
     )
 
     expect(result.runStatus).toBe('success')
@@ -534,6 +543,7 @@ describe('SEC filing to candidate opportunity', () => {
       [COMPANY],
       'run-1',
       1,
+      SEC_ACCESS,
     )
 
     expect(result.runStatus).toBe('success')
@@ -590,6 +600,7 @@ describe('SEC filing to candidate opportunity', () => {
       [COMPANY],
       'run-2',
       1,
+      SEC_ACCESS,
     )
 
     expect(result.runStatus).toBe('unchanged')
@@ -623,7 +634,7 @@ describe('SEC filing to candidate opportunity', () => {
       throw new Error('no egress')
     })
 
-    await runConnectorPass(client, conn, ctx, [COMPANY], 'run-1', 1)
+    await runConnectorPass(client, conn, ctx, [COMPANY], 'run-1', 1, SEC_ACCESS)
     const afterFirst = JSON.stringify(rows('evidence'))
 
     const unchanged: Connector = {
@@ -632,7 +643,7 @@ describe('SEC filing to candidate opportunity', () => {
         return retrieved(d, FILING_HTML, { unchanged: true })
       },
     }
-    const second = await runConnectorPass(client, unchanged, ctx, [COMPANY], 'run-2', 1)
+    const second = await runConnectorPass(client, unchanged, ctx, [COMPANY], 'run-2', 1, SEC_ACCESS)
 
     expect(rows('evidence')).toHaveLength(1)
     expect(second.counters.evidenceCreated).toBe(0)
@@ -832,6 +843,7 @@ describe('resuming downstream work from stored evidence', () => {
       [COMPANY],
       'run-3',
       1,
+      SEC_ACCESS,
     )
 
     // No refetch, no new evidence row.
@@ -865,6 +877,7 @@ describe('resuming downstream work from stored evidence', () => {
       [COMPANY],
       'run-3',
       1,
+      SEC_ACCESS,
     )
     const row = rows('evidence')[0]!
     expect(row.body_text).toContain('Bowling Green')
@@ -885,11 +898,11 @@ describe('resuming downstream work from stored evidence', () => {
       throw new Error('no egress')
     })
 
-    await runConnectorPass(client, conn, ctx, [COMPANY], 'run-3', 1)
+    await runConnectorPass(client, conn, ctx, [COMPANY], 'run-3', 1, SEC_ACCESS)
     const signals = rows('signals').length
     const opportunities = rows('opportunities').length
 
-    await runConnectorPass(client, conn, ctx, [COMPANY], 'run-4', 1)
+    await runConnectorPass(client, conn, ctx, [COMPANY], 'run-4', 1, SEC_ACCESS)
 
     // The cluster key and the opportunity key are what prevent this, and they
     // are unchanged by the temporal fix.
@@ -916,6 +929,7 @@ describe('resuming downstream work from stored evidence', () => {
       [COMPANY],
       'run-3',
       1,
+      SEC_ACCESS,
     )
     // Nothing to read is not the same as nothing to say. It is not counted as
     // evaluated-and-empty, and the stored verdict is left alone.

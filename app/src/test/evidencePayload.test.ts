@@ -6,6 +6,7 @@ import {
   PUBLISHED_BASIS_VALUES,
   PUBLISHED_PRECISION_VALUES,
   describeDbError,
+  evidenceAccessPolicy,
   normalizePublished,
   publishedPrecisionForColumn,
   upsertEvidence,
@@ -141,7 +142,9 @@ async function secEvidenceRow(): Promise<Record<string, unknown>> {
     retrieved: SEC_RETRIEVED,
     excerpt: 'Tyson Foods announced a new processing plant',
     classificationStatus: 'candidate_signal',
-    accessMode: 'structured_primary',
+    // SEC's row in the source registry: U.S. government material, archived in
+    // full under ADR 0014, with an open licence.
+    access: evidenceAccessPolicy({ accessMode: 'archived_full_text', licenseMode: 'open' }),
     now: '2026-03-05T06:00:00.000Z',
   })
   const inserted = row()
@@ -193,12 +196,14 @@ describe('the SEC evidence payload satisfies every evidence check constraint', (
     expect(row.connector_version).toBe('1.0.0')
   })
 
-  it('carries the filing text and the official URL, which structured_primary permits', async () => {
+  it('carries the filing text and the official URL, which archived_full_text permits', async () => {
     const row = await secEvidenceRow()
-    expect(row.access_mode).toBe('structured_primary')
+    // The SOURCE'S mode, not a constant: the pipeline used to write
+    // structured_primary for every connector, whatever the registry said.
+    expect(row.access_mode).toBe('archived_full_text')
 
     // `evidence_reference_only_has_no_body` forbids a body under
-    // reference_only and metadata_only. structured_primary is neither, and
+    // reference_only and metadata_only. archived_full_text is neither, and
     // storing the text is what lets a document be re-classified without going
     // back to SEC.
     expect(row.body_text).toContain('Tyson Foods announced')

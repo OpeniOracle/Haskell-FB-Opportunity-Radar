@@ -28,6 +28,19 @@ import { MissingEnvError, serverEnv } from './_shared/env.js'
 import { supabaseAdmin } from './_shared/supabaseAdmin.js'
 import { runIngestion } from './_shared/connectors/runner.js'
 
+/**
+ * HOW LONG AN INVOCATION MAY SPEND STARTING WORK, from Netlify's own limits.
+ *
+ * Netlify ends a scheduled function at 30 seconds and a synchronous one at 60.
+ * An invocation the platform ends mid-write cannot close its run, and an
+ * unclosed run is how Mars stalled for a month. So each entry point stops
+ * STARTING sources and documents with room left to finish the one in flight and
+ * record the outcome. Work not started is reported as deferred and picked up by
+ * the next run.
+ */
+export const SCHEDULED_BUDGET_MS = 22_000
+export const OPERATOR_BUDGET_MS = 50_000
+
 /** Midnight UTC on the day the schedule fired. Stable across retries. */
 export function collectionWindow(now: Date): { start: string; end: string } {
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -46,6 +59,7 @@ export function collectionWindow(now: Date): { start: string; end: string } {
 export async function collect(
   window: { start: string; end: string },
   onlySources?: readonly string[],
+  budgetMs: number = SCHEDULED_BUDGET_MS,
 ) {
   const env = serverEnv('ingest')
   const client = supabaseAdmin()
@@ -55,6 +69,7 @@ export async function collect(
     userAgent: env.secEdgarUserAgent!,
     allowlist: env.egressAllowlist,
     onlySources,
+    deadlineMs: Date.now() + budgetMs,
     log: (message) => console.log(message),
   })
 
@@ -78,6 +93,13 @@ export async function collect(
     sources: results.map((r) => ({
       sourceId: r.sourceId,
       runStatus: r.runStatus,
+      // Whether this invocation actually collected the source. A skipped source
+      // -- another run active, the time budget spent -- was NOT collected, and
+      // the report must not let "no failure" read as "collected".
+      collected: r.runStatus === 'success' || r.runStatus === 'unchanged' || r.runStatus === 'partial_success',
+      // The health the DATABASE holds after this invocation, never an assumed
+      // value. A skip used to report `healthy` for a source that had never
+      // completed a run.
       healthStatus: r.healthStatus,
       evidenceCreated: r.counters.evidenceCreated,
       documentsDiscovered: r.counters.documentsDiscovered,
@@ -92,6 +114,7 @@ export async function collect(
       duplicatesPrevented: r.counters.duplicatesPrevented,
       opportunitiesCreated: r.counters.opportunitiesCreated,
       opportunitiesSuppressed: r.counters.opportunitiesSuppressed,
+      documentsDeferred: r.counters.documentsDeferred,
       note: r.note,
     })),
   }

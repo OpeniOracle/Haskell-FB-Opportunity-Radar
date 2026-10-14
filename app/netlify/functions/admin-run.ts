@@ -22,7 +22,7 @@ import { failure, json, methodNotAllowed } from './_shared/http.js'
 import { UnauthorizedError, requireOperator } from './_shared/auth.js'
 import { MissingEnvError, serverEnv } from './_shared/env.js'
 import { supabaseAdmin } from './_shared/supabaseAdmin.js'
-import { collect, collectionWindow } from './scheduled-ingest.js'
+import { OPERATOR_BUDGET_MS, collect, collectionWindow } from './scheduled-ingest.js'
 
 /** Twelve months. The documented backfill depth for the first cohort. */
 export const MAX_WINDOW_DAYS = 400
@@ -155,7 +155,8 @@ export const handler: Handler = async (event) => {
   }
 
   try {
-    const result = await collect(window, onlySources)
+    // Synchronous: Netlify's 60-second limit, not the schedule's 30.
+    const result = await collect(window, onlySources, OPERATOR_BUDGET_MS)
     return json(200, result)
   } catch (error) {
     // The message may name a source or a status; it never carries a body, a
