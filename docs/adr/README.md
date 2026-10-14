@@ -10,9 +10,15 @@ This directory holds it.
 - **Superseded** — replaced by a later ADR, which is named in the record.
 
 Six records are **Accepted** and the rest remain **Proposed**; each header names the
-decision that approved it, or the gate at which it will be ratified. **Nothing here is
-implemented** — acceptance records an approved design, not built software, and no ADR
-acceptance selects a vendor.
+decision that approved it, or the gate at which it will be ratified. Acceptance records
+an approved design, not built software, and no ADR acceptance selects a vendor.
+
+**Corrected.** This paragraph used to say "Nothing here is implemented". That stopped
+being true when live collection shipped (PRs #9 and #10, September 2026): the egress
+gateway (0002, still Proposed), the temporal model (0004), supersession (0012), external
+hosting (0013), the pilot access rule (0014), the evidence proxy (0015) and the backfill
+window (0016) all have code or migrations behind them now. Status here still means
+**ratification**, never "built" — an implemented Proposed ADR is still Proposed.
 
 ## Index
 

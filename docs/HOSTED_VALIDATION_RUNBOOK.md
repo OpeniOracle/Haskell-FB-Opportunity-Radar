@@ -1505,3 +1505,179 @@ shifted collection window either side of the change.
 The scheduled function has no HTTP route and cannot be invoked by a request.
 `admin-run` is the only manual path and carries its own operator credential.
 Overlap is refused by the database, not by a check in the handler.
+
+---
+
+# G. Phase 2 PR 1 — ingestion integrity: what merge changes, and the remediation
+
+Three defects found in the production database on 2026-10-14 (read-only queries,
+recorded in `docs/design/18_PHASE_2_ENGINEERING_AUDIT_AND_DATA_ACTIVATION_PLAN.md`
+on the audit branch):
+
+| | Defect | Where it lived |
+|---|---|---|
+| F-5 | The Mars run started 2026-09-14 05:23:06 UTC was ended by Netlify's 60-second synchronous limit before it could close. It stayed `running`. Every later run collided with it, reported `skipped` / `healthy`, and wrote nothing. Mars still reads `healthy` with `last_success_at` NULL | `runner.ts` |
+| F-11 | Source-health writes ignored their errors | `runner.ts` `closeRun` |
+| F-4 | The pipeline wrote `access_mode = 'structured_primary'` for every connector, so the reference-only Mars newsroom stored 53 full pages as `body_text` (ADR 0014) | `pipeline.ts` |
+
+## G1. Three different things happen, at three different times
+
+**Do not read "merge" as "no production effect".** The code deploys on merge, the
+scheduled function then changes production data on its own at the next 06:00 UTC,
+and the remediation file changes production data only when an operator runs it.
+
+### On merge — code is deployed
+
+Netlify builds `main` for the production context (`haskell-fb-opportunity-radar`,
+functions in `us-east-2`, Node 22). The deploy carries the new `runner.ts`,
+`pipeline.ts`, `scheduled-ingest.ts` and `admin-run.ts`. **No migration, no seed,
+no environment variable, no Netlify or Supabase setting changes.** The deploy alone
+writes nothing to the database.
+
+### At the next 06:00 UTC — the scheduled run changes production data by itself
+
+`scheduled-ingest` (`0 6 * * *`) runs SEC, then Mars, inside a 22-second budget
+(Netlify ends scheduled functions at 30 seconds).
+
+**sec-edgar**
+
+- Each run now writes a lease to `source_runs.checkpoint` (`lease|<holder>|<instant>`)
+  and renews it while working.
+- **New** SEC evidence rows are recorded `access_mode = 'archived_full_text'` — the
+  registry's value — instead of `structured_primary`. Existing SEC rows are not
+  rewritten. The body is still kept (open licence, U.S. government work).
+- Health writes are checked; a refused write is reported in the run result and the
+  function log instead of being silently lost.
+
+**mars-newsroom** — expect all of the following, in this order:
+
+1. The stalled run `2925eada-3f3f-43e9-9279-445b202e6543` has had no activity since
+   2026-09-14, far past the 15-minute lease. It is closed: `status = 'failed'`,
+   `run_status = 'failure'`, `error_code = 'abandoned'`, `completed_at` set.
+2. One `source_health_events` row, `event_type = 'run_abandoned'`,
+   `healthy → degraded`. `sources.consecutive_failures` 0 → 1.
+3. A new run opens for that day's window and Mars collects. Undated sitemap entries
+   pass the window filter, so it walks the same ~53 pages at 1.5-second pacing and
+   **will not finish inside the budget**. It stops starting pages when the budget is
+   spent, reports the rest as deferred, and **closes its own run** as
+   `partial_success` with health `degraded`. Because something was retrieved,
+   `last_success_at` is set for the first time.
+4. Pages it re-reads are unchanged; no body is added to any existing row. A Mars page
+   never seen before would be stored `reference_only` with no body.
+5. **The 53 existing bodies are still in the database.** The scheduled run never
+   removes stored content; that is the remediation's job.
+
+From then on Mars reads `degraded` daily until the connector itself is repaired
+(audit F-8, a later PR). That is the honest state, not a regression.
+
+### Only when the remediation file is run — the rest
+
+`db/operator/remediation_2026_10_ingestion_integrity.operator.sql`:
+
+- closes the stalled run as abandoned **if the scheduled run has not already**;
+- sets `body_text = NULL` and `access_mode = 'reference_only'` on the 53 Mars rows,
+  keeping id, `source_document_id`, `content_hash`, URLs, title, dates and the bounded
+  excerpt, and recording the change in each row's `evidence_locator`;
+- sets Mars health to `action_required` **only if no Mars run has ever completed**;
+  if the scheduled run already completed one, its derived health is left alone;
+- writes one `audit_events` row (`request_id = 'remediation-2026-10-ingestion-integrity'`)
+  and one `source_health_events` row.
+
+It works in either order — before or after the first scheduled run — and refuses a
+second application.
+
+## G2. Remediation procedure
+
+**Requires a separate written authorization.** Merging PR 1 does not authorize it.
+
+### G2a. Read-only preflight
+
+```sql
+-- 1. The stalled run: still running, or already closed as abandoned by the runner.
+select id, run_status, status, error_code, started_at, checkpoint
+  from source_runs where id = '2925eada-3f3f-43e9-9279-445b202e6543';
+
+-- 2. Exactly 53 Mars rows carrying a body or a non-reference mode, none with a
+--    Storage object.
+select count(*) filter (where body_text is not null or access_mode <> 'reference_only') as to_correct,
+       count(*) filter (where archive_uri is not null or raw_storage_uri is not null
+                           or extracted_text_uri is not null)                          as stored_objects,
+       count(*)                                                                         as total
+  from evidence where source_id = 'mars-newsroom';
+
+-- 3. The registry still says reference-only.
+select id, access_mode, license_mode, health_status, last_success_at, consecutive_failures
+  from sources where id = 'mars-newsroom';
+
+-- 4. Not already applied.
+select count(*) from audit_events where request_id = 'remediation-2026-10-ingestion-integrity';
+```
+
+**Expected:** (1) `running` or `failure/abandoned`; (2) `to_correct = 53`,
+`stored_objects = 0`; (3) `reference_only`; (4) `0`.
+
+**Stop conditions:** any other value. The file would refuse anyway, but a mismatch
+means production moved since 2026-10-14 and needs a look before anything is run.
+
+### G2b. Apply
+
+Supabase Dashboard → SQL Editor → paste the **entire** file → Run. Or
+`psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f db/operator/remediation_2026_10_ingestion_integrity.operator.sql`.
+
+One `DO` block, so one transaction. Success prints a `NOTICE` beginning
+`Remediation remediation-2026-10-ingestion-integrity applied`. **Any line containing
+`ABORT:` means nothing was committed.**
+
+### G2c. Verify
+
+```sql
+select count(*) filter (where body_text is not null)            as bodies,
+       count(*) filter (where access_mode <> 'reference_only')  as wrong_mode,
+       count(*)                                                 as total
+  from evidence where source_id = 'mars-newsroom';
+-- expect: 0, 0, 53 (or more, if the scheduled run found genuinely new pages)
+
+select run_status, error_code from source_runs
+ where id = '2925eada-3f3f-43e9-9279-445b202e6543';
+-- expect: failure | abandoned
+
+select event_type, prior_status, new_status, created_at
+  from source_health_events where source_id = 'mars-newsroom' order by created_at;
+
+select action, object_id, request_id, occurred_at, after_state
+  from audit_events where request_id = 'remediation-2026-10-ingestion-integrity';
+```
+
+The database now enforces the outcome: `evidence_reference_only_has_no_body`
+refuses any attempt to put a body back on these rows.
+
+### G2d. Rollback
+
+There is none for the evidence step, by design: putting copyrighted page text back
+is the thing being undone. Identity, hashes and URLs are kept, so the rows remain
+traceable and a changed page is still detectable. Rolling the **code** back
+(Netlify → Deploys → publish the previous production deploy) restores the old runner;
+it does not restore bodies, and the old runner would again report a skipped source as
+healthy.
+
+## G3. Copies the remediation does NOT reach
+
+The file corrects live rows. **It does not purge, and nothing here should be
+described as having purged:**
+
+- **Supabase backups and point-in-time recovery.** Daily backups and any PITR window
+  taken between 2026-09-14 and the remediation contain the 53 page bodies. They age
+  out on the project's retention schedule; check the plan's retention in the Supabase
+  dashboard. Restoring one would restore the bodies, so any restore must be followed by
+  re-running the remediation, which is written to refuse only when its marker exists.
+- **Write-ahead log** retained for PITR — same retention.
+- **Exports.** Any `pg_dump`, CSV export or SQL Editor download an operator took
+  between those dates. Inventory and delete under your own data-handling procedure.
+- **Logs.** The pipeline never logs document text, and `describeDbError` deliberately
+  omits PostgreSQL's `details`, which would quote the failing row. The Mars rows were
+  inserted without error, so no "failing row" message should quote them. This is a
+  reasoned expectation, not a verified search of Supabase or Netlify log retention.
+
+**What never held the text:** `source_document_cache` (validators and hashes only).
+Browser sessions were never served `body_text` either: migration 0015 withholds that
+column from the `authenticated` grant.

@@ -1,6 +1,9 @@
 # 16 — Phase 1 Implementation Notes (PR 1 and PR 2)
 
-**Status:** All seven Phase 1 surfaces implemented against fixtures
+**Status:** All seven Phase 1 surfaces implemented against fixtures — **historical.**
+These notes record PR 1 and PR 2. Live data replaced the fixtures in production from PR
+#10 (2026-09-14); Saved Pursuits & Watches was removed and Map and Spyglass were added
+in PR #15. The fixture corpus now exists only for tests.
 
 > **Hosting context corrected.** References below to "D2b vendor selection" record that
 > PR 1 and PR 2 selected no vendor, which remains true. Ownership of those selections is
