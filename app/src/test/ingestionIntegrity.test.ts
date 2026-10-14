@@ -7,6 +7,7 @@ import {
   RunLeaseLostError,
   boundedLeaseMs,
   closeRun,
+  fairShareDeadline,
   healthAfterAbandonment,
   heartbeat,
   lastActivityOf,
@@ -942,6 +943,112 @@ describe('the reference-only write path, document by document', () => {
     )
     expect(result.errors.join(' ')).toMatch(/evidence_reference_only_has_no_body/)
     expect(JSON.stringify(result)).not.toContain(FULL_TEXT_MARKER)
+  })
+})
+
+/* ================================ what last_success_at means, exactly */
+
+describe('last_success_at advances only on a run that checked everything it found', () => {
+  async function closedWith(runStatus: SourcePassResult['runStatus'], deferred = 0) {
+    const db = pgDouble({
+      sources: [secSource({ consecutive_failures: 1, health_status: 'healthy' })],
+      source_runs: [],
+    })
+    const opened = await openRun(db.client, 'sec-edgar', WINDOW, NOW, 'holder-a')
+    const result: SourcePassResult = {
+      ...successResult(),
+      runStatus,
+      healthStatus: runStatus === 'partial_success' ? 'degraded' : 'healthy',
+      counters: { ...emptyCounters(), documentsDiscovered: 53, documentsRetrieved: 13, documentsDeferred: deferred },
+    }
+    const later = new Date(NOW.getTime() + 21_000)
+    await closeRun(db.client, opened.lease, result, later)
+    return { db, later }
+  }
+
+  it.each(['success', 'unchanged'] as const)('%s: a complete check moves it and clears the failure streak', async (status) => {
+    const { db, later } = await closedWith(status)
+    expect(db.rows('sources')[0]!.last_success_at).toBe(later.toISOString())
+    expect(db.rows('sources')[0]!.consecutive_failures).toBe(0)
+  })
+
+  it('partial_success from a spent budget moves neither, and degrades health', async () => {
+    const { db } = await closedWith('partial_success', 40)
+    const source = db.rows('sources')[0]!
+    // Unchanged from the seed: a run that checked 13 of 53 is not the moment
+    // the source was last known to be current.
+    expect(source.last_success_at).toBe('2026-10-13T06:00:24.305Z')
+    // Nor a failure: the source was reached.
+    expect(source.consecutive_failures).toBe(1)
+    expect(source.health_status).toBe('degraded')
+    const event = db.rows('source_health_events')[0]!
+    expect(event.coverage_impact).toMatchObject({
+      runStatus: 'partial_success',
+      documentsDeferred: 40,
+      coveredWholeWindow: false,
+    })
+    // The run row keeps the counters that say how far it got.
+    const run = db.rows('source_runs')[0]!
+    expect((run.metrics as Row).documentsDeferred).toBe(40)
+    expect(run.run_status).toBe('partial_success')
+  })
+
+  it('partial_success from a failed document is not a complete check either', async () => {
+    const { db } = await closedWith('partial_success', 0)
+    expect(db.rows('sources')[0]!.last_success_at).toBe('2026-10-13T06:00:24.305Z')
+  })
+})
+
+/* ======================================= one source cannot starve another */
+
+describe('the time budget is shared so an earlier source cannot starve a later one', () => {
+  it('gives each source an equal share of what is left, rolling unused time forward', () => {
+    expect(fairShareDeadline(0, 22_000, 2)).toBe(11_000)
+    // SEC finished in 2 s: Mars, the last source, gets everything that is left.
+    expect(fairShareDeadline(2_000, 22_000, 1)).toBe(22_000)
+    expect(fairShareDeadline(30_000, 22_000, 1)).toBe(30_000)
+    expect(fairShareDeadline(0, undefined, 2)).toBeUndefined()
+    expect(fairShareDeadline(0, 22_000, 0)).toBe(22_000)
+  })
+
+  function twoSources(secTakesMs: number) {
+    let clock = NOW.getTime()
+    const db = pgDouble({
+      organizations: [EXAMPLE_FILER, EXAMPLE_PRIVATE],
+      sources: [secSource(), newsroomSource()],
+      source_runs: [],
+    })
+    // The first source's discovery advances the clock by `secTakesMs`.
+    const transport = async (url: string, _options: RetryingGetOptions) => {
+      if (url.includes('company_tickers')) clock += secTakesMs
+      return url.includes('sec.gov') ? quietSec(url) : newsroom(url)
+    }
+    const { options } = runOptions(transport, {
+      now: () => new Date(clock),
+      deadlineMs: NOW.getTime() + 22_000,
+    })
+    return { db, options }
+  }
+
+  it('still collects the second source after a slow first one', async () => {
+    const { db, options } = twoSources(15_000)
+    const results = await runIngestion(db.client, options)
+    const mars = results.find((r) => r.sourceId === 'mars-newsroom')!
+    expect(mars.runStatus).not.toBe('skipped')
+    expect(mars.counters.evidenceCreated).toBe(1)
+  }, 20_000)
+
+  it('records the second source as not started -- never silently -- when the first used the whole budget', async () => {
+    const { db, options } = twoSources(25_000)
+    const results = await runIngestion(db.client, options)
+    const mars = results.find((r) => r.sourceId === 'mars-newsroom')!
+    expect(mars.runStatus).toBe('skipped')
+    expect(db.rows('source_runs').filter((r) => r.source_id === 'mars-newsroom')).toHaveLength(0)
+    const event = healthEvents(db, 'mars-newsroom').find((e) => e.event_type === 'deferred_time_budget')!
+    expect(event.coverage_impact).toMatchObject({ runStatus: 'skipped', collected: false })
+    // Health and freshness are left alone: nothing was checked, so nothing
+    // about the source's state is asserted either way.
+    expect(db.rows('sources').find((r) => r.id === 'mars-newsroom')!.last_success_at).toBeNull()
   })
 })
 

@@ -21,6 +21,7 @@ import {
   formatTemporal,
   precisionLabel,
   relativeTime,
+  savedCopyStatement,
   timingBasisLabel,
 } from '@/lib/format'
 import { companyPath, evidencePath, facilityPath } from '@/lib/links'
@@ -246,6 +247,13 @@ function EvidenceBody({ evidence }: { evidence: EvidenceRecord }) {
                 <code>{accessModeRecordedValue[evidence.accessMode] ?? evidence.accessMode}</code>)
               </span>
             </dd>
+          </div>
+          {/* Retention PERMISSION is the access mode above. Whether a copy
+              exists is a different question, and this page cannot see the
+              columns that would answer it -- so it never claims one. */}
+          <div className="fact fact--wide">
+            <dt>Saved copy</dt>
+            <dd>{savedCopyStatement(evidence.accessMode)}</dd>
           </div>
           <div className="fact fact--wide">
             <dt>Source reference</dt>

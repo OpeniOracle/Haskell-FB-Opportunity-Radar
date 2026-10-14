@@ -724,11 +724,23 @@ export interface ConnectorRun {
   id: string
   startedAt: string
   completedAt: string | null
-  outcome: 'success' | 'partial_success' | 'failure'
+  /**
+   * `success` and `unchanged` checked everything the run discovered.
+   * `partial_success` reached the source but did NOT check all of it -- a
+   * document failed, or the time budget ran out and the rest was deferred --
+   * and is never presented as a complete collection. `running` is a run with
+   * no completion recorded yet.
+   */
+  outcome: 'success' | 'unchanged' | 'partial_success' | 'failure' | 'running'
   /** Documents the run discovered at the source. */
   itemsSeen: number
   /** Documents the run stored as evidence. */
   itemsStored: number
+  /**
+   * Discovered but never started, because the invocation's time budget was
+   * spent. Required, so no data source can leave a partial run looking whole.
+   */
+  documentsDeferred: number
   note: string
 }
 

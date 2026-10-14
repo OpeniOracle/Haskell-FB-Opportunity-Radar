@@ -14,7 +14,7 @@ import {
 } from '@/components/SurfaceStates'
 import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
-import { absoluteDateTime, relativeTime } from '@/lib/format'
+import { absoluteDateTime, relativeTime, runOutcomeLabel } from '@/lib/format'
 import { companyPath } from '@/lib/links'
 import type { ConnectorRecord, ConnectorState, SourceHealthSnapshot } from '@/types/domain'
 
@@ -240,6 +240,8 @@ function HealthBody({ snapshot }: { snapshot: SourceHealthSnapshot }) {
 function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
   const stale = connector.freshnessHours > connector.expectedCadenceHours
   const { activity } = connector
+  const latest = connector.runHistory[0]
+  const latestStoppedEarly = latest !== undefined && latest.documentsDeferred > 0
 
   return (
     <article className="connector" aria-labelledby={`conn-${connector.id}`}>
@@ -293,6 +295,29 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
         </p>
       )}
 
+      {/*
+        A RUN THAT STOPPED EARLY IS NOT COVERAGE.
+
+        The runner stops starting documents when the invocation's time budget is
+        spent and records the rest as deferred. Until runs can resume where the
+        last one stopped (durable continuation, Phase 2 PR 4), the next run
+        starts over -- so a source that always stops early is never fully
+        checked, and this says so rather than letting "Enabled" and a recent run
+        time read as coverage.
+      */}
+      {latestStoppedEarly && (
+        <p className="notice notice--degraded connector__partial">
+          <Icon name="alert" className="notice__icon" />
+          <span>
+            <strong>The latest run did not check the whole source. </strong>
+            {latest.documentsDeferred} of {latest.itemsSeen} discovered document(s) were not
+            checked before the run reached its time limit. Each run starts over, so documents
+            past that point are not being re-checked. Coverage of this source is incomplete
+            until runs can resume where the last one stopped.
+          </span>
+        </p>
+      )}
+
       <dl className="connector__facts">
         <div className="fact">
           <dt>Documents discovered</dt>
@@ -316,7 +341,7 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
             {connector.lastRunAt ? (
               <>
                 {relativeTime(connector.lastRunAt)} ·{' '}
-                {connector.lastOutcome.replace('_', ' ')}
+                {runOutcomeLabel[connector.lastOutcome] ?? connector.lastOutcome}
                 <FutureTimestampWarning iso={connector.lastRunAt} />
               </>
             ) : (
@@ -331,7 +356,9 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
           </dd>
         </div>
         <div className="fact">
-          <dt>Last successful collection</dt>
+          {/* `last_success_at`: the last run that checked EVERYTHING it
+              discovered. A partial run never moves it. */}
+          <dt>Last complete collection</dt>
           <dd>
             {connector.lastSuccessfulCollectionAt
               ? relativeTime(connector.lastSuccessfulCollectionAt)
@@ -346,7 +373,7 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
           <dd className={stale ? 'connector__bad' : undefined}>
             {connector.lastSuccessfulCollectionAt
               ? `${connector.freshnessHours}h against a ${connector.expectedCadenceHours}h cadence`
-              : `No successful collection yet; expected every ${connector.expectedCadenceHours}h`}
+              : `No complete collection yet; expected every ${connector.expectedCadenceHours}h`}
           </dd>
         </div>
       </dl>
@@ -368,7 +395,7 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
         <ul>
           {connector.runHistory.map((run) => (
             <li className={`run run--${run.outcome}`} key={run.id}>
-              <span className="run__outcome">{run.outcome.replace('_', ' ')}</span>
+              <span className="run__outcome">{runOutcomeLabel[run.outcome] ?? run.outcome}</span>
               <span className="run__when">
                 {absoluteDateTime(run.startedAt)}
                 <FutureTimestampWarning iso={run.startedAt} />

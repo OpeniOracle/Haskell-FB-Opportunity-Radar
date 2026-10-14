@@ -245,9 +245,20 @@ export function supabaseCache(client: SupabaseClient): DocumentCachePort {
  * event for exactly that kind of reason. Every write here returns its error,
  * and the caller reports it.
  *
- *   outcome 'success'  advances last_success_at, resets consecutive_failures
- *   outcome 'failure'  increments consecutive_failures, never moves last_success_at
- *   outcome 'none'     changes neither -- a skip is not a collection
+ *   outcome 'complete'  advances last_success_at, resets consecutive_failures
+ *   outcome 'partial'   changes neither: the source was reached, but not all
+ *                       of what was discovered was checked
+ *   outcome 'failure'   increments consecutive_failures, never moves last_success_at
+ *   outcome 'none'      changes neither -- a skip is not a collection
+ *
+ * WHAT `sources.last_success_at` MEANS, exactly: the completion time of the
+ * most recent run that finished EVERY document it discovered in its window
+ * (`success` or `unchanged`). A run that stopped early -- because a document
+ * failed, or because the invocation's time budget ran out and the rest was
+ * deferred -- did not check the whole source, and so cannot be the moment the
+ * source was last known to be current. It used to be: `partial_success`
+ * advanced this timestamp, so a run that checked 13 of 53 pages would have
+ * read on the dashboard as a fresh, complete collection.
  */
 export async function recordSourceOutcome(
   client: SupabaseClient,
@@ -262,7 +273,7 @@ export async function recordSourceOutcome(
      * needs a person.
      */
     escalate?: (consecutiveFailures: number) => string
-    outcome: 'success' | 'failure' | 'none'
+    outcome: 'complete' | 'partial' | 'failure' | 'none'
     now: string
     event: {
       type: string
@@ -291,13 +302,14 @@ export async function recordSourceOutcome(
   }
   const prior = (source.health_status as string) ?? null
   const priorFailures = (source.consecutive_failures as number) ?? 0
-  const failures = input.outcome === 'failure' ? priorFailures + 1 : input.outcome === 'success' ? 0 : priorFailures
+  const failures =
+    input.outcome === 'failure' ? priorFailures + 1 : input.outcome === 'complete' ? 0 : priorFailures
 
   const next = input.escalate ? input.escalate(failures) : (input.healthStatus ?? prior)
 
   const update: Record<string, unknown> = { updated_at: input.now }
   if (next !== prior) update.health_status = next
-  if (input.outcome === 'success') {
+  if (input.outcome === 'complete') {
     update.last_success_at = input.now
     update.consecutive_failures = 0
   } else if (input.outcome === 'failure') {
@@ -577,22 +589,34 @@ export async function closeRun(
     return { closed: false, healthStatus: null, errors: [new RunLeaseLostError(lease.sourceId, lease.runId).message] }
   }
 
-  // ONLY a run that actually retrieved something moves last_success_at. A
-  // "nothing new" run is a successful check and keeps the timestamp current;
-  // a failure must never advance it, or the dashboard reports fresh data it
-  // does not have.
-  const succeeded =
-    result.runStatus === 'success' || result.runStatus === 'unchanged' || result.runStatus === 'partial_success'
+  // ONLY a run that checked everything it discovered moves last_success_at. A
+  // "nothing new" run is a complete check and keeps the timestamp current. A
+  // partial run -- a document failed, or the rest was deferred -- reached the
+  // source but did not cover it, so it moves neither the timestamp nor the
+  // failure count. A failure never advances it, or the dashboard reports fresh
+  // data it does not have.
+  const outcome =
+    result.runStatus === 'success' || result.runStatus === 'unchanged'
+      ? 'complete'
+      : result.runStatus === 'partial_success'
+        ? 'partial'
+        : 'failure'
   const health = await recordSourceOutcome(client, {
     sourceId: lease.sourceId,
     runId: lease.runId,
     healthStatus: result.healthStatus,
-    outcome: succeeded ? 'success' : 'failure',
+    outcome,
     now: at,
     event: {
       type: result.runStatus === 'failure' ? 'failure' : 'status_change',
       summary: result.note,
-      coverageImpact: { runStatus: result.runStatus, documentsAccepted: c.documentsAccepted },
+      coverageImpact: {
+        runStatus: result.runStatus,
+        documentsAccepted: c.documentsAccepted,
+        documentsDeferred: c.documentsDeferred,
+        // Said outright, so nobody reading the event has to infer it.
+        coveredWholeWindow: outcome === 'complete',
+      },
       actionRequired:
         result.healthStatus === 'manual_review_required'
           ? { action: 'operator_import', detail: result.note.slice(0, 500) }
@@ -647,6 +671,23 @@ export function buildConnectors(
 
 export function pacingFor(sourceId: string): { minIntervalMs: number; concurrency: number } {
   return sourceId === MARS_SOURCE_ID ? MARS_PACING : SEC_PACING
+}
+
+/**
+ * The deadline for the next source: an equal share of the time left, so
+ * whatever an earlier source did not use rolls over to the ones after it.
+ *
+ * It bounds when a source stops STARTING documents. A single request already in
+ * flight, or a connector's discovery walk, is not interrupted -- which is why
+ * the invocation-wide deadline also stops a source from starting at all.
+ */
+export function fairShareDeadline(
+  nowMs: number,
+  deadlineMs: number | undefined,
+  remainingSources: number,
+): number | undefined {
+  if (deadlineMs === undefined) return undefined
+  return nowMs + Math.max(0, deadlineMs - nowMs) / Math.max(1, remainingSources)
 }
 
 /** A result for a source that was not collected, with nothing counted. */
@@ -739,12 +780,30 @@ export async function runIngestion(
   const cache = supabaseCache(client)
   const results: SourcePassResult[] = []
 
+  const runnable: Connector[] = []
   for (const connector of buildConnectors(companies, configBySource)) {
     if (!enabled.has(connector.sourceId)) {
       options.log(`[ingest] ${connector.sourceId} is not enabled; skipped`)
       continue
     }
     if (options.onlySources && !options.onlySources.includes(connector.sourceId)) continue
+    runnable.push(connector)
+  }
+
+  for (const [index, connector] of runnable.entries()) {
+    /*
+       A FAIR SHARE OF WHAT IS LEFT, SO ONE SOURCE CANNOT STARVE THE NEXT.
+
+       Sources run in order, SEC before Mars. With one shared deadline, a slow
+       SEC day -- a backlog of filings, a run of retries -- could spend the whole
+       budget and Mars would never start, every day, with nothing in its own
+       record to say why. Each source may use at most an equal share of the time
+       remaining when it starts; time a source does not use rolls over to the
+       ones after it. On an ordinary day SEC takes two seconds and Mars gets the
+       rest.
+    */
+    const sourceDeadlineMs = fairShareDeadline(now().getTime(), options.deadlineMs, runnable.length - index)
+    const sourceBudgetSpent = () => sourceDeadlineMs !== undefined && now().getTime() >= sourceDeadlineMs
 
     // THE ALLOWLIST IS A CONTROL, SO A MISSING ENTRY IS A CONFIGURATION FAULT,
     // NOT SOMETHING TO PAPER OVER. Merging the connector's own hosts in here
@@ -855,7 +914,7 @@ export async function runIngestion(
         accessBySource[connector.sourceId] ?? { accessMode: null, licenseMode: null },
         {
           heartbeat: () => heartbeat(client, lease, now()),
-          budgetExhausted: deadlineReached,
+          budgetExhausted: sourceBudgetSpent,
         },
       )
       const close = await closeRun(client, lease, passed, now())

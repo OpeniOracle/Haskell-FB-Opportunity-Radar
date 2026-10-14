@@ -141,10 +141,59 @@ export const assessmentTypeLabel: Record<AssessmentType, string> = {
  */
 export const accessModeLabel: Record<string, string> = {
   structured_primary: 'Official structured record',
-  archived_full_text: 'Saved copy of the full article',
-  licensed_full_text: 'Licensed copy of the full article',
+  archived_full_text: 'Public record — full text may be kept',
+  licensed_full_text: 'Licensed source — full text may be kept',
   reference_only: 'Reference only — no copy kept',
   metadata_only: 'Listing only — no copy kept',
+}
+
+/**
+ * WHAT THE RADAR HOLDS OF A SOURCE'S TEXT, said without claiming a saved copy.
+ *
+ * `access_mode` is a RETENTION PERMISSION: `archived_full_text` means the
+ * source may be kept in full, not that a saved copy exists. Whether an archived
+ * object exists is `archive_uri`, and the browser cannot see that column --
+ * migration 0015 withholds it, with `body_text` and the storage paths, by
+ * design. So the interface never says a saved copy exists: it has no way to
+ * know, and today none does. No server path writes an archive object yet
+ * (`src/test/evidenceRetention.test.ts` fails the day one does, which is the
+ * day this wording must change, and only on a server-verified signal).
+ *
+ * Where the source permits it, the extracted text is held in the Radar's
+ * database for re-checking. That text is never served to the interface, and
+ * the wording says so rather than implying a copy the reader could open.
+ */
+export function savedCopyStatement(accessMode: string): string {
+  switch (accessMode) {
+    case 'reference_only':
+      return 'None. This source is kept by reference only: its text is not stored, apart from the short excerpt shown.'
+    case 'metadata_only':
+      return 'None. Only the listing details are kept.'
+    case 'structured_primary':
+    case 'archived_full_text':
+    case 'licensed_full_text':
+      return (
+        'No saved copy is available to open. The source permits keeping its full text, and the ' +
+        "Radar holds the extracted text in its database for re-checking; it is not shown here. " +
+        'Read the original at the source reference.'
+      )
+    default:
+      return 'No saved copy is available to open. Read the original at the source reference.'
+  }
+}
+
+/**
+ * How a collection run ended, for a reader.
+ *
+ * A run that stopped early must never read as a finished one: "partial" says
+ * in words that the run did not check everything it found.
+ */
+export const runOutcomeLabel: Record<string, string> = {
+  success: 'complete',
+  unchanged: 'complete, nothing new',
+  partial_success: 'partial — did not check everything',
+  failure: 'failed',
+  running: 'in progress',
 }
 
 /** How the value is recorded, for the reader who wants the exact term. */

@@ -1510,6 +1510,19 @@ Overlap is refused by the database, not by a check in the handler.
 
 # G. Phase 2 PR 1 — ingestion integrity: what merge changes, and the remediation
 
+## G0. What the words on Source Health mean
+
+| Term | Meaning |
+|---|---|
+| **Complete collection** (`run_status` `success` or `unchanged`) | The run checked every document it discovered in its window |
+| **Partial** (`partial_success`) | The source was reached but not every discovered document was checked: one failed, or the time budget ran out and the rest were **deferred** (`metrics.documentsDeferred`). Never presented as complete |
+| **Deferred** | Discovered, never started, because the invocation's time budget was spent. The next run starts over; it does not resume |
+| **`sources.last_success_at`** ("Last complete collection") | Completion time of the most recent **complete** run. A partial run does not move it, and neither does a failure or a skip |
+| **Freshness** | Hours since `last_success_at`, against `expected_cadence_hours`. Stale when larger |
+| **`consecutive_failures`** | Reset by a complete run, incremented by a failure or an abandoned run, untouched by a partial run or a skip |
+| **Access mode** (`access_mode`) | What the source PERMITS the Radar to keep, never what it holds |
+| **Saved copy** | Whether an archived object exists (`archive_uri`). The browser cannot read that column, no code writes one yet, and the interface never claims one |
+
 Three defects found in the production database on 2026-10-14 (read-only queries,
 recorded in `docs/design/18_PHASE_2_ENGINEERING_AUDIT_AND_DATA_ACTIVATION_PLAN.md`
 on the audit branch):
@@ -1537,7 +1550,11 @@ writes nothing to the database.
 ### At the next 06:00 UTC — the scheduled run changes production data by itself
 
 `scheduled-ingest` (`0 6 * * *`) runs SEC, then Mars, inside a 22-second budget
-(Netlify ends scheduled functions at 30 seconds).
+(Netlify ends scheduled functions at 30 seconds). The budget is **shared fairly**:
+each source may use at most an equal share of the time left when it starts, and time
+it does not use rolls over. SEC normally takes about two seconds, so Mars gets about
+twenty. If SEC ever needed the whole budget, Mars would not start; that is recorded as
+a `deferred_time_budget` health event, never silently.
 
 **sec-edgar**
 
@@ -1545,7 +1562,10 @@ writes nothing to the database.
   and renews it while working.
 - **New** SEC evidence rows are recorded `access_mode = 'archived_full_text'` — the
   registry's value — instead of `structured_primary`. Existing SEC rows are not
-  rewritten. The body is still kept (open licence, U.S. government work).
+  rewritten. The body is still kept (open licence, U.S. government work). The
+  interface labels the mode "Public record — full text may be kept" and says **no
+  saved copy is available to open**: the mode is a permission, nothing is archived
+  to Storage yet, and the browser cannot see `archive_uri` (see G0).
 - Health writes are checked; a refused write is reported in the run result and the
   function log instead of being silently lost.
 
@@ -1560,15 +1580,21 @@ writes nothing to the database.
    pass the window filter, so it walks the same ~53 pages at 1.5-second pacing and
    **will not finish inside the budget**. It stops starting pages when the budget is
    spent, reports the rest as deferred, and **closes its own run** as
-   `partial_success` with health `degraded`. Because something was retrieved,
-   `last_success_at` is set for the first time.
+   `partial_success` with health `degraded`. **`last_success_at` stays NULL**: a
+   run that did not check everything it discovered is not a complete collection
+   (see G0). Source Health shows "The latest run did not check the whole source"
+   with the number of pages not checked, and "No complete collection yet".
 4. Pages it re-reads are unchanged; no body is added to any existing row. A Mars page
    never seen before would be stored `reference_only` with no body.
 5. **The 53 existing bodies are still in the database.** The scheduled run never
    removes stored content; that is the remediation's job.
 
-From then on Mars reads `degraded` daily until the connector itself is repaired
-(audit F-8, a later PR). That is the honest state, not a regression.
+From then on Mars reads `degraded`, with no complete collection, daily. **Each run
+starts over from the first page**, so the pages past the budget are never re-checked:
+runs cannot yet resume where the last one stopped. That needs durable continuation
+(audit PR 4) or a smaller Mars discovery set (audit F-8). Until one lands, Mars
+coverage is incomplete and the interface says so. That is the honest state, not a
+regression.
 
 ### Only when the remediation file is run — the rest
 

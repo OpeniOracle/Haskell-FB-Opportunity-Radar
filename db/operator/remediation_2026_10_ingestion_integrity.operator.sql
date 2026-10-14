@@ -26,10 +26,12 @@
 --      signals. Nothing is deleted.
 --
 --   3. MARS SOURCE HEALTH. mars-newsroom reads 'healthy' with
---      last_success_at NULL: it has never completed a run. If no Mars run has
---      completed successfully, its health is set to 'action_required'. If one
---      has (the PR 1 runner may have run Mars since), the health that run
---      derived is left as it is.
+--      last_success_at NULL: no Mars run has ever closed itself. If that is
+--      still so, its health is set to 'action_required'. If the PR 1 runner
+--      has since run Mars and the run closed itself -- complete, or partial
+--      because its time budget ran out -- the health that run derived is a
+--      real observation and is left as it is. (A partial run does not move
+--      last_success_at; this step does not touch last_success_at at all.)
 --
 -- WHAT IT DOES NOT DO
 --
@@ -231,6 +233,8 @@ begin
     get diagnostics v_opps_trimmed = row_count;
 
     -- ------------------------------------------------ 3. Mars source health
+    -- "A run that closed itself", complete or partial: either derived a health
+    -- from what it observed, which this file must not overwrite.
     select exists (
         select 1 from public.source_runs
          where source_id = c_source and run_status in ('success', 'unchanged', 'partial_success')
@@ -257,8 +261,8 @@ begin
          'Operator remediation ' || c_marker || ': stalled run ' ||
          case when v_run_closed_here then 'closed as abandoned' else 'already closed as abandoned' end ||
          '; full page text removed from ' || c_expected_rows || ' reference-only evidence rows; ' ||
-         case when v_has_success then 'health left as derived by the last completed run.'
-              else 'no completed Mars run exists, so health is action_required.' end,
+         case when v_has_success then 'health left as derived by the last run that closed itself.'
+              else 'no Mars run has ever closed itself, so health is action_required.' end,
          jsonb_build_object('evidenceRowsCorrected', c_expected_rows, 'runClosedHere', v_run_closed_here),
          case when v_has_success then null
               else jsonb_build_object('action', 'repair_newsroom_connector',

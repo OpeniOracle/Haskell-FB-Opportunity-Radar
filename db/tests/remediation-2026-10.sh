@@ -15,7 +15,8 @@
 #   1. production as observed: applies, and every postcondition holds
 #   2. a second application refuses, and the database is byte-identical
 #   3. the PR 1 runner got there first: the run is already abandoned and a later
-#      Mars run completed -- the file still applies, and leaves that health alone
+#      Mars run closed itself as partial -- the file still applies, and leaves the
+#      health that run derived alone
 #   4. five preconditions, each refused with the database byte-identical
 #   5. a failure injected after the evidence update rolls EVERYTHING back
 #
@@ -241,7 +242,7 @@ step "2. A second application refuses, and changes nothing"
 refuses 'already recorded in audit_events' "second application"
 
 # ---------------------------------------------------------------------------
-step "3. The PR 1 runner recovered the run first; a later Mars run completed"
+step "3. The PR 1 runner recovered the run first; a later Mars run closed itself, partial"
 production_shape
 PGDATABASE="$DB" psql -q -v ON_ERROR_STOP=1 <<SQL
 update source_runs set status = 'failed', run_status = 'failure', error_code = 'abandoned',
@@ -253,16 +254,20 @@ insert into source_runs (source_id, status, run_status, started_at, completed_at
 values ('mars-newsroom', 'partial_success', 'partial_success', '2026-10-15T06:00:02Z',
         '2026-10-15T06:00:21Z', '2026-10-14T00:00:00Z', '2026-10-15T00:00:00Z',
         'lease|00000000-0000-4000-8000-000000000000|2026-10-15T06:00:20.000Z');
-update sources set health_status = 'degraded', consecutive_failures = 0,
-                   last_success_at = '2026-10-15T06:00:21Z'
+-- A budget-limited run: partial, degraded, and -- because it did not check
+-- everything it discovered -- last_success_at stays NULL.
+update sources set health_status = 'degraded', consecutive_failures = 1,
+                   last_success_at = null
  where id = 'mars-newsroom';
 SQL
 q "select row_to_json(r)::text from source_runs r where id = '$RUN_ID';" > "$WORK/run-before.txt"
 apply > "$WORK/apply-b.log" 2>&1 || { cat "$WORK/apply-b.log"; fail "the file did not apply after the runner's recovery"; }
 q "select row_to_json(r)::text from source_runs r where id = '$RUN_ID';" > "$WORK/run-after.txt"
 diff -u "$WORK/run-before.txt" "$WORK/run-after.txt" > /dev/null || fail "an already-abandoned run was rewritten"
-[ "$(q "select health_status || '/' || consecutive_failures from sources where id='mars-newsroom';")" = "degraded/0" ] \
-    || fail "health derived by a completed run was overridden"
+[ "$(q "select health_status || '/' || consecutive_failures from sources where id='mars-newsroom';")" = "degraded/1" ] \
+    || fail "health derived by a run that closed itself was overridden"
+[ "$(q "select last_success_at is null from sources where id='mars-newsroom';")" = t ] \
+    || fail "last_success_at was set by the remediation"
 [ "$(q "select count(*) from evidence where source_id='mars-newsroom' and body_text is not null;")" = 0 ] \
     || fail "bodies remain"
 [ "$(q "select (after_state->'stalledRun'->>'closedHere') from audit_events where request_id='$MARKER';")" = false ] \

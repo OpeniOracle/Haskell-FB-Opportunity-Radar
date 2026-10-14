@@ -16,9 +16,12 @@
  * alone.
  *
  * FRESHNESS IS READ, NOT ASSUMED. `sources.last_success_at` is written only by
- * a run that actually retrieved something, so the "as of" this provider reports
- * is the last time the data could have changed — not the last time someone
- * opened the page.
+ * a run that checked EVERYTHING it discovered in its window (`success` or
+ * `unchanged`). A partial run -- a document failed, or the time budget ran out
+ * and the rest was deferred -- does not move it. So the "as of" this provider
+ * reports is the last time a source was known to be checked completely, not the
+ * last time anything was retrieved and not the last time someone opened the
+ * page.
  */
 import type { DataSource } from '@/data/DataSource'
 import type {
@@ -1394,7 +1397,7 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
         const { data: runRows, error: runError } = await client
           .from('source_runs')
           .select(
-            'id, source_id, run_status, started_at, completed_at, items_seen, items_stored, error_summary',
+            'id, source_id, run_status, started_at, completed_at, items_seen, items_stored, error_summary, metrics',
           )
           .order('started_at', { ascending: false })
           .limit(READ_LIMIT)
@@ -1430,15 +1433,19 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
 
         const connectors: ConnectorRecord[] = graph.sources.map((source) => {
           const runs = (runRows ?? []).filter((r) => r.source_id === source.id)
-          const history: ConnectorRun[] = runs.slice(0, 10).map((r) => ({
-            id: r.id as string,
-            startedAt: (r.started_at as string) ?? '',
-            completedAt: (r.completed_at as string) ?? null,
-            outcome: runOutcome(r.run_status as string),
-            itemsSeen: (r.items_seen as number) ?? 0,
-            itemsStored: (r.items_stored as number) ?? 0,
-            note: (r.error_summary as string) ?? '',
-          }))
+          const history: ConnectorRun[] = runs.slice(0, 10).map((r) => {
+            const deferred = deferredOf(r.metrics)
+            return {
+              id: r.id as string,
+              startedAt: (r.started_at as string) ?? '',
+              completedAt: (r.completed_at as string) ?? null,
+              outcome: runOutcome(r.run_status as string),
+              itemsSeen: (r.items_seen as number) ?? 0,
+              itemsStored: (r.items_stored as number) ?? 0,
+              documentsDeferred: deferred,
+              note: runNote(r.error_summary as string | null, deferred, (r.items_seen as number) ?? 0),
+            }
+          })
 
           const open = runs.find((r) => !r.completed_at)
           const activeRun: ActiveRun | null = open
@@ -1790,11 +1797,43 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
   }
 }
 
-/** `source_runs.run_status` in the vocabulary `ConnectorRun` admits. */
-function runOutcome(status: string | null): ConnectorRun['outcome'] {
+/**
+ * `source_runs.run_status` in the vocabulary `ConnectorRun` admits.
+ *
+ * Everything that was not a success used to read as a failure here: a run that
+ * found nothing new (`unchanged`) and a run still in progress were both shown
+ * as failed. They are reported as what they are now. Anything unrecognised is
+ * still a failure, which is the safe direction.
+ */
+export function runOutcome(status: string | null): ConnectorRun['outcome'] {
   if (status === 'succeeded' || status === 'success') return 'success'
+  if (status === 'unchanged') return 'unchanged'
   if (status === 'partial' || status === 'partial_success') return 'partial_success'
+  if (status === 'running') return 'running'
   return 'failure'
+}
+
+/** Documents the run never started, from the counters the runner records. */
+export function deferredOf(metrics: unknown): number {
+  const value = (metrics as { documentsDeferred?: unknown } | null)?.documentsDeferred
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+}
+
+/**
+ * The run's note. A run that stopped early says so first, in words: its error
+ * summary is empty when nothing failed, and an empty note beside "partial" is
+ * exactly how an incomplete check gets read as a complete one.
+ */
+export function runNote(errorSummary: string | null, deferred: number, discovered: number): string {
+  const parts: string[] = []
+  if (deferred > 0) {
+    parts.push(
+      `Stopped early: ${deferred} of ${discovered} discovered document(s) were not checked ` +
+        'because the run reached its time limit. This run did not cover the whole source.',
+    )
+  }
+  if (errorSummary) parts.push(errorSummary)
+  return parts.join(' ')
 }
 
 /**
