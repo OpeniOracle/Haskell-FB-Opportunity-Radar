@@ -16,8 +16,9 @@
 --   0025  adds review_state, project_lifecycle and commercial_qualification to
 --         opportunities, defaulting to unreviewed / unknown / not_assessed
 --   0026  adds sources.rights_class, defaulting to unclassified, and the rule
---         that only a federal public record or a source with a declared open or
---         licensed posture may be archived
+--         that only a federal public record or a source that has DOCUMENTED a
+--         rights determination (open or licensed, terms_reviewed_at and
+--         license_notes) may be archived
 --   0027  adds signals.event_date_role (NULL = not recorded)
 --   0028  restricts facility_identifiers.identifier_system to a vocabulary
 --   0029  creates ingestion_tasks, the server-side work queue for R4
@@ -48,8 +49,13 @@
 --
 --   Any line containing ABORT: means NOTHING WAS COMMITTED. It refuses if any of
 --   the six is already recorded, if 0024 is missing, if a source already archives
---   without a declared licence (the 0026 rule would refuse it), or if a facility
---   identifier is outside the 0028 vocabulary. Each message says what to fix.
+--   without a documented rights determination (0026 names each source and what it
+--   lacks), or if a facility identifier is outside the 0028 vocabulary. Each
+--   message says what to fix.
+--
+--   BEFORE RUNNING IT, run the read-only preflight in docs/design/23 section 7. A
+--   database whose pilot sources predate the seed that records their review date
+--   will be refused at 0026, which is the rule working, not a fault.
 --
 -- ROLLING BACK
 --
@@ -60,7 +66,7 @@
 -- uses, so a database migrated this way verifies clean afterwards)
 --
 --   0025  da3a64371707998b86aa287a3a59bcb15092d6b4dd95ccd5e4bd3bd693902164
---   0026  08db099148c6332520b7ca0961d642bff4bccdb78788cdc1d066c81147db928f
+--   0026  80cafe40891f901c87599209d65aefcc2fb2d314b83647891557147919ca47e8
 --   0027  83f14c13eaf28e1fe07742401236c76b12444f49791f8bc833881c1a2e08aa49
 --   0028  a5064268e34e9d8d9b9a68a76299305cb2c31e93f51612924ad7ff22bc184426
 --   0029  73bf27dcae98971fc0d324132d60be37894f30bbdc6db541cae453b462ffaeef
@@ -83,22 +89,12 @@ begin
     end if;
 
     -- EXISTING ROWS THAT A NEW RULE WOULD REFUSE. The constraints would refuse
-    -- them anyway and roll everything back, but with a constraint name. These say
-    -- what is wrong and what to do about it, before anything is attempted.
+    -- them anyway and roll everything back, but with a constraint name. For 0026
+    -- the migration carries its own guard (a source that archives without a
+    -- documented rights determination is named, with what it lacks), inlined below
+    -- with the rest of its payload. 0028 has no guard of its own, so it is checked
+    -- here, before anything is attempted.
     --
-    -- 0026: every existing source is, as yet, unclassified, so the rule reduces to
-    -- "archived, parsed or licensed in full only if its licence is open or licensed".
-    if exists (
-        select 1 from public.sources
-         where access_mode not in ('reference_only', 'metadata_only')
-           and license_mode not in ('open', 'licensed')
-    ) then
-        raise exception 'ABORT: source(s) % archive (access_mode is not reference_only or metadata_only) without a declared open or licensed posture. Migration 0026 would refuse them. Correct the registry (set access_mode reference_only, or record the licence determination) and run this again.',
-            (select string_agg(id, ', ' order by id) from public.sources
-              where access_mode not in ('reference_only', 'metadata_only')
-                and license_mode not in ('open', 'licensed'));
-    end if;
-
     -- 0028: nothing writes facility_identifiers today, so this is expected to pass
     -- on an empty table.
     if exists (
@@ -165,6 +161,45 @@ grant select (review_state, project_lifecycle, commercial_qualification)
 alter table sources
     add column rights_class text not null default 'unclassified';
 
+-- A REFUSAL THAT SAYS WHAT IS WRONG. Adding the constraint below would refuse a
+-- violating row anyway and roll everything back, but with a constraint name and
+-- no row. This finds the rows first, so the person who reads the failure learns
+-- which sources and what each is missing. It changes nothing: the whole
+-- migration is one transaction, and raising here discards it.
+--
+-- The predicate is the constraint's, word for word, and every operand of it is
+-- non-null (see the note on NULL above), so `not (...)` selects exactly the rows
+-- the constraint would refuse.
+do $$
+declare
+    offenders bigint;
+    listing   text;
+begin
+    select count(*),
+           string_agg(id || ' (' || concat_ws('; ',
+               case when license_mode not in ('open', 'licensed')
+                    then 'license_mode is ' || license_mode end,
+               case when terms_reviewed_at is null
+                    then 'terms_reviewed_at is empty' end,
+               case when coalesce(license_notes, '') !~ '\S'
+                    then 'license_notes is empty' end) || ')',
+               ', ' order by id)
+      into offenders, listing
+      from sources
+     where not (rights_class = 'federal_public_record'
+                or access_mode in ('reference_only', 'metadata_only')
+                or (license_mode in ('open', 'licensed')
+                    and terms_reviewed_at is not null
+                    and coalesce(license_notes, '') ~ '\S'));
+
+    if offenders > 0 then
+        raise exception
+            'ABORT: % source(s) break sources_archive_requires_established_rights: %. A source that is not a federal public record may be archived, parsed as an official record or held as licensed full text only when it declares license_mode open or licensed AND records terms_reviewed_at and license_notes (ADR 0017). Record the determination, or set access_mode to reference_only, deliberately, and run this again. Nothing was changed.',
+            offenders, listing;
+    end if;
+end
+$$;
+
 alter table sources
     add constraint sources_rights_class_check
         check (rights_class in ('federal_public_record', 'state_local_public_record',
@@ -173,10 +208,12 @@ alter table sources
     add constraint sources_archive_requires_established_rights
         check (rights_class = 'federal_public_record'
                or access_mode in ('reference_only', 'metadata_only')
-               or license_mode in ('open', 'licensed'));
+               or (license_mode in ('open', 'licensed')
+                   and terms_reviewed_at is not null
+                   and coalesce(license_notes, '') ~ '\S'));
 
 comment on column sources.rights_class is
-    'D-R2 / ADR 0017 (Proposed). What kind of publisher this is. unclassified asserts nothing. Anything but a federal public record may be archived only after it declares license_mode open or licensed; until then reference_only is the posture.';
+    'D-R2 / ADR 0017 (Proposed). What kind of publisher this is. unclassified asserts nothing. Anything but a federal public record may be archived only after it documents a rights determination: license_mode open or licensed, terms_reviewed_at and license_notes recorded; until then reference_only is the posture.';
 
 grant select (rights_class) on sources to authenticated;
 
@@ -184,7 +221,7 @@ grant select (rights_class) on sources to authenticated;
 
     -- ledger row 0026, inside the same transaction as its payload.
     insert into public.schema_migrations (version, name, checksum, stamped)
-    values ('0026', 'source_rights_class', '08db099148c6332520b7ca0961d642bff4bccdb78788cdc1d066c81147db928f', false);
+    values ('0026', 'source_rights_class', '80cafe40891f901c87599209d65aefcc2fb2d314b83647891557147919ca47e8', false);
 
 -- >>>>>>>>>>>>>>>>>>>>>> 0027 CANONICAL PAYLOAD BEGINS <<<<<<<<<<<<<<<<<<<<<<
 -- Verbatim from db/migrations/0027_signal_event_date_role.up.sql, minus its own begin;/commit;

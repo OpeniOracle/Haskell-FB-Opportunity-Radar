@@ -192,43 +192,106 @@ const NON_FEDERAL = [
   'discovery_or_republication', 'unclassified',
 ]
 
-// D-R2: reference-only until reuse rights are established. Nothing but a federal
-// record, or a source that has DECLARED an open or licensed posture, may be
-// archived, parsed as an official record or held as licensed full text.
+// D-R2 / ADR 0017: reference-only until reuse rights are ESTABLISHED, and
+// established means DOCUMENTED. Nothing but a federal record, or a source that has
+// recorded a determination (an open or licensed posture, a review date and a note),
+// may be archived, parsed as an official record or held as licensed full text.
+const RULE = 'sources_archive_requires_established_rights'
+const BASE = ', rights_class, access_mode, license_mode'
+const REVIEW = ', terms_reviewed_at, license_notes'
+const NOTE = "'Reviewed by the owner with counsel: reuse and retention permitted.'"
+/** A source row with the given class, mode and licence, and the given review fields. */
+const rights = (id, cls, mode, licence, date = 'now()', note = NOTE) =>
+  source(id, BASE + REVIEW, `, '${cls}', '${mode}', '${licence}', ${date}, ${note}`)
+/** The same, with NO review fields at all (both stay NULL). */
+const undocumented = (id, cls, mode, licence) =>
+  source(id, BASE, `, '${cls}', '${mode}', '${licence}'`)
+
 for (const cls of NON_FEDERAL) {
   for (const mode of ARCHIVING) {
-    add(G2, `a ${cls} source cannot be ${mode} while its licence is unknown`,
-      'sources_archive_requires_established_rights',
-      source('r2-x', ', rights_class, access_mode, license_mode', `, '${cls}', '${mode}', 'unknown'`))
+    add(G2, `a ${cls} source cannot be ${mode} while its licence is unknown`, RULE,
+      undocumented('r2-x', cls, mode, 'unknown'))
+    // THE LICENCE FLAG ALONE IS NOT ENOUGH (ADR 0017 rule 4): declaring open, with
+    // nothing recorded about the determination, is refused.
+    add(G2, `a ${cls} source cannot be ${mode} on a bare 'open' flag with no review recorded`, RULE,
+      undocumented('r2-x', cls, mode, 'open'))
+    add(G2, `a ${cls} source cannot be ${mode}: open and noted, but no review date`, RULE,
+      rights('r2-x', cls, mode, 'open', 'null'))
+    // NULL is the trap: a NULL note makes `note ~ '\S'` NULL, and a CHECK treats NULL
+    // as satisfied. The constraint coalesces, so a missing note is refused.
+    add(G2, `a ${cls} source cannot be ${mode}: open and reviewed, but the note is NULL`, RULE,
+      rights('r2-x', cls, mode, 'open', 'now()', 'null'))
+    add(G2, `a ${cls} source MAY be ${mode} once it documents an open determination`, 'ok',
+      rights('r2-x', cls, mode, 'open'))
   }
-  add(G2, `a ${cls} source cannot be archived under a restricted licence`,
-    'sources_archive_requires_established_rights',
-    source('r2-x', ', rights_class, access_mode, license_mode', `, '${cls}', 'archived_full_text', 'restricted'`))
+  add(G2, `a ${cls} source cannot be archived under a restricted licence`, RULE,
+    undocumented('r2-x', cls, 'archived_full_text', 'restricted'))
+  add(G2, `a ${cls} source cannot be archived under a restricted licence even when reviewed and noted`, RULE,
+    rights('r2-x', cls, 'archived_full_text', 'restricted'))
+  add(G2, `a ${cls} source cannot be archived: open and reviewed, but the note is only whitespace`, RULE,
+    rights('r2-x', cls, 'archived_full_text', 'open', 'now()', "E'  \\n\\t '"))
+  add(G2, `a ${cls} source cannot be archived: open and reviewed, but the note is empty`, RULE,
+    rights('r2-x', cls, 'archived_full_text', 'open', 'now()', "''"))
+  add(G2, `a ${cls} source MAY be held as licensed full text once it documents a licensed determination`, 'ok',
+    rights('r2-x', cls, 'licensed_full_text', 'licensed'))
   for (const mode of ['reference_only', 'metadata_only']) {
-    add(G2, `a ${cls} source may be ${mode} whatever its licence`, 'ok',
-      source('r2-x', ', rights_class, access_mode, license_mode', `, '${cls}', '${mode}', 'unknown'`))
+    add(G2, `a ${cls} source may be ${mode} whatever its licence, with nothing documented`, 'ok',
+      undocumented('r2-x', cls, mode, 'unknown'))
+    add(G2, `a ${cls} source may be ${mode} even under a restricted licence`, 'ok',
+      undocumented('r2-x', cls, mode, 'restricted'))
   }
 }
-for (const licence of ['open', 'licensed']) {
-  add(G2, `a state or local source MAY be archived once it declares an ${licence} posture`, 'ok',
-    source('r2-x', ', rights_class, access_mode, license_mode',
-      `, 'state_local_public_record', 'archived_full_text', '${licence}'`))
-}
-add(G2, 'a federal public record may be archived under ADR 0014 without a separate licence declaration', 'ok',
-  source('r2-x', ', rights_class, access_mode, license_mode',
-    ", 'federal_public_record', 'archived_full_text', 'unknown'"))
+
+add(G2, 'a federal public record may be archived under ADR 0014 with nothing documented', 'ok',
+  undocumented('r2-x', 'federal_public_record', 'archived_full_text', 'unknown'))
+add(G2, 'a federal public record may be structured_primary with nothing documented', 'ok',
+  undocumented('r2-x', 'federal_public_record', 'structured_primary', 'unknown'))
 add(G2, 'a source is not made federal by being called public: an unclassified one stays reference-only', 'ok', `
 ${source('r2-pub', ', data_sensitivity_class', ", 'public'")}
 ${assertThat(`(select rights_class = 'unclassified' from sources where id = 'r2-pub')`, 'public implied federal')}`)
 
-add(G2, 'an update that tries to archive an unclassified source is refused too',
-  'sources_archive_requires_established_rights', `
+add(G2, 'an update that tries to archive an unclassified source is refused too', RULE, `
 ${source('r2-upd')}
 update sources set access_mode = 'archived_full_text' where id = 'r2-upd';`)
+add(G2, 'an update that sets only the licence flag on an archiving source is refused', RULE, `
+${rights('r2-upd', 'state_local_public_record', 'reference_only', 'unknown', 'null', 'null')}
+update sources set access_mode = 'archived_full_text', license_mode = 'open' where id = 'r2-upd';`)
+add(G2, 'an update that documents the determination in the same statement is accepted', 'ok', `
+${undocumented('r2-upd', 'state_local_public_record', 'reference_only', 'unknown')}
+update sources set access_mode = 'archived_full_text', license_mode = 'open',
+                   terms_reviewed_at = now(), license_notes = ${NOTE}
+ where id = 'r2-upd';`)
+
+// A documented, archiving source cannot be quietly un-documented.
+const archivedAndDocumented = rights('r2-doc', 'state_local_public_record', 'archived_full_text', 'open')
+add(G2, 'clearing the review date of an archiving source is refused', RULE, `
+${archivedAndDocumented}
+update sources set terms_reviewed_at = null where id = 'r2-doc';`)
+add(G2, 'clearing the note of an archiving source is refused', RULE, `
+${archivedAndDocumented}
+update sources set license_notes = null where id = 'r2-doc';`)
+add(G2, 'blanking the note of an archiving source is refused', RULE, `
+${archivedAndDocumented}
+update sources set license_notes = '   ' where id = 'r2-doc';`)
+add(G2, 'withdrawing the declared licence of an archiving source is refused', RULE, `
+${archivedAndDocumented}
+update sources set license_mode = 'unknown' where id = 'r2-doc';`)
+add(G2, 'withdrawing the federal classification of an undocumented archiving source is refused', RULE, `
+${undocumented('r2-fed', 'federal_public_record', 'archived_full_text', 'open')}
+update sources set rights_class = 'unclassified' where id = 'r2-fed';`)
+add(G2, 'an unrelated update to a documented, archiving source is accepted', 'ok', `
+${archivedAndDocumented}
+update sources set health_status = 'degraded', consecutive_failures = 1 where id = 'r2-doc';`)
+add(G2, 'a reference-only source may drop its documentation: nothing depends on it', 'ok', `
+${rights('r2-ref', 'state_local_public_record', 'reference_only', 'open')}
+update sources set terms_reviewed_at = null, license_notes = null where id = 'r2-ref';`)
+add(G2, 'a federal public record does not depend on its documentation', 'ok', `
+${rights('r2-fed', 'federal_public_record', 'archived_full_text', 'open')}
+update sources set terms_reviewed_at = null, license_notes = null, license_mode = 'unknown' where id = 'r2-fed';`)
 
 add(G2, 'the existing access-mode and licence vocabularies are untouched', 'ok', `
-${source('r2-am', ', access_mode, license_mode', ", 'archived_full_text', 'open'")}
-${source('r2-am2', ', access_mode, license_mode', ", 'licensed_full_text', 'licensed'")}`)
+${source('r2-am', ', access_mode, license_mode' + REVIEW, `, 'archived_full_text', 'open', now(), ${NOTE}`)}
+${source('r2-am2', ', access_mode, license_mode' + REVIEW, `, 'licensed_full_text', 'licensed', now(), ${NOTE}`)}`)
 
 /* ============================================================ 0027 signals */
 

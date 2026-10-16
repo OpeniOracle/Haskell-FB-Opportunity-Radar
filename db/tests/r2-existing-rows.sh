@@ -17,7 +17,11 @@
 #   5. Does rolling back restore EXACTLY the database that was there?
 #   6. Does rolling back REFUSE, changing nothing, when it would destroy work?
 #   7. When existing rows would violate a new rule, does the migration refuse
-#      atomically, naming the rule, and apply cleanly once the row is fixed?
+#      atomically, naming the rule AND the rows, and apply cleanly once the row
+#      is fixed? That includes the pilot's two federal sources as production
+#      holds them today, with no recorded review date.
+#   8. Does rolling back past the fingerprint table refuse, changing nothing, when
+#      it holds a fingerprint, and succeed when it is empty?
 #
 # Nothing here is run against a Supabase project.
 set -euo pipefail
@@ -72,6 +76,23 @@ fresh() {
     PGDATABASE="$DB" psql -q -v ON_ERROR_STOP=1 -f "$ROOT/db/supabase_compat.sql" >/dev/null
 }
 
+# The schema, as one hash. Owners and privileges are left out (they are compared
+# separately where they matter); the migration ledger is excluded because it is
+# compared as its own value. The \restrict lines newer pg_dump versions emit carry
+# a random token and would make two identical schemas differ.
+schema_hash() {
+    pg_dump --schema-only --no-owner --no-privileges --exclude-schema=auth --exclude-table=schema_migrations -d "$DB" \
+        | grep -v '^--' | grep -v '^$' | grep -v '^\\\(un\)\?restrict ' | md5sum | cut -d' ' -f1
+}
+
+ledger_value() { q "select coalesce(string_agg(version || ':' || checksum, ',' order by version), '') from schema_migrations;"; }
+
+# The fingerprint table's rows, as one hash ('empty' when there are none).
+fingerprint_hash() {
+    q "select coalesce(md5(string_agg(t, '|' order by t)), 'empty')
+         from (select to_jsonb(f)::text as t from evidence_text_fingerprints f) x;"
+}
+
 # The pre-R2 columns of each touched table, as one hash. `-` removes a key from a
 # jsonb object, so the SAME function reads the table before R2 (where the new
 # keys do not exist, and removing a missing key is a no-op) and after it.
@@ -99,6 +120,15 @@ fresh
 migrate up --to 0024 >/dev/null
 seed_files 0001 0002 0003 0004 0005 0006 0007 0008
 [ "$(q "select max(version) from schema_migrations;")" = 0024 ] || fail "not at 0024"
+# The seeds record the pilot's rights determination (ADR 0014), because 0026 will
+# judge the two federal sources before they are classified. Step 7c covers a
+# database seeded BEFORE that was recorded.
+[ "$(q "select count(*) from sources
+         where id in ('sec-edgar','fsis-mpi')
+           and terms_reviewed_at = timestamptz '2026-08-26 00:00:00+00'
+           and license_notes like '%ADR 0014%';")" = 2 ] \
+    || fail "the seeds did not record the pilot's federal rights determination"
+pass "seeded as production should be: sec-edgar and fsis-mpi carry their ADR 0014 determination"
 
 q "insert into source_runs (id, source_id, status, run_status)
    values ('00000000-0000-4000-8000-0000000000b1', 'sec-edgar', 'success', 'success');"
@@ -293,25 +323,108 @@ pass "a finished task is history: it does not block a rollback"
 migrate up >/dev/null
 
 # ---------------------------------------------------------------------------
-step "7a. Existing rows that would violate a new rule: the migration refuses atomically"
+step "6b. Rolling back the fingerprint table: refuses while it holds hashes, and is silent when it is empty"
+# A fingerprint is a SHA-256 of a sentence. For reference-only evidence the
+# sentence's source text was never stored, and first_evidence_id goes NULL when
+# the evidence row is deleted, so the hash may be the only trace it was ever seen.
+# Dropping the table would lose it for good. The rollback therefore refuses,
+# names the count, and changes nothing: not the schema, not the rows, not the
+# ledger. It never deletes a fingerprint on its own.
+[ "$(q "select max(version) from schema_migrations;")" = 0030 ] || fail "not at 0030 before the fingerprint cases"
+[ "$(fingerprint_hash)" = empty ] || fail "the fingerprint table is not empty before the cases"
+
+# The empty table first: nothing to lose, so nothing to refuse.
+migrate down --to 0029 >/dev/null
+[ "$(q "select count(*) from information_schema.tables where table_name='evidence_text_fingerprints';")" = 0 ] \
+    || fail "an EMPTY fingerprint table blocked the rollback"
+[ "$(q "select max(version) from schema_migrations;")" = 0029 ] || fail "the ledger did not move to 0029"
+pass "an empty fingerprint table: 0030 rolls back"
+migrate up >/dev/null
+
+# Now with fingerprints: three, one of them already detached from its evidence.
+q "insert into evidence_text_fingerprints (organization_id, source_id, fingerprint, first_evidence_id)
+   values ('$ORG', 'sec-edgar',      repeat('ab', 32), '00000000-0000-4000-8000-0000000000e1'),
+          ('$ORG', 'mars-newsroom',  repeat('cd', 32), '00000000-0000-4000-8000-0000000000e2'),
+          ('$ORG', 'mars-newsroom',  repeat('ef', 32), null);" >/dev/null
+STATE="$(schema_hash)|$(ledger_value)|$(fingerprint_hash)"
+
+migrate_refuses "holds 3 fingerprint(s)" down --to 0029
+migrate_refuses "cannot be rebuilt from stored documents" down --to 0029
+migrate_refuses "Nothing was deleted" down --to 0029
+[ "$(schema_hash)|$(ledger_value)|$(fingerprint_hash)" = "$STATE" ] \
+    || fail "a refused rollback changed the schema, the fingerprints or the ledger"
+[ "$(q "select count(*) from evidence_text_fingerprints;")" = 3 ] || fail "a refused rollback deleted a fingerprint"
+[ "$(q "select max(version) from schema_migrations;")" = 0030 ] || fail "a refused rollback moved the ledger"
+pass "three fingerprints: refused with the count and the reason; schema, rows and ledger byte-identical"
+
+# A deeper rollback reaches 0030 first, so it stops there and reverts nothing.
+migrate_refuses "fingerprint(s)" down --to 0024
+[ "$(schema_hash)|$(ledger_value)|$(fingerprint_hash)" = "$STATE" ] \
+    || fail "a deeper refused rollback changed something on its way"
+pass "rolling back to 0024 stops at 0030 and reverts nothing"
+
+# The way forward is a person's decision: remove the rows deliberately, then roll back.
+q "delete from evidence_text_fingerprints;" >/dev/null
+migrate down --to 0029 >/dev/null
+[ "$(q "select count(*) from information_schema.tables where table_name='evidence_text_fingerprints';")" = 0 ] \
+    || fail "the rollback did not proceed once the table was emptied deliberately"
+pass "once the fingerprints are removed deliberately, the rollback proceeds"
+migrate up >/dev/null
+[ "$(fingerprint_hash)" = empty ] || fail "re-applying 0030 produced rows"
+
+# ---------------------------------------------------------------------------
+step "7a. Existing rows that would violate the source-rights rule: 0026 refuses atomically, naming each source and what it lacks"
 fresh
 migrate up --to 0024 >/dev/null
 seed_files 0002 0006
-# The state the unapplied R1 remediation exists to correct is NOT this one (that
-# concerns evidence rows). This is a REGISTRY that archives a corporate source
-# without having declared a licence, which 0026 makes unrepresentable.
-q "update sources set access_mode = 'archived_full_text', license_mode = 'unknown' where id = 'mars-newsroom';" >/dev/null
 migrate up --to 0025 >/dev/null
-SNAP="$(q "select md5(string_agg(to_jsonb(s)::text, '|' order by id)) from sources s;")"
-migrate_refuses "sources_archive_requires_established_rights" up --to 0026
-[ "$(q "select max(version) from schema_migrations;")" = 0025 ] || fail "0026 left a ledger row behind"
-[ "$(q "select count(*) from information_schema.columns where table_name='sources' and column_name='rights_class';")" = 0 ] \
-    || fail "0026 left its column behind"
-[ "$(q "select md5(string_agg(to_jsonb(s)::text, '|' order by id)) from sources s;")" = "$SNAP" ] || fail "0026 changed a source on its way to refusing"
-pass "0026 refuses, naming sources_archive_requires_established_rights: no column, no ledger row, no change"
-q "update sources set access_mode = 'reference_only' where id = 'mars-newsroom';" >/dev/null
+# The state the unapplied R1 remediation exists to correct is NOT this one (that
+# concerns evidence rows). These are REGISTRIES that archive a corporate source
+# without having DOCUMENTED a rights determination, which 0026 makes
+# unrepresentable. Each case is missing exactly one thing, or the licence.
+expect_0026_refusal() {   # description | setup | needle
+    q "$2" >/dev/null
+    SNAP="$(q "select md5(string_agg(to_jsonb(s)::text, '|' order by id)) from sources s;")"
+    migrate_refuses "sources_archive_requires_established_rights" up --to 0026
+    migrate_refuses "$3" up --to 0026
+    [ "$(q "select max(version) from schema_migrations;")" = 0025 ] || fail "$1: 0026 left a ledger row behind"
+    [ "$(q "select count(*) from information_schema.columns where table_name='sources' and column_name='rights_class';")" = 0 ] \
+        || fail "$1: 0026 left its column behind"
+    [ "$(q "select md5(string_agg(to_jsonb(s)::text, '|' order by id)) from sources s;")" = "$SNAP" ] \
+        || fail "$1: 0026 changed a source on its way to refusing"
+    pass "$1: refused, naming the rule and the source; no column, no ledger row, no change"
+}
+ARCHIVE_MARS="update sources set access_mode = 'archived_full_text'"
+
+expect_0026_refusal "archived, licence unknown, never reviewed" \
+    "$ARCHIVE_MARS, license_mode = 'unknown' where id = 'mars-newsroom';" \
+    "mars-newsroom (license_mode is unknown; terms_reviewed_at is empty)"
+expect_0026_refusal "archived, licence declared open, but no review date" \
+    "$ARCHIVE_MARS, license_mode = 'open', terms_reviewed_at = null where id = 'mars-newsroom';" \
+    "mars-newsroom (terms_reviewed_at is empty)"
+expect_0026_refusal "archived, licence declared open and reviewed, but NO note (NULL)" \
+    "$ARCHIVE_MARS, license_mode = 'open', terms_reviewed_at = now(), license_notes = null where id = 'mars-newsroom';" \
+    "mars-newsroom (license_notes is empty)"
+expect_0026_refusal "archived, licence declared open and reviewed, but a note of only whitespace" \
+    "$ARCHIVE_MARS, license_mode = 'open', terms_reviewed_at = now(), license_notes = E'  \\n\\t ' where id = 'mars-newsroom';" \
+    "mars-newsroom (license_notes is empty)"
+expect_0026_refusal "archived, reviewed and noted, but the licence is restricted" \
+    "$ARCHIVE_MARS, license_mode = 'restricted', terms_reviewed_at = now(), license_notes = 'Terms forbid reuse.' where id = 'mars-newsroom';" \
+    "mars-newsroom (license_mode is restricted)"
+
+# Reference-only needs no documentation whatever its licence says.
+q "update sources set access_mode = 'reference_only', license_mode = 'unknown', terms_reviewed_at = null, license_notes = null where id = 'mars-newsroom';" >/dev/null
 migrate up --to 0026 >/dev/null
-pass "once the registry says reference_only, 0026 applies"
+[ "$(q "select max(version) from schema_migrations;")" = 0026 ] || fail "0026 did not apply to a reference-only registry"
+pass "a reference-only source with no licence, no review date and no note: 0026 applies"
+migrate down --to 0025 >/dev/null
+
+# Documented licensing is accepted, and nothing about the row changes.
+q "$ARCHIVE_MARS, license_mode = 'licensed', terms_reviewed_at = '2026-10-01 00:00:00+00', license_notes = 'Licence agreement reviewed by the owner and counsel, 2026-10-01.' where id = 'mars-newsroom';" >/dev/null
+migrate up --to 0026 >/dev/null
+[ "$(q "select access_mode || '/' || license_mode || '/' || rights_class from sources where id = 'mars-newsroom';")" = "archived_full_text/licensed/unclassified" ] \
+    || fail "documented licensing was not accepted as it stood"
+pass "archived, licensed, with a review date and a note: 0026 applies and changes nothing about the source"
 
 step "7b. A facility identifier outside the vocabulary: 0028 refuses atomically"
 ORG="$(q "insert into organizations (canonical_name, organization_role) values ('Example Epsilon Foods', 'manufacturer_brand') returning id;")"
@@ -325,6 +438,51 @@ q "update facility_identifiers set identifier_system = 'fsis_establishment_numbe
 migrate up >/dev/null
 [ "$(q "select max(version) from schema_migrations;")" = 0030 ] || fail "R2 did not complete after the fix"
 pass "once the row is corrected, R2 completes"
+
+# ---------------------------------------------------------------------------
+step "7c. The pilot's federal sources as production holds them TODAY: no recorded review date"
+# Seed 0002 now records the ADR 0014 determination, but a production database was
+# seeded before it did, so sec-edgar and fsis-mpi hold a NULL review date. When
+# 0026 runs they are still 'unclassified' (seed 0009 classifies them afterwards),
+# so they are judged like any other archiving source and are REFUSED -- atomically,
+# by name -- until the determination is recorded.
+fresh
+migrate up --to 0024 >/dev/null
+seed_files 0001 0002 0003 0004 0005 0006 0007 0008
+q "update sources set terms_reviewed_at = null where id in ('sec-edgar', 'fsis-mpi');" >/dev/null
+migrate up --to 0025 >/dev/null
+SNAP="$(q "select md5(string_agg(to_jsonb(s)::text, '|' order by id)) from sources s;")"
+migrate_refuses "fsis-mpi (terms_reviewed_at is empty), sec-edgar (terms_reviewed_at is empty)" up --to 0026
+[ "$(q "select max(version) from schema_migrations;")" = 0025 ] || fail "0026 left a ledger row behind"
+[ "$(q "select md5(string_agg(to_jsonb(s)::text, '|' order by id)) from sources s;")" = "$SNAP" ] || fail "0026 changed a source on its way to refusing"
+pass "both pilot federal sources named, nothing committed, nothing changed"
+
+# The operator records a review date for one of them on their own authority...
+q "update sources set terms_reviewed_at = '2026-09-15 00:00:00+00' where id = 'sec-edgar';" >/dev/null
+# ...and re-runs the reviewed seeds for the other, which fills only a blank.
+seed_files 0002 0006
+[ "$(q "select to_char(terms_reviewed_at at time zone 'UTC', 'YYYY-MM-DD') from sources where id = 'sec-edgar';")" = 2026-09-15 ] \
+    || fail "the seed overwrote a review date that was already recorded"
+[ "$(q "select to_char(terms_reviewed_at at time zone 'UTC', 'YYYY-MM-DD') from sources where id = 'fsis-mpi';")" = 2026-08-26 ] \
+    || fail "the seed did not fill a blank review date"
+[ "$(q "select string_agg(id || '=' || access_mode || '/' || license_mode, ',' order by id) from sources where id in ('sec-edgar','fsis-mpi');")" = \
+  "fsis-mpi=archived_full_text/open,sec-edgar=archived_full_text/open" ] || fail "the seed changed an access mode or a licence"
+pass "re-running the reviewed seeds fills the blank, keeps the recorded date, and changes no access mode"
+migrate up >/dev/null
+[ "$(q "select max(version) from schema_migrations;")" = 0030 ] || fail "R2 did not complete once the pilot sources were documented"
+seed 0009
+[ "$(q "select string_agg(id || '=' || rights_class, ',' order by id) from sources where id in ('sec-edgar','fsis-mpi');")" = \
+  "fsis-mpi=federal_public_record,sec-edgar=federal_public_record" ] || fail "the pilot sources were not classified afterwards"
+pass "R2 completes, and the reviewed seed then classifies both as federal public records"
+
+# Once classified as federal they no longer depend on the documentation at all...
+q "update sources set terms_reviewed_at = null, license_notes = null where id = 'sec-edgar';" >/dev/null \
+    || fail "a classified federal public record was refused for lacking documentation"
+pass "a classified federal public record keeps its archived access whatever its documentation says"
+# ...but un-classifying one that has none puts it back under the rule.
+refuses "update sources set rights_class = 'unclassified' where id = 'sec-edgar';" \
+    "sources_archive_requires_established_rights" "un-classifying an undocumented federal source"
+pass "and withdrawing the classification from an undocumented archiving source is refused"
 
 psql -d postgres -q -c "drop database if exists $DB;" >/dev/null
 printf '\n\033[32mR2 on existing data: every case passed.\033[0m\n'

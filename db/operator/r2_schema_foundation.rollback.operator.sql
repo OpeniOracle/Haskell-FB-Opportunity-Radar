@@ -11,7 +11,8 @@
 -- migration's own down file refuses -- with a message naming the count -- if a
 -- person has recorded anything that rolling back would delete:
 --
---   0030  nothing to lose (a cache of hashes, rebuilt on the next run)
+--   0030  any recurring-disclosure fingerprint (hashes of text that reference-only
+--         evidence never kept, so they cannot be rebuilt; nothing is deleted)
 --   0029  tasks that are still pending or running
 --   0028  nothing (constraints hold no data)
 --   0027  any signal carrying an event date role
@@ -47,6 +48,20 @@ begin
 -- >>>>>>>>>>>>>>>>>>>>>> 0030 CANONICAL ROLLBACK BEGINS <<<<<<<<<<<<<<<<<<<<<<
 -- Verbatim from db/migrations/0030_evidence_text_fingerprints.down.sql, minus its own begin;/commit;
 -- lines. Nothing else is changed. Diff it if you like.
+
+do $$
+declare
+    remembered bigint;
+begin
+    select count(*) into remembered from evidence_text_fingerprints;
+
+    if remembered > 0 then
+        raise exception
+            'ABORT: evidence_text_fingerprints holds % fingerprint(s). They are SHA-256 hashes of text that reference-only evidence does not retain, so once dropped they cannot be rebuilt from stored documents, and a recurring disclosure would read as new again. Export them, then remove them deliberately, and run this again. Nothing was deleted.',
+            remembered;
+    end if;
+end
+$$;
 
 drop table if exists evidence_text_fingerprints;
 

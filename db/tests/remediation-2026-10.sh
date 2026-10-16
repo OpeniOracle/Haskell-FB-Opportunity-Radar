@@ -294,10 +294,12 @@ refuses 'reference a Storage object' "a row that references a Storage object"
 
 production_shape
 # A registry that DISAGREES with ADR 0014. Since 0026 the database itself refuses
-# to archive a source that has not declared an open or licensed posture
-# (sources_archive_requires_established_rights), so the disagreement has to be
-# expressed the way a real one would be: archived AND declared open.
-q "update sources set access_mode = 'archived_full_text', license_mode = 'open' where id = 'mars-newsroom';" >/dev/null
+# to archive a source that has not DOCUMENTED a rights determination
+# (sources_archive_requires_established_rights: a declared open or licensed
+# posture, a review date and a note), so the disagreement has to be expressed the
+# way a real one would be: archived, declared open, reviewed and noted. (Mars
+# already carries a licence note from its seed.)
+q "update sources set access_mode = 'archived_full_text', license_mode = 'open', terms_reviewed_at = now() where id = 'mars-newsroom';" >/dev/null
 refuses 'is not access_mode reference_only' "a registry that does not say reference_only"
 
 production_shape

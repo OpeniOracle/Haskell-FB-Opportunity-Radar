@@ -55,11 +55,18 @@ what ADR 0014 lists for reference-only material: the URL, title, publisher, the 
 date *when the source states one*, the retrieval time, the content hash, the structured
 extracted claims and the minimum supporting excerpt, and not the page body.
 
-**4. "Established" is a recorded declaration, not an inference.** A source that is not a
-federal public record may be archived, parsed as an official record, or held as licensed full
-text only if it has **declared `license_mode` `open` or `licensed`**, with
-`terms_reviewed_at` and `license_notes` recording the determination and who made it. The
-default, `unknown`, does not qualify, and neither does `restricted`.
+**4. "Established" is a recorded determination, not an inference and not a flag.** A source
+that is not a federal public record may be archived, parsed as an official record, or held as
+licensed full text only if it has **documented** a rights determination, which means all of:
+
+- `license_mode` is `open` or `licensed` (the default, `unknown`, does not qualify, and neither
+  does `restricted`);
+- `terms_reviewed_at` is recorded, the date the terms were reviewed; and
+- `license_notes` is recorded and not blank, saying what was decided and by whom.
+
+Setting `license_mode` alone establishes nothing. Without the review date and the note it is a
+claim with no record behind it, which is exactly the "undocumented license flag" this rule
+exists to keep from unlocking retention.
 
 **5. Nothing is reclassified by resemblance.** Not by the host's top-level domain, not by
 being publicly readable, not by being the nearest thing to a federal record. Moving a source
@@ -68,9 +75,17 @@ to `federal_public_record` is a reviewed change to the registry, and a source is
 
 **6. The rule is enforced in the schema, not remembered.** Migration 0026 adds one
 constraint, `sources_archive_requires_established_rights`: a source is either a federal public
-record, or reference-only or metadata-only, or has declared an open or licensed posture. A
-seed, a script or a hurried correction cannot put an unclassified, state, municipal or
-corporate source into full-text archiving, because the row is refused.
+record, or reference-only or metadata-only, or has documented a determination as rule 4
+defines it (an open or licensed posture, a review date and a non-blank note). A seed, a script
+or a hurried correction cannot put an unclassified, state, municipal or corporate source into
+full-text archiving, because the row is refused, and a row that is already there when the
+constraint is added is refused too, by name, rather than changed.
+
+**What the constraint proves, and what it does not.** It proves the determination was
+*recorded*. It cannot prove the note is accurate, that the reviewer was competent, or that the
+date is the real one, and the schema has no reviewer column (who and when are audit facts).
+Whether a recorded determination is a *good* one is the reviewer's judgment and the owner's;
+no constraint can stand in for it. The rule deliberately sets no minimum note length.
 
 **7. The class follows the publisher of the bytes retrieved.** An SEC filing hosted on an
 issuer's investor-relations vendor page is not on EDGAR; it is classified by who served it, or
@@ -83,8 +98,12 @@ cannot inflate corroboration.
 ## What this does not decide
 
 - **Which source is open or licensed.** That is a determination per source, by the owner with
-  counsel, recorded in `license_mode`. This ADR sets the default and the act; it does not
-  perform the act for any state.
+  counsel, recorded in `license_mode`, `terms_reviewed_at` and `license_notes`. This ADR sets
+  the default and the act; it does not perform the act for any state.
+- **The federal pilot sources' recorded dates.** They are federal public records and exempt
+  once classified as such. The pilot's registry records ADR 0014's acceptance date against
+  them (design note 23, decision O-11) only so the rule can be added to a registry in which
+  they are not yet classified.
 - **D16 and D17** stay Open. **ADR 0006** stays Proposed: this extends the pilot rule
   (0014), as 0014 itself did.
 - **Retention.** `retention_days` and `retention_expires_at` continue to govern how long
@@ -94,7 +113,7 @@ cannot inflate corroboration.
 
 ## Consequences
 
-**Good.** A state or municipal record cannot be archived by accident. The posture for the
+**Good.** A state or municipal record cannot be archived by accident, or by one flag. The posture for the
 sources the roadmap is about to add (state incentives, local planning) is decided and
 visible before the first connector is written, not argued after the first byte is stored. The
 class is queryable, so "which of our sources have we not classified" is a query.

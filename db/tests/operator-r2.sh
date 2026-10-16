@@ -134,13 +134,49 @@ pass "refused, database byte-identical"
 step "3. Refusals that change nothing"
 at_0024 radar_op_b
 BEFORE="$(dump radar_op_b | md5sum)|$(ledger radar_op_b)"
-q radar_op_b "update sources set access_mode = 'archived_full_text', license_mode = 'unknown' where id = 'mars-newsroom';" >/dev/null
-refuses radar_op_b "$APPLY" "archive.*without a declared open or licensed posture" "a source that archives without a licence"
-[ "$(q radar_op_b "select count(*) from schema_migrations where version >= '0025';")" = 0 ] || fail "a ledger row was written"
-[ "$(q radar_op_b "select count(*) from information_schema.columns where table_name='sources' and column_name='rights_class';")" = 0 ] \
-    || fail "a column was added"
-pass "an archiving source with an unknown licence: refused with an explanation, nothing committed"
-q radar_op_b "update sources set access_mode = 'reference_only' where id = 'mars-newsroom';" >/dev/null
+
+nothing_committed() {   # description
+    [ "$(q radar_op_b "select count(*) from schema_migrations where version >= '0025';")" = 0 ] || fail "$1: a ledger row was written"
+    [ "$(q radar_op_b "select count(*) from information_schema.columns where table_name='sources' and column_name='rights_class';")" = 0 ] \
+        || fail "$1: a column was added"
+    [ "$(dump radar_op_b | md5sum)|$(ledger radar_op_b)" = "$BEFORE" ] || fail "$1: the schema or the ledger changed"
+}
+rights_refusal() {   # description | setup | the source and what it lacks
+    q radar_op_b "$2" >/dev/null
+    refuses radar_op_b "$APPLY" "break sources_archive_requires_established_rights" "$1"
+    refuses radar_op_b "$APPLY" "$3" "$1"
+    nothing_committed "$1"
+    pass "$1: refused, naming the source and what it lacks; nothing committed"
+}
+ARCHIVE="update sources set access_mode = 'archived_full_text'"
+rights_refusal "an archiving source with an unknown licence" \
+    "$ARCHIVE, license_mode = 'unknown' where id = 'mars-newsroom';" \
+    "mars-newsroom (license_mode is unknown; terms_reviewed_at is empty)"
+rights_refusal "a declared-open archiving source with no review date" \
+    "$ARCHIVE, license_mode = 'open', terms_reviewed_at = null where id = 'mars-newsroom';" \
+    "mars-newsroom (terms_reviewed_at is empty)"
+rights_refusal "a declared-open, reviewed archiving source with no note" \
+    "$ARCHIVE, license_mode = 'open', terms_reviewed_at = now(), license_notes = null where id = 'mars-newsroom';" \
+    "mars-newsroom (license_notes is empty)"
+rights_refusal "a declared-open, reviewed archiving source whose note is only whitespace" \
+    "$ARCHIVE, license_mode = 'open', terms_reviewed_at = now(), license_notes = E'  \\n\\t ' where id = 'mars-newsroom';" \
+    "mars-newsroom (license_notes is empty)"
+q radar_op_b "update sources set access_mode = 'reference_only', license_mode = 'unknown', terms_reviewed_at = null, license_notes = null where id = 'mars-newsroom';" >/dev/null
+
+# The pilot's two federal sources as production holds them TODAY: archived under
+# ADR 0014, declared open, but with no recorded review date, and still
+# 'unclassified' because the seed that classifies them runs after this file.
+q radar_op_b "update sources set terms_reviewed_at = null where id in ('sec-edgar', 'fsis-mpi');" >/dev/null
+rights_refusal "the pilot's federal sources without a recorded review date" \
+    "select 1;" \
+    "fsis-mpi (terms_reviewed_at is empty), sec-edgar (terms_reviewed_at is empty)"
+# The remedy docs/design/23 section 7 prescribes: record the determination, for
+# those two sources and only where the date is blank. It changes no access mode.
+q radar_op_b "update sources set terms_reviewed_at = timestamptz '2026-08-26 00:00:00+00'
+               where id in ('sec-edgar', 'fsis-mpi') and terms_reviewed_at is null;" >/dev/null
+[ "$(q radar_op_b "select count(*) from sources where id in ('sec-edgar','fsis-mpi') and terms_reviewed_at is not null;")" = 2 ] \
+    || fail "the remedy did not record the pilot determination"
+pass "recording the determination (blank dates only) clears the refusal, and changes no access mode"
 
 ORG="$(q radar_op_b "insert into organizations (canonical_name, organization_role) values ('Example Zeta Foods', 'manufacturer_brand') returning id;")"
 FAC="$(q radar_op_b "insert into facilities (organization_id, canonical_name) values ('$ORG', 'Example plant') returning id;")"
@@ -156,6 +192,15 @@ refuses radar_op_b "$APPLY" "migration 0024 is not present" "a database without 
 q radar_op_b "insert into schema_migrations (version, name, checksum, stamped)
               values ('0024', '${ROW_0024%%|*}', '${ROW_0024##*|}', false);" >/dev/null
 pass "a database without 0024: refused"
+
+# Every refusal above was for something a person could fix, and every fix was
+# made. The SAME file, unmodified, now applies to that same database.
+PGDATABASE=radar_op_b psql -v ON_ERROR_STOP=1 -q -f "$APPLY" 2> "$WORK/apply-b.log" >/dev/null \
+    || { cat "$WORK/apply-b.log"; fail "the file still refuses once every refusal has been corrected"; }
+grep -q 'R2 schema foundation applied' "$WORK/apply-b.log" || fail "no completion notice after the corrections"
+[ "$(q radar_op_b "select count(*) from sources where rights_class <> 'unclassified';")" = 0 ] \
+    || fail "applying the file classified a source"
+pass "after the corrections the same file applies, and every source starts unclassified"
 
 # ---------------------------------------------------------------------------
 step "4. One statement: a failure at the END leaves nothing behind"
@@ -173,6 +218,9 @@ pass "0025 - 0029 had run when 0030 failed: nothing committed, schema and ledger
 
 # ---------------------------------------------------------------------------
 step "5. The rollback file reverses it exactly"
+# The fingerprint table is present and EMPTY, so 0030's guard has nothing to refuse;
+# section 6 covers the populated table.
+[ "$(q radar_op_a "select count(*) from evidence_text_fingerprints;")" = 0 ] || fail "the fingerprint table is not empty before the rollback"
 PGDATABASE=radar_op_a psql -v ON_ERROR_STOP=1 -q -f "$ROLLBACK" 2> "$WORK/rollback.log" >/dev/null || { cat "$WORK/rollback.log"; fail "the rollback file failed"; }
 grep -q 'R2 schema foundation rolled back' "$WORK/rollback.log" || fail "no completion notice"
 at_0024 radar_op_ref0
@@ -190,18 +238,34 @@ pass "and R2 re-applies cleanly afterwards"
 step "6. The rollback file refuses to destroy recorded work, and changes nothing"
 ORG="$(q radar_op_a "insert into organizations (canonical_name, organization_role) values ('Example Eta Foods', 'manufacturer_brand') returning id;")"
 OPP="$(q radar_op_a "insert into opportunities (organization_id, title, stage, confidence, capability_alignment) values ('$ORG', 'Case', 'emerging', 'possible', '{}') returning id;")"
+# What a refused rollback must leave exactly as it found it: the schema, the
+# ledger AND the rows of the tables a rollback would drop or empty.
+state() {
+    echo "$(dump radar_op_a | md5sum)|$(ledger radar_op_a)|$(q radar_op_a "
+        select md5(coalesce((select string_agg(to_jsonb(f)::text, '|' order by to_jsonb(f)::text) from evidence_text_fingerprints f), '')
+                || coalesce((select string_agg(to_jsonb(t)::text, '|' order by to_jsonb(t)::text) from ingestion_tasks t), '')
+                || coalesce((select string_agg(to_jsonb(s)::text, '|' order by id) from sources s), '')
+                || coalesce((select string_agg(to_jsonb(o)::text, '|' order by id) from opportunities o), ''));")"
+}
 refuse_case() {   # description | setup | needle | cleanup
     q radar_op_a "$2" >/dev/null
-    local before; before="$(dump radar_op_a | md5sum)|$(ledger radar_op_a)"
+    local before; before="$(state)"
     refuses radar_op_a "$ROLLBACK" "$3" "$1"
-    [ "$(dump radar_op_a | md5sum)|$(ledger radar_op_a)" = "$before" ] || fail "$1: the refused rollback changed something"
-    pass "$1: refused, schema and ledger byte-identical"
+    [ "$(state)" = "$before" ] || fail "$1: the refused rollback changed something"
+    pass "$1: refused, schema, rows and ledger byte-identical"
     q radar_op_a "$4" >/dev/null
 }
 refuse_case "an accepted review" "update opportunities set review_state = 'accepted' where id = '$OPP';" \
     "opportunity row(s) carry a review state" "update opportunities set review_state = 'unreviewed' where id = '$OPP';"
 refuse_case "a source rights class" "update sources set rights_class = 'federal_public_record' where id = 'sec-edgar';" \
     "source(s) carry a rights class" "update sources set rights_class = 'unclassified' where id = 'sec-edgar';"
+# Fingerprints are hashes of text that reference-only evidence never kept, so they
+# cannot be rebuilt: the rollback refuses, names the count, and deletes nothing.
+refuse_case "recurring-disclosure fingerprints" \
+    "insert into evidence_text_fingerprints (organization_id, source_id, fingerprint, first_evidence_id)
+     values ('$ORG', 'sec-edgar', repeat('ab', 32), null), ('$ORG', 'mars-newsroom', repeat('cd', 32), null);" \
+    "holds 2 fingerprint(s)" \
+    "delete from evidence_text_fingerprints;"
 refuse_case "work still in the queue" \
     "insert into source_runs (id, source_id, status) values ('00000000-0000-4000-8000-0000000000b9', 'sec-edgar', 'success'); insert into ingestion_tasks (source_run_id, task_key) values ('00000000-0000-4000-8000-0000000000b9', 'doc-1');" \
     "ingestion task(s) are pending or running" \

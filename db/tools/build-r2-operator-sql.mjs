@@ -28,9 +28,14 @@
  * dynamic SQL anywhere. The payload in the operator file is byte-identical to the
  * canonical migration, so a reviewer can diff the two by eye and CI does.
  *
- * THE ROLLBACK PAYLOAD CONTAINS NESTED `DO` BLOCKS (each down migration refuses
- * to destroy recorded work). A `DO` inside a `DO` is valid PL/pgSQL, and the
- * outer block uses a tag that cannot collide with the inner `$$`.
+ * THE PAYLOADS CONTAIN NESTED `DO` BLOCKS: each down migration refuses to
+ * destroy recorded work, and 0026 refuses, naming the sources, to add its rule to
+ * a registry that already breaks it. A `DO` inside a `DO` is valid PL/pgSQL, and
+ * the outer block uses a tag that cannot collide with the inner `$$`. Because the
+ * guards are PART OF THE CANONICAL MIGRATIONS they are inlined verbatim like
+ * everything else, so the operator file refuses for exactly the reasons, and with
+ * exactly the messages, that `db/migrate.mjs` does. There is no second copy of a
+ * rule to drift.
  */
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -93,9 +98,9 @@ function payloadOf(sql, label, { allowDollarQuotes }) {
      A lone `$` is ordinary text (the end-of-string anchor in a regular
      expression, say) and cannot close an outer `$tag$` quote. What can is a
      delimiter: `$`, optional identifier characters, `$`. So the rule is exactly
-     that. An up migration may contain none. A down migration may contain the
-     anonymous `$$` of its own guard blocks, balanced, and nothing with a tag, so
-     the wrapper's own tag can never be matched from inside.
+     that. A migration may contain the anonymous `$$` of its own guard blocks,
+     balanced, and nothing with a tag, so the wrapper's own tag can never be
+     matched from inside.
   */
   const delimiters = stripped.match(/\$[A-Za-z_0-9]*\$/g) ?? []
   if (!allowDollarQuotes && delimiters.length > 0) {
@@ -122,7 +127,7 @@ function payloadOf(sql, label, { allowDollarQuotes }) {
 }
 
 for (const m of migrations) {
-  m.upPayload = payloadOf(m.upSql, m.up, { allowDollarQuotes: false })
+  m.upPayload = payloadOf(m.upSql, m.up, { allowDollarQuotes: true })
   m.downPayload = payloadOf(m.downSql, m.down, { allowDollarQuotes: true })
 }
 
@@ -145,8 +150,9 @@ const applyHeader = `\
 --   0025  adds review_state, project_lifecycle and commercial_qualification to
 --         opportunities, defaulting to unreviewed / unknown / not_assessed
 --   0026  adds sources.rights_class, defaulting to unclassified, and the rule
---         that only a federal public record or a source with a declared open or
---         licensed posture may be archived
+--         that only a federal public record or a source that has DOCUMENTED a
+--         rights determination (open or licensed, terms_reviewed_at and
+--         license_notes) may be archived
 --   0027  adds signals.event_date_role (NULL = not recorded)
 --   0028  restricts facility_identifiers.identifier_system to a vocabulary
 --   0029  creates ingestion_tasks, the server-side work queue for R4
@@ -177,8 +183,13 @@ const applyHeader = `\
 --
 --   Any line containing ABORT: means NOTHING WAS COMMITTED. It refuses if any of
 --   the six is already recorded, if 0024 is missing, if a source already archives
---   without a declared licence (the 0026 rule would refuse it), or if a facility
---   identifier is outside the 0028 vocabulary. Each message says what to fix.
+--   without a documented rights determination (0026 names each source and what it
+--   lacks), or if a facility identifier is outside the 0028 vocabulary. Each
+--   message says what to fix.
+--
+--   BEFORE RUNNING IT, run the read-only preflight in docs/design/23 section 7. A
+--   database whose pilot sources predate the seed that records their review date
+--   will be refused at 0026, which is the rule working, not a fault.
 --
 -- ROLLING BACK
 --
@@ -207,22 +218,12 @@ begin
     end if;
 
     -- EXISTING ROWS THAT A NEW RULE WOULD REFUSE. The constraints would refuse
-    -- them anyway and roll everything back, but with a constraint name. These say
-    -- what is wrong and what to do about it, before anything is attempted.
+    -- them anyway and roll everything back, but with a constraint name. For 0026
+    -- the migration carries its own guard (a source that archives without a
+    -- documented rights determination is named, with what it lacks), inlined below
+    -- with the rest of its payload. 0028 has no guard of its own, so it is checked
+    -- here, before anything is attempted.
     --
-    -- 0026: every existing source is, as yet, unclassified, so the rule reduces to
-    -- "archived, parsed or licensed in full only if its licence is open or licensed".
-    if exists (
-        select 1 from public.sources
-         where access_mode not in ('reference_only', 'metadata_only')
-           and license_mode not in ('open', 'licensed')
-    ) then
-        raise exception 'ABORT: source(s) % archive (access_mode is not reference_only or metadata_only) without a declared open or licensed posture. Migration 0026 would refuse them. Correct the registry (set access_mode reference_only, or record the licence determination) and run this again.',
-            (select string_agg(id, ', ' order by id) from public.sources
-              where access_mode not in ('reference_only', 'metadata_only')
-                and license_mode not in ('open', 'licensed'));
-    end if;
-
     -- 0028: nothing writes facility_identifiers today, so this is expected to pass
     -- on an empty table.
     if exists (
@@ -374,7 +375,8 @@ const rollbackHeader = `\
 -- migration's own down file refuses -- with a message naming the count -- if a
 -- person has recorded anything that rolling back would delete:
 --
---   0030  nothing to lose (a cache of hashes, rebuilt on the next run)
+--   0030  any recurring-disclosure fingerprint (hashes of text that reference-only
+--         evidence never kept, so they cannot be rebuilt; nothing is deleted)
 --   0029  tasks that are still pending or running
 --   0028  nothing (constraints hold no data)
 --   0027  any signal carrying an event date role
