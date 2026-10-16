@@ -1,0 +1,105 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-BOILER-001",
+      "failureMode": "FP01_BOILERPLATE",
+      "family": "Repeated financial-disclosure boilerplate",
+      "title": "Standing programme paragraph in a quarterly filing",
+      "rationale": "A company-wide programme with a total charge names no site, no project and no event. It must not become a facility signal.",
+      "documents": [
+        {
+          "documentType": "10-Q",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-boiler-001",
+          "sourceDocumentId": "syn-boiler-001-1",
+          "title": "Standing programme paragraph in a quarterly filing",
+          "publisher": "brindlemoor",
+          "text": "Restructuring and productivity programme. The programme includes upgrading our manufacturing facilities and automating our production lines across North America, with expected pre-tax charges of approximately $2.5 billion through 2027. We continue to evaluate our manufacturing footprint on an ongoing basis.",
+          "url": "https://filings.synthetic.example/syn-boiler-001"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D03",
+          "dimensions": [
+            "signal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-BOILER-002",
+      "failureMode": "FP11_RECURRENCE",
+      "family": "Repeated financial-disclosure boilerplate",
+      "title": "The same paragraph in three consecutive quarterly filings",
+      "rationale": "Recurrence is not news. The same standing paragraph in three quarters must yield no signal and no opportunity, however the dates fall.",
+      "documents": [
+        {
+          "documentType": "10-Q",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-boiler-002-q1",
+          "sourceDocumentId": "syn-boiler-002-1",
+          "title": "10-Q 2026-05-06",
+          "publisher": "brindlemoor",
+          "text": "Restructuring and productivity programme. The programme includes upgrading our manufacturing facilities and automating our production lines across North America, with expected pre-tax charges of approximately $2.5 billion through 2027. We continue to evaluate our manufacturing footprint on an ongoing basis.",
+          "url": "https://filings.synthetic.example/syn-boiler-002-q1"
+        },
+        {
+          "documentType": "10-Q",
+          "publishedAt": "2026-08-05T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-boiler-002-q2",
+          "sourceDocumentId": "syn-boiler-002-2",
+          "title": "10-Q 2026-08-05",
+          "publisher": "brindlemoor",
+          "text": "Restructuring and productivity programme. The programme includes upgrading our manufacturing facilities and automating our production lines across North America, with expected pre-tax charges of approximately $2.5 billion through 2027. We continue to evaluate our manufacturing footprint on an ongoing basis.",
+          "url": "https://filings.synthetic.example/syn-boiler-002-q2"
+        },
+        {
+          "documentType": "10-Q",
+          "publishedAt": "2026-11-04T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-boiler-002-q3",
+          "sourceDocumentId": "syn-boiler-002-3",
+          "title": "10-Q 2026-11-04",
+          "publisher": "brindlemoor",
+          "text": "Restructuring and productivity programme. The programme includes upgrading our manufacturing facilities and automating our production lines across North America, with expected pre-tax charges of approximately $2.5 billion through 2027. We continue to evaluate our manufacturing footprint on an ongoing basis.",
+          "url": "https://filings.synthetic.example/syn-boiler-002-q3"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none",
+        "counts": {
+          "signals": 0,
+          "opportunities": 0
+        }
+      },
+      "knownDefects": [
+        {
+          "defect": "D03",
+          "dimensions": [
+            "signal",
+            "cardinality"
+          ]
+        },
+        {
+          "defect": "D10",
+          "dimensions": [
+            "cardinality"
+          ]
+        }
+      ]
+    }
+  ]
+}

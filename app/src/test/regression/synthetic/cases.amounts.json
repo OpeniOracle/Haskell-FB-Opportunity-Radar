@@ -1,0 +1,121 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-AMOUNT-001",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "title": "A revenue figure beside a vague plant remark",
+      "rationale": "The dollar figure is revenue. The \"possible new plant\" has no site and no commitment. Neither the figure nor the timeline sentence corroborates a project.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-amount-001",
+          "sourceDocumentId": "syn-amount-001-1",
+          "title": "A revenue figure beside a vague plant remark",
+          "publisher": "brindlemoor",
+          "text": "Net revenue grew to $4.2 billion in fiscal 2026. Separately, management discussed a possible new plant at an unspecified future location.",
+          "url": "https://newsroom.brindlemoor.example/syn-amount-001"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D01",
+          "dimensions": [
+            "signal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-AMOUNT-002",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "title": "A donation beside a board discussion of options",
+      "rationale": "A $12 million gift to a college is not capital spending on a plant, and \"discussed options\" is not a decision. The right behaviour is to hold, not to promote.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-amount-002",
+          "sourceDocumentId": "syn-amount-002-1",
+          "title": "A donation beside a board discussion of options",
+          "publisher": "kestrelwood",
+          "text": "The cooperative announced a $12 million gift to Carrow County Community College for a food-science laboratory. Its board separately discussed plant expansion options in 2027.",
+          "url": "https://newsroom.kestrelwood.example/syn-amount-002"
+        }
+      ],
+      "expected": {
+        "outcome": "abstain",
+        "promotion": "none"
+      },
+      "knownDefects": []
+    },
+    {
+      "id": "SYN-AMOUNT-003",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "title": "CONTROL: the amount IS the project cost",
+      "rationale": "A named plant, a place, the cost, the jobs and a start window in one sentence. This is the shape of announcement the classifier exists to find; a repair must not lose it.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-amount-003",
+          "sourceDocumentId": "syn-amount-003-1",
+          "title": "CONTROL: the amount IS the project cost",
+          "publisher": "kestrelwood",
+          "text": "Kestrelwood Dairy Cooperative will build a new 120,000 square foot processing plant in Ashgrove Mill, Wisconsin, a $95 million investment expected to create 80 jobs, with construction beginning in the second quarter of 2027.",
+          "url": "https://newsroom.kestrelwood.example/syn-amount-003"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging"
+      },
+      "knownDefects": []
+    },
+    {
+      "id": "SYN-AMOUNT-004",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "title": "CONTROL: a credit facility is not a facility",
+      "rationale": "A revolving credit facility is a financial instrument. The word \"facility\" and a dollar figure must not make it a plant.",
+      "documents": [
+        {
+          "documentType": "8-K",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-amount-004",
+          "sourceDocumentId": "syn-amount-004-1",
+          "title": "CONTROL: a credit facility is not a facility",
+          "publisher": "brindlemoor",
+          "text": "The company entered into a $750 million revolving credit facility maturing in 2031 with a syndicate of banks.",
+          "url": "https://filings.synthetic.example/syn-amount-004"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": []
+    }
+  ]
+}

@@ -117,6 +117,30 @@ jobs:
           rm -rf dist
           npm run build
 
+      # THE SYNTHETIC REGRESSION HARNESS MUST NOT SHIP.
+      #
+      # `src/test/regression/` holds fictional documents and the outcomes a
+      # correct pipeline should produce. They are fixtures for tests, not product
+      # content: a fictional organisation in a production chunk would read to a
+      # user as a real company. Vite only bundles what the application imports,
+      # and `regressionGuards.test.ts` asserts that nothing does -- but that test
+      # runs before the build, so this is the step that looks at the output. The
+      # sentinel is written into every fixture file for exactly this scan.
+      - name: The production bundle contains no regression fixture
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test -d dist/assets || { echo 'No build output to scan.'; exit 1; }
+          failed=0
+          for marker in SYNTHETIC-REGRESSION-FIXTURE Brindlemoor Tessaly Kestrelwood Halvard 'SYN-ORIGIN-' 'SYN-BOILER-' 'SYN-ATTR-' 'SYN-RECUR-'; do
+            if grep -rqF "$marker" dist/; then
+              echo "FAIL  the production build contains '$marker'"
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then exit 1; fi
+          echo 'ok    no regression fixture, sentinel or fictional organisation in dist/'
+
   boundaries:
     name: Milestone boundary checks
     runs-on: ubuntu-latest

@@ -1,0 +1,122 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-NEG-001",
+      "failureMode": "FP04_POLARITY",
+      "family": "Negative events and closures",
+      "title": "A closure with an ordinary \"City, State\" place",
+      "rationale": "A closure is intelligence and must be recorded, as a negative signal, however the place is punctuated.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-neg-001",
+          "sourceDocumentId": "syn-neg-001-1",
+          "title": "A closure with an ordinary \"City, State\" place",
+          "publisher": "halvard",
+          "text": "Halvard Snacks said it will close its Winterhold, Ohio plant in March 2027, affecting 300 employees.",
+          "url": "https://newsroom.halvard.example/syn-neg-001"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "closure_consolidation",
+            "negative": true
+          }
+        ],
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D06",
+          "dimensions": [
+            "signal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-NEG-002",
+      "failureMode": "FP04_POLARITY",
+      "family": "Negative events and closures",
+      "title": "A closure the classifier does recognise",
+      "rationale": "A recorded closure is a NEGATIVE signal. By itself it opens no pursuit opportunity; relocation or remediation work needs separate physical evidence.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-neg-002",
+          "sourceDocumentId": "syn-neg-002-1",
+          "title": "A closure the classifier does recognise",
+          "publisher": "halvard",
+          "text": "Halvard Snacks will close its Winterhold processing plant in 2027, affecting 300 employees, at a restructuring cost of $40 million.",
+          "url": "https://newsroom.halvard.example/syn-neg-002"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "closure_consolidation",
+            "negative": true
+          }
+        ],
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D07",
+          "dimensions": [
+            "promotion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-NEG-003",
+      "failureMode": "FP04_POLARITY",
+      "family": "Negative events and closures",
+      "title": "A consolidation of production",
+      "rationale": "Moving production out of one site is a closure-type event, not a growth project, even though the destination plant is named.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-neg-003",
+          "sourceDocumentId": "syn-neg-003-1",
+          "title": "A consolidation of production",
+          "publisher": "kestrelwood",
+          "text": "Kestrelwood Dairy Cooperative announced it will consolidate production from its Dunmere Hollow creamery into its Ashgrove Mill plant by 2028, saving $15 million annually.",
+          "url": "https://newsroom.kestrelwood.example/syn-neg-003"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "closure_consolidation",
+            "negative": true
+          }
+        ],
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D07",
+          "dimensions": [
+            "promotion"
+          ]
+        }
+      ]
+    }
+  ]
+}

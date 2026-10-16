@@ -1,0 +1,90 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-PRODUCT-001",
+      "failureMode": "FP18_PRODUCT_LINE",
+      "family": "Product launches without physical capital work",
+      "title": "A plant-based product line",
+      "rationale": "\"Plant-based\" is a product description. It is not a plant.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-product-001",
+          "sourceDocumentId": "syn-product-001-1",
+          "title": "A plant-based product line",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods expanded its plant-based product line with three new flavors, available in 2,000 stores in 2027.",
+          "url": "https://newsroom.brindlemoor.example/syn-product-001"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D08",
+          "dimensions": [
+            "signal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-PRODUCT-002",
+      "failureMode": "FP18_PRODUCT_LINE",
+      "family": "Product launches without physical capital work",
+      "title": "A packaging-design refresh",
+      "rationale": "Upgraded packaging design on a consumer product is not capital work.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-product-002",
+          "sourceDocumentId": "syn-product-002-1",
+          "title": "A packaging-design refresh",
+          "publisher": "halvard",
+          "text": "Halvard Snacks today introduced a new line of single-serve snack packs, with upgraded packaging, available at 5,000 retail locations nationwide in 2027.",
+          "url": "https://newsroom.halvard.example/syn-product-002"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": []
+    },
+    {
+      "id": "SYN-PRODUCT-003",
+      "failureMode": "FP18_PRODUCT_LINE",
+      "family": "Product launches without physical capital work",
+      "title": "A launch that mentions capacity in cases",
+      "rationale": "Cases on a retail shelf are not production capacity.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-product-003",
+          "sourceDocumentId": "syn-product-003-1",
+          "title": "A launch that mentions capacity in cases",
+          "publisher": "kestrelwood",
+          "text": "Kestrelwood Dairy Cooperative launched a new Greek-style yogurt, adding capacity of 20,000 cases to its retail distribution in 2027.",
+          "url": "https://newsroom.kestrelwood.example/syn-product-003"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": []
+    }
+  ]
+}

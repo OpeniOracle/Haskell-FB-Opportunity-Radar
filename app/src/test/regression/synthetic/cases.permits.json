@@ -1,0 +1,102 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-PERMIT-001",
+      "failureMode": "FP09_ADMINISTRATIVE_PERMIT",
+      "family": "Administrative permit renewal",
+      "title": "Wastewater pretreatment permit renewal, no changes",
+      "rationale": "A routine renewal with \"no operational changes\" proposed is paperwork. The flow figure and the place do not make it a project.",
+      "documents": [
+        {
+          "documentType": "public_notice",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-authority",
+          "key": "syn-permit-001",
+          "sourceDocumentId": "syn-permit-001-1",
+          "title": "Wastewater pretreatment permit renewal, no changes",
+          "publisher": "brindlemoor",
+          "text": "Notice of proposed renewal. The state environmental agency has received an application to renew the industrial wastewater pretreatment permit for the Brindlemoor Foods bottling facility in Hollis Bay, Ohio. The permit authorizes discharge of 198,000 gallons per day to the municipal wastewater treatment plant. No operational changes are proposed.",
+          "url": "https://agency.synthetic.example/syn-permit-001"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D05",
+          "dimensions": [
+            "signal",
+            "promotion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-PERMIT-002",
+      "failureMode": "FP09_ADMINISTRATIVE_PERMIT",
+      "family": "Administrative permit renewal",
+      "title": "CONTROL: air permit renewal, no changes",
+      "rationale": "A five-year renewal with no changes to emission units.",
+      "documents": [
+        {
+          "documentType": "public_notice",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-authority",
+          "key": "syn-permit-002",
+          "sourceDocumentId": "syn-permit-002-1",
+          "title": "CONTROL: air permit renewal, no changes",
+          "publisher": "halvard",
+          "text": "The department proposes to renew the Title V air operating permit for the Halvard Snacks plant in Winterhold, Ohio for five years. No changes to emission units are proposed.",
+          "url": "https://agency.synthetic.example/syn-permit-002"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": []
+    },
+    {
+      "id": "SYN-PERMIT-003",
+      "failureMode": "FP09_ADMINISTRATIVE_PERMIT",
+      "family": "Administrative permit renewal",
+      "title": "CONTROL: a permit application that adds physical capacity",
+      "rationale": "A permit that proposes a new line and boiler IS a project signal. A repair that suppresses every permit would fail this case.",
+      "documents": [
+        {
+          "documentType": "public_notice",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-authority",
+          "key": "syn-permit-003",
+          "sourceDocumentId": "syn-permit-003-1",
+          "title": "CONTROL: a permit application that adds physical capacity",
+          "publisher": "halvard",
+          "text": "The application proposes construction of a second packaging line and a new 40,000 pound-per-hour boiler at the Halvard Snacks plant in Winterhold, Ohio, increasing permitted production capacity by 30 percent, with construction planned for 2027.",
+          "url": "https://agency.synthetic.example/syn-permit-003"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": [
+              "facility_construction",
+              "facility_expansion",
+              "capacity_change",
+              "utility_infrastructure"
+            ],
+            "negative": false
+          }
+        ],
+        "promotion": "emerging"
+      },
+      "knownDefects": []
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-COND-001",
+      "failureMode": "FP12_CONDITIONAL",
+      "family": "Conditional or hypothetical construction",
+      "title": "Board approval is a condition",
+      "rationale": "\"If approved … may consider\" is neither a decision nor an announcement.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-cond-001",
+          "sourceDocumentId": "syn-cond-001-1",
+          "title": "Board approval is a condition",
+          "publisher": "halvard",
+          "text": "If approved by the board, Halvard Snacks may consider building a new facility in Winterhold, Ohio with up to $200 million in investment.",
+          "url": "https://newsroom.halvard.example/syn-cond-001"
+        }
+      ],
+      "expected": {
+        "outcome": "abstain",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D02",
+          "dimensions": [
+            "signal",
+            "promotion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-COND-002",
+      "failureMode": "FP12_CONDITIONAL",
+      "family": "Conditional or hypothetical construction",
+      "title": "Evaluating sites, no decision",
+      "rationale": "A company that says it has made no decision has not announced a project, even if a range of states and an amount are mentioned.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-cond-002",
+          "sourceDocumentId": "syn-cond-002-1",
+          "title": "Evaluating sites, no decision",
+          "publisher": "halvard",
+          "text": "Halvard Snacks is evaluating several sites for a possible new plant and has not made a final decision. Any project in Ohio, Indiana or Kentucky would represent an investment of $150 million or more and would not begin before 2028.",
+          "url": "https://newsroom.halvard.example/syn-cond-002"
+        }
+      ],
+      "expected": {
+        "outcome": "abstain",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D02",
+          "dimensions": [
+            "signal",
+            "promotion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-COND-003",
+      "failureMode": "FP12_CONDITIONAL",
+      "family": "Conditional or hypothetical construction",
+      "title": "Incentive accounting policy",
+      "rationale": "A note on how incentives are accounted for when facilities are constructed describes a policy, not a project.",
+      "documents": [
+        {
+          "documentType": "10-K",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-cond-003",
+          "sourceDocumentId": "syn-cond-003-1",
+          "title": "Incentive accounting policy",
+          "publisher": "brindlemoor",
+          "text": "When constructing new facilities or making major enhancements to existing facilities, the company may receive incentives from state and local governments, which are recorded as a reduction of the cost of the facility in 2027.",
+          "url": "https://filings.synthetic.example/syn-cond-003"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D03",
+          "dimensions": [
+            "signal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-COND-004",
+      "failureMode": "FP26_UNCORROBORATED",
+      "family": "Conditional or hypothetical construction",
+      "title": "An anonymous source and a declined comment",
+      "rationale": "An unattributed report that the company declined to confirm cannot support promotion on its own.",
+      "documents": [
+        {
+          "documentType": "news_report",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-wire",
+          "key": "syn-cond-004",
+          "sourceDocumentId": "syn-cond-004-1",
+          "title": "An anonymous source and a declined comment",
+          "publisher": "brindlemoor",
+          "text": "According to an anonymous source familiar with the matter, Brindlemoor Foods is planning to build a new plant in Hollis Bay, Ohio worth $300 million. The company declined to comment.",
+          "url": "https://wire.synthetic.example/syn-cond-004"
+        }
+      ],
+      "expected": {
+        "outcome": "abstain",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D02",
+          "dimensions": [
+            "signal",
+            "promotion"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "organizations": [
+    {
+      "slug": "brindlemoor",
+      "id": "00000000-0000-4000-8000-0000000000a1",
+      "entityKey": "synthetic:brindlemoor-foods",
+      "canonicalName": "Brindlemoor Foods, Inc.",
+      "role": "brand owner and food manufacturer"
+    },
+    {
+      "slug": "tessaly",
+      "id": "00000000-0000-4000-8000-0000000000a2",
+      "entityKey": "synthetic:tessaly-bottling",
+      "canonicalName": "Tessaly Bottling Company",
+      "role": "independent franchise bottler of Brindlemoor beverage brands"
+    },
+    {
+      "slug": "kestrelwood",
+      "id": "00000000-0000-4000-8000-0000000000a3",
+      "entityKey": "synthetic:kestrelwood-dairy",
+      "canonicalName": "Kestrelwood Dairy Cooperative",
+      "role": "dairy processor"
+    },
+    {
+      "slug": "halvard",
+      "id": "00000000-0000-4000-8000-0000000000a4",
+      "entityKey": "synthetic:halvard-snacks",
+      "canonicalName": "Halvard Snacks Corporation",
+      "role": "snack manufacturer"
+    }
+  ]
+}

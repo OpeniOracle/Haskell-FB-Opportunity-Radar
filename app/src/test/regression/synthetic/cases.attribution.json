@@ -1,0 +1,194 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-ATTR-001",
+      "failureMode": "FP15_ENTITY_RESOLUTION",
+      "family": "Operator and facility attribution",
+      "title": "A brand owner announcing its franchise bottler's plant",
+      "rationale": "The plant belongs to the independent bottler, not to the brand owner whose newsroom carried the news. With no operator resolved, nothing may be credited to the brand owner as its own project.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-attr-001",
+          "sourceDocumentId": "syn-attr-001-1",
+          "title": "A brand owner announcing its franchise bottler's plant",
+          "publisher": "brindlemoor",
+          "text": "Tessaly Bottling Company, an independent franchise bottler of Fizzwell beverages, will build a new $330 million bottling plant in Ashgrove Mill, Wisconsin, creating 120 jobs.",
+          "url": "https://newsroom.brindlemoor.example/syn-attr-001"
+        }
+      ],
+      "expected": {
+        "outcome": "unspecified",
+        "promotion": "none",
+        "attribution": {
+          "opportunityOrganizations": []
+        }
+      },
+      "knownDefects": [
+        {
+          "defect": "D12",
+          "dimensions": [
+            "promotion",
+            "attribution"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-002",
+      "failureMode": "FP15_ENTITY_RESOLUTION",
+      "family": "Operator and facility attribution",
+      "title": "CONTROL: the bottler announces its own plant",
+      "rationale": "When the bottler is the publisher and the operator, the project belongs to the bottler.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-attr-002",
+          "sourceDocumentId": "syn-attr-002-1",
+          "title": "CONTROL: the bottler announces its own plant",
+          "publisher": "tessaly",
+          "text": "Tessaly Bottling Company will build a new $330 million bottling plant in Ashgrove Mill, Wisconsin, creating 120 jobs.",
+          "url": "https://newsroom.tessaly.example/syn-attr-002"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "attribution": {
+          "opportunityOrganizations": [
+            "tessaly"
+          ]
+        }
+      },
+      "knownDefects": []
+    },
+    {
+      "id": "SYN-ATTR-003",
+      "failureMode": "FP21_CROSS_ENTITY_WINDOW",
+      "family": "Operator and facility attribution",
+      "title": "Another company's closure beside the publisher's donation",
+      "rationale": "The closure is Halvard's. The $12 million donation is Brindlemoor's. Neither the closure nor the donation amount is a Brindlemoor project.",
+      "documents": [
+        {
+          "documentType": "news_roundup",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-attr-003",
+          "sourceDocumentId": "syn-attr-003-1",
+          "title": "Another company's closure beside the publisher's donation",
+          "publisher": "brindlemoor",
+          "text": "Halvard Snacks said it is closing its plant in Winterhold, Ohio. Meanwhile Brindlemoor Foods reported a $12 million donation to a local school in Hollis Bay, Ohio.",
+          "url": "https://newsroom.brindlemoor.example/syn-attr-003"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none",
+        "attribution": {
+          "opportunityOrganizations": []
+        }
+      },
+      "knownDefects": [
+        {
+          "defect": "D14",
+          "dimensions": [
+            "signal",
+            "promotion",
+            "attribution"
+          ]
+        },
+        {
+          "defect": "D07",
+          "dimensions": [
+            "promotion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-004",
+      "failureMode": "FP16_HEADQUARTERS",
+      "family": "Operator and facility attribution",
+      "title": "Headquarters and project site in one sentence",
+      "rationale": "The headquarters is where the company sits; the project site is where the plant will be. Only the second is a project location.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-attr-004",
+          "sourceDocumentId": "syn-attr-004-1",
+          "title": "Headquarters and project site in one sentence",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods, headquartered in Larkspur Falls, Ohio, said its new plant will be built in Carrow Ridge, Tennessee.",
+          "url": "https://newsroom.brindlemoor.example/syn-attr-004"
+        }
+      ],
+      "expected": {
+        "outcome": "unspecified",
+        "promotion": "unspecified",
+        "location": {
+          "projectSites": [
+            "Carrow Ridge, Tennessee"
+          ],
+          "notProjectSites": [
+            "Larkspur Falls, Ohio"
+          ]
+        }
+      },
+      "knownDefects": [
+        {
+          "defect": "D13",
+          "dimensions": [
+            "location"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-005",
+      "failureMode": "FP16_HEADQUARTERS",
+      "family": "Operator and facility attribution",
+      "title": "CONTROL: a single street address for the project",
+      "rationale": "One place, named with a street address, is a confirmed project site.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-attr-005",
+          "sourceDocumentId": "syn-attr-005-1",
+          "title": "CONTROL: a single street address for the project",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods said its new plant will be built at 400 Mill Road, Carrow Ridge, Tennessee.",
+          "url": "https://newsroom.brindlemoor.example/syn-attr-005"
+        }
+      ],
+      "expected": {
+        "outcome": "unspecified",
+        "promotion": "unspecified",
+        "location": {
+          "projectSites": [
+            "Carrow Ridge, Tennessee"
+          ],
+          "notProjectSites": []
+        }
+      },
+      "knownDefects": []
+    }
+  ]
+}

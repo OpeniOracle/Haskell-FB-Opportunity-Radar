@@ -1,0 +1,1510 @@
+{
+  "schema": "synthetic-regression-report/1",
+  "scope": "SYNTHETIC REGRESSION ONLY. These cases are hand-written, fictional and few. This report is NOT production precision, recall or accuracy, no ratio is computed, and it must not be quoted as one. It records which intended behaviours the current code does and does not produce.",
+  "fixtures": {
+    "files": {
+      "synthetic/cases.amounts.json": "3c5019a05c843b1ac21169ed6241edf92cff9f5c643f7bfaa0299655ddbd8297",
+      "synthetic/cases.attribution.json": "9a50e78ff9645c5bcf1abdf6ca505b9d60ab6e49aa1f83da25bfd59766811622",
+      "synthetic/cases.boilerplate.json": "9cbc9c6447ce394a8f26b06824b8a4fa57293880cec81c5f6debfbbacdf7d5d8",
+      "synthetic/cases.conditional.json": "20e9c3146227ab477638577fe0791e284f434d78272ae1f616c7b19e1ee3207b",
+      "synthetic/cases.dates.json": "abae3267e2c06b44c5f3f3bcc6306fb4e3a95d8f411f1cffa5497e4b747efbf6",
+      "synthetic/cases.historical.json": "5eca3a1be3ee596c6b1b25441fb5d42015a084e67632a5804cb9ec06b45970f1",
+      "synthetic/cases.negatives.json": "25b7d3353902b3d8a678aa029a3b120d0fb3d49468d68cbb2e18a38c05d3f8d8",
+      "synthetic/cases.origins.json": "3256d740359cfb94e21107e70b8c9d4963e85e80a4e61b792da9914ad5163895",
+      "synthetic/cases.permits.json": "fcf6bc6b2072966aad327d6215882bb13de26e52630559958d0feb8823c24cba",
+      "synthetic/cases.products.json": "8f25d090b8e9598f945ee2113e87e59e47d026886c8c9405f1522bc73633faf3",
+      "synthetic/defects.json": "21c34fab849dd8d015ca5a1eaf4681f4c11323bcecbb2fe2b33f33972c71ff32",
+      "synthetic/world.json": "80aeda3ca4ff60f065c3c3b767f57fa068d513bc467866cc2fc7a72ef867a934"
+    },
+    "cases": 36
+  },
+  "summary": {
+    "cases": 36,
+    "controls": 12,
+    "defectProbes": 24,
+    "signal": {
+      "abstention_honored": 1,
+      "abstention_violated": 4,
+      "correct_none": 4,
+      "correct_signal": 13,
+      "false_match": 9,
+      "missed_signal": 1
+    },
+    "promotion": {
+      "correct_none": 13,
+      "correct_promotion": 10,
+      "false_promotion": 11
+    },
+    "otherDimensions": {
+      "attribution": {
+        "pass": 1,
+        "fail": 2
+      },
+      "cardinality": {
+        "pass": 0,
+        "fail": 3
+      },
+      "eventDate": {
+        "pass": 1,
+        "fail": 3
+      },
+      "independence": {
+        "pass": 1,
+        "fail": 1
+      },
+      "location": {
+        "pass": 1,
+        "fail": 1
+      }
+    },
+    "pinnedDefects": {
+      "D01": 1,
+      "D02": 6,
+      "D03": 4,
+      "D04": 5,
+      "D05": 2,
+      "D06": 1,
+      "D07": 3,
+      "D08": 1,
+      "D09": 3,
+      "D10": 3,
+      "D11": 2,
+      "D12": 2,
+      "D13": 1,
+      "D14": 3
+    },
+    "pinnedByRemediation": {
+      "R3": 37
+    },
+    "unpinnedFailures": 0,
+    "staleMarkers": 0
+  },
+  "byFailureMode": {
+    "FP01_BOILERPLATE": {
+      "cases": 1,
+      "failingDimensions": 1
+    },
+    "FP02_AMOUNT_ROLE": {
+      "cases": 4,
+      "failingDimensions": 1
+    },
+    "FP04_POLARITY": {
+      "cases": 3,
+      "failingDimensions": 3
+    },
+    "FP05_DATE_SUBSTITUTION": {
+      "cases": 4,
+      "failingDimensions": 3
+    },
+    "FP06_DEPENDENT_SOURCES": {
+      "cases": 2,
+      "failingDimensions": 2
+    },
+    "FP07_HISTORY": {
+      "cases": 3,
+      "failingDimensions": 5
+    },
+    "FP09_ADMINISTRATIVE_PERMIT": {
+      "cases": 3,
+      "failingDimensions": 2
+    },
+    "FP11_RECURRENCE": {
+      "cases": 1,
+      "failingDimensions": 2
+    },
+    "FP12_CONDITIONAL": {
+      "cases": 3,
+      "failingDimensions": 5
+    },
+    "FP15_ENTITY_RESOLUTION": {
+      "cases": 2,
+      "failingDimensions": 2
+    },
+    "FP16_HEADQUARTERS": {
+      "cases": 2,
+      "failingDimensions": 1
+    },
+    "FP18_PRODUCT_LINE": {
+      "cases": 3,
+      "failingDimensions": 1
+    },
+    "FP19_COMPLETED": {
+      "cases": 1,
+      "failingDimensions": 0
+    },
+    "FP21_CROSS_ENTITY_WINDOW": {
+      "cases": 1,
+      "failingDimensions": 3
+    },
+    "FP23_PROJECT_DUPLICATE": {
+      "cases": 2,
+      "failingDimensions": 2
+    },
+    "FP26_UNCORROBORATED": {
+      "cases": 1,
+      "failingDimensions": 2
+    }
+  },
+  "cases": [
+    {
+      "id": "SYN-AMOUNT-001",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "facility_construction / possible"
+          ],
+          "pinnedDefects": [
+            "D01"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-AMOUNT-002",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "abstention_honored"
+          ],
+          "expected": "abstain: no opportunity, nothing above possible",
+          "observed": [],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-AMOUNT-003",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "kestrelwood: emerging/new"
+          ],
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-AMOUNT-004",
+      "failureMode": "FP02_AMOUNT_ROLE",
+      "family": "Unrelated dollar amounts",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no signal",
+          "observed": [],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-001",
+      "failureMode": "FP15_ENTITY_RESOLUTION",
+      "family": "Operator and facility attribution",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D12"
+          ]
+        },
+        {
+          "dimension": "attribution",
+          "verdict": "fail",
+          "classes": [
+            "misattributed"
+          ],
+          "expected": [],
+          "observed": [
+            "brindlemoor"
+          ],
+          "pinnedDefects": [
+            "D12"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-002",
+      "failureMode": "FP15_ENTITY_RESOLUTION",
+      "family": "Operator and facility attribution",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "tessaly: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "attribution",
+          "verdict": "pass",
+          "classes": [
+            "correct_attribution"
+          ],
+          "expected": [
+            "tessaly"
+          ],
+          "observed": [
+            "tessaly"
+          ],
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-003",
+      "failureMode": "FP21_CROSS_ENTITY_WINDOW",
+      "family": "Operator and facility attribution",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "closure_consolidation (negative) / probable"
+          ],
+          "pinnedDefects": [
+            "D14"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D14",
+            "D07"
+          ]
+        },
+        {
+          "dimension": "attribution",
+          "verdict": "fail",
+          "classes": [
+            "misattributed"
+          ],
+          "expected": [],
+          "observed": [
+            "brindlemoor"
+          ],
+          "pinnedDefects": [
+            "D14"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-004",
+      "failureMode": "FP16_HEADQUARTERS",
+      "family": "Operator and facility attribution",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "location",
+          "verdict": "fail",
+          "classes": [
+            "non_project_place_returned"
+          ],
+          "expected": {
+            "projectSites": [
+              "Carrow Ridge, Tennessee"
+            ],
+            "notProjectSites": [
+              "Larkspur Falls, Ohio"
+            ]
+          },
+          "observed": [
+            "Larkspur Falls, Ohio (locality)",
+            "Carrow Ridge, Tennessee (locality)"
+          ],
+          "pinnedDefects": [
+            "D13"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ATTR-005",
+      "failureMode": "FP16_HEADQUARTERS",
+      "family": "Operator and facility attribution",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "location",
+          "verdict": "pass",
+          "classes": [
+            "correct_location"
+          ],
+          "expected": {
+            "projectSites": [
+              "Carrow Ridge, Tennessee"
+            ],
+            "notProjectSites": []
+          },
+          "observed": [
+            "Carrow Ridge, Tennessee (address)"
+          ],
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-BOILER-001",
+      "failureMode": "FP01_BOILERPLATE",
+      "family": "Repeated financial-disclosure boilerplate",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "facility_modernization / possible"
+          ],
+          "pinnedDefects": [
+            "D03"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-BOILER-002",
+      "failureMode": "FP11_RECURRENCE",
+      "family": "Repeated financial-disclosure boilerplate",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "facility_modernization / possible"
+          ],
+          "pinnedDefects": [
+            "D03"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "cardinality",
+          "verdict": "fail",
+          "classes": [
+            "duplicate_signals"
+          ],
+          "expected": {
+            "signals": 0,
+            "opportunities": 0
+          },
+          "observed": {
+            "signals": 3,
+            "opportunities": 0
+          },
+          "pinnedDefects": [
+            "D03",
+            "D10"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-COND-001",
+      "failureMode": "FP12_CONDITIONAL",
+      "family": "Conditional or hypothetical construction",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "abstention_violated"
+          ],
+          "expected": "abstain: no opportunity, nothing above possible",
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": [
+            "D02"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "halvard: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D02"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-COND-002",
+      "failureMode": "FP12_CONDITIONAL",
+      "family": "Conditional or hypothetical construction",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "abstention_violated"
+          ],
+          "expected": "abstain: no opportunity, nothing above possible",
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": [
+            "D02"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "halvard: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D02"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-COND-003",
+      "failureMode": "FP12_CONDITIONAL",
+      "family": "Conditional or hypothetical construction",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "facility_construction / possible"
+          ],
+          "pinnedDefects": [
+            "D03"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-COND-004",
+      "failureMode": "FP26_UNCORROBORATED",
+      "family": "Conditional or hypothetical construction",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "abstention_violated"
+          ],
+          "expected": "abstain: no opportunity, nothing above possible",
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": [
+            "D02"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D02"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-DATE-001",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "eventDate",
+          "verdict": "fail",
+          "classes": [
+            "wrong_event_date"
+          ],
+          "expected": null,
+          "observed": [
+            {
+              "eventDate": "2026-05-06",
+              "precision": "exact_day",
+              "basis": "stated"
+            }
+          ],
+          "pinnedDefects": [
+            "D09"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-DATE-002",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "eventDate",
+          "verdict": "fail",
+          "classes": [
+            "wrong_event_date"
+          ],
+          "expected": null,
+          "observed": [
+            {
+              "eventDate": "2026-05-06",
+              "precision": "exact_day",
+              "basis": "stated"
+            }
+          ],
+          "pinnedDefects": [
+            "D09"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-DATE-003",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "tessaly: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "eventDate",
+          "verdict": "fail",
+          "classes": [
+            "wrong_event_date"
+          ],
+          "expected": "2026-05-12",
+          "observed": [
+            {
+              "eventDate": "2026-05-20",
+              "precision": "exact_day",
+              "basis": "stated"
+            }
+          ],
+          "pinnedDefects": [
+            "D09"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-DATE-004",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "eventDate",
+          "verdict": "pass",
+          "classes": [
+            "correct_date"
+          ],
+          "expected": null,
+          "observed": [
+            {
+              "eventDate": null,
+              "precision": null,
+              "basis": "unknown"
+            }
+          ],
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-HIST-001",
+      "failureMode": "FP07_HISTORY",
+      "family": "Historical company events",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "facility_construction / possible",
+            "facility_expansion / possible"
+          ],
+          "pinnedDefects": [
+            "D04"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-HIST-002",
+      "failureMode": "FP07_HISTORY",
+      "family": "Historical company events",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "facility_expansion / probable"
+          ],
+          "pinnedDefects": [
+            "D04"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "kestrelwood: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D04"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-HIST-003",
+      "failureMode": "FP19_COMPLETED",
+      "family": "Historical company events",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-HIST-004",
+      "failureMode": "FP07_HISTORY",
+      "family": "Historical company events",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "abstention_violated"
+          ],
+          "expected": "abstain: no opportunity, nothing above possible",
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": [
+            "D04"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D04"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-NEG-001",
+      "failureMode": "FP04_POLARITY",
+      "family": "Negative events and closures",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "missed_signal"
+          ],
+          "expected": [
+            "closure_consolidation (negative)"
+          ],
+          "observed": [],
+          "pinnedDefects": [
+            "D06"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-NEG-002",
+      "failureMode": "FP04_POLARITY",
+      "family": "Negative events and closures",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "closure_consolidation (negative)"
+          ],
+          "observed": [
+            "closure_consolidation (negative) / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "halvard: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D07"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-NEG-003",
+      "failureMode": "FP04_POLARITY",
+      "family": "Negative events and closures",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "closure_consolidation (negative)"
+          ],
+          "observed": [
+            "closure_consolidation (negative) / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "kestrelwood: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D07"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ORIGIN-001",
+      "failureMode": "FP06_DEPENDENT_SOURCES",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / possible"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D11"
+          ]
+        },
+        {
+          "dimension": "independence",
+          "verdict": "fail",
+          "classes": [
+            "origins_overcounted"
+          ],
+          "expected": 1,
+          "observed": [
+            2
+          ],
+          "pinnedDefects": [
+            "D11"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ORIGIN-002",
+      "failureMode": "FP06_DEPENDENT_SOURCES",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / possible"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "independence",
+          "verdict": "pass",
+          "classes": [
+            "correct_independence"
+          ],
+          "expected": 2,
+          "observed": [
+            2
+          ],
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-RECUR-001",
+      "failureMode": "FP23_PROJECT_DUPLICATE",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "brindlemoor: emerging/new",
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "cardinality",
+          "verdict": "fail",
+          "classes": [
+            "duplicate_signals",
+            "duplicate_opportunities"
+          ],
+          "expected": {
+            "signals": 1,
+            "opportunities": 1
+          },
+          "observed": {
+            "signals": 2,
+            "opportunities": 2
+          },
+          "pinnedDefects": [
+            "D10"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-RECUR-002",
+      "failureMode": "FP23_PROJECT_DUPLICATE",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction"
+          ],
+          "observed": [
+            "facility_construction / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "brindlemoor: emerging/new",
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "cardinality",
+          "verdict": "fail",
+          "classes": [
+            "duplicate_signals",
+            "duplicate_opportunities"
+          ],
+          "expected": {
+            "signals": 1,
+            "opportunities": 1
+          },
+          "observed": {
+            "signals": 2,
+            "opportunities": 2
+          },
+          "pinnedDefects": [
+            "D10"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-PERMIT-001",
+      "failureMode": "FP09_ADMINISTRATIVE_PERMIT",
+      "family": "Administrative permit renewal",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "utility_infrastructure / probable"
+          ],
+          "pinnedDefects": [
+            "D05"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "fail",
+          "classes": [
+            "false_promotion"
+          ],
+          "expected": "no opportunity",
+          "observed": [
+            "brindlemoor: emerging/new"
+          ],
+          "pinnedDefects": [
+            "D05"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-PERMIT-002",
+      "failureMode": "FP09_ADMINISTRATIVE_PERMIT",
+      "family": "Administrative permit renewal",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no signal",
+          "observed": [],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-PERMIT-003",
+      "failureMode": "FP09_ADMINISTRATIVE_PERMIT",
+      "family": "Administrative permit renewal",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_signal"
+          ],
+          "expected": [
+            "facility_construction|facility_expansion|capacity_change|utility_infrastructure"
+          ],
+          "observed": [
+            "facility_construction / probable",
+            "utility_infrastructure / probable"
+          ],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_promotion"
+          ],
+          "expected": "an emerging opportunity",
+          "observed": [
+            "halvard: emerging/new",
+            "halvard: emerging/new"
+          ],
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-PRODUCT-001",
+      "failureMode": "FP18_PRODUCT_LINE",
+      "family": "Product launches without physical capital work",
+      "kind": "defect_probe",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "fail",
+          "classes": [
+            "false_match"
+          ],
+          "expected": "no signal",
+          "observed": [
+            "facility_expansion / possible"
+          ],
+          "pinnedDefects": [
+            "D08"
+          ]
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-PRODUCT-002",
+      "failureMode": "FP18_PRODUCT_LINE",
+      "family": "Product launches without physical capital work",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no signal",
+          "observed": [],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    },
+    {
+      "id": "SYN-PRODUCT-003",
+      "failureMode": "FP18_PRODUCT_LINE",
+      "family": "Product launches without physical capital work",
+      "kind": "control",
+      "dimensions": [
+        {
+          "dimension": "signal",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no signal",
+          "observed": [],
+          "pinnedDefects": []
+        },
+        {
+          "dimension": "promotion",
+          "verdict": "pass",
+          "classes": [
+            "correct_none"
+          ],
+          "expected": "no opportunity",
+          "observed": "no opportunity",
+          "pinnedDefects": []
+        }
+      ]
+    }
+  ]
+}

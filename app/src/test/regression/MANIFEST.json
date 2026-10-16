@@ -1,0 +1,20 @@
+{
+  "schema": "regression-fixture-manifest/1",
+  "algorithm": "sha256",
+  "note": "Regenerate with `npm test -- src/test/regression -u`. `sourced` is empty on purpose; see sourced/README.md.",
+  "synthetic": {
+    "synthetic/cases.amounts.json": "3c5019a05c843b1ac21169ed6241edf92cff9f5c643f7bfaa0299655ddbd8297",
+    "synthetic/cases.attribution.json": "9a50e78ff9645c5bcf1abdf6ca505b9d60ab6e49aa1f83da25bfd59766811622",
+    "synthetic/cases.boilerplate.json": "9cbc9c6447ce394a8f26b06824b8a4fa57293880cec81c5f6debfbbacdf7d5d8",
+    "synthetic/cases.conditional.json": "20e9c3146227ab477638577fe0791e284f434d78272ae1f616c7b19e1ee3207b",
+    "synthetic/cases.dates.json": "abae3267e2c06b44c5f3f3bcc6306fb4e3a95d8f411f1cffa5497e4b747efbf6",
+    "synthetic/cases.historical.json": "5eca3a1be3ee596c6b1b25441fb5d42015a084e67632a5804cb9ec06b45970f1",
+    "synthetic/cases.negatives.json": "25b7d3353902b3d8a678aa029a3b120d0fb3d49468d68cbb2e18a38c05d3f8d8",
+    "synthetic/cases.origins.json": "3256d740359cfb94e21107e70b8c9d4963e85e80a4e61b792da9914ad5163895",
+    "synthetic/cases.permits.json": "fcf6bc6b2072966aad327d6215882bb13de26e52630559958d0feb8823c24cba",
+    "synthetic/cases.products.json": "8f25d090b8e9598f945ee2113e87e59e47d026886c8c9405f1522bc73633faf3",
+    "synthetic/defects.json": "21c34fab849dd8d015ca5a1eaf4681f4c11323bcecbb2fe2b33f33972c71ff32",
+    "synthetic/world.json": "80aeda3ca4ff60f065c3c3b767f57fa068d513bc467866cc2fc7a72ef867a934"
+  },
+  "sourced": {}
+}
