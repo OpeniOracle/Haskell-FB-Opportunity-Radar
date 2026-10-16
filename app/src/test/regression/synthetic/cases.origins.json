@@ -1,0 +1,216 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-ORIGIN-001",
+      "failureMode": "FP06_DEPENDENT_SOURCES",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "title": "One release, syndicated through a wire",
+      "rationale": "The wire copy and the newsroom original are one origin. Two copies of one statement are not two sources, so the signal stays single-origin and, graded `possible`, opens no opportunity.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-origin-001-a",
+          "sourceDocumentId": "syn-origin-001-a",
+          "title": "Brindlemoor announces plant (newsroom)",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new plant in Carrow Ridge, Tennessee.",
+          "originGroup": "release-A",
+          "url": "https://newsroom.brindlemoor.example/syn-origin-001-a"
+        },
+        {
+          "documentType": "wire_copy",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-wire",
+          "key": "syn-origin-001-b",
+          "sourceDocumentId": "syn-origin-001-b",
+          "title": "Brindlemoor announces plant (wire copy)",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new plant in Carrow Ridge, Tennessee.",
+          "originGroup": "release-A",
+          "url": "https://wire.synthetic.example/syn-origin-001-b"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "none",
+        "independentSourceCount": 1
+      },
+      "knownDefects": [
+        {
+          "defect": "D11",
+          "dimensions": [
+            "promotion",
+            "independence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-ORIGIN-002",
+      "failureMode": "FP06_DEPENDENT_SOURCES",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "title": "CONTROL: two genuinely independent origins",
+      "rationale": "A company statement and a state authority's own record of the same plan are two origins. The existing promotion rule (two independent sources) must keep working.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-origin-002-a",
+          "sourceDocumentId": "syn-origin-002-a",
+          "title": "Brindlemoor announces plant (newsroom)",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new plant in Carrow Ridge, Tennessee.",
+          "originGroup": "release-A",
+          "url": "https://newsroom.brindlemoor.example/syn-origin-002-a"
+        },
+        {
+          "documentType": "board_record",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-authority",
+          "key": "syn-origin-002-b",
+          "sourceDocumentId": "syn-origin-002-b",
+          "title": "Incentive board approves Brindlemoor project",
+          "publisher": "brindlemoor",
+          "text": "The incentive board approved assistance for the company plan to build a new plant in Carrow Ridge, Tennessee.",
+          "originGroup": "board-record-B",
+          "url": "https://authority.synthetic.example/syn-origin-002-b"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "independentSourceCount": 2
+      },
+      "knownDefects": []
+    },
+    {
+      "id": "SYN-RECUR-001",
+      "failureMode": "FP23_PROJECT_DUPLICATE",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "title": "One project in an 8-K and again in a 10-Q three months later",
+      "rationale": "The same project reported in two months is ONE project: one signal and one opportunity. The month of the publication date must not be part of a project's identity.",
+      "documents": [
+        {
+          "documentType": "8-K",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-recur-001-a",
+          "sourceDocumentId": "syn-recur-001-a",
+          "title": "8-K",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new 280,000 square foot manufacturing plant in Carrow Ridge, Tennessee, a $210 million investment that will create 240 jobs.",
+          "originGroup": "release-C",
+          "url": "https://filings.synthetic.example/syn-recur-001-a"
+        },
+        {
+          "documentType": "10-Q",
+          "publishedAt": "2026-08-05T14:00:00.000Z",
+          "sourceId": "synthetic-filings",
+          "key": "syn-recur-001-b",
+          "sourceDocumentId": "syn-recur-001-b",
+          "title": "10-Q",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new 280,000 square foot manufacturing plant in Carrow Ridge, Tennessee, a $210 million investment that will create 240 jobs.",
+          "originGroup": "release-C",
+          "url": "https://filings.synthetic.example/syn-recur-001-b"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "counts": {
+          "signals": 1,
+          "opportunities": 1
+        }
+      },
+      "knownDefects": [
+        {
+          "defect": "D10",
+          "dimensions": [
+            "cardinality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-RECUR-002",
+      "failureMode": "FP23_PROJECT_DUPLICATE",
+      "family": "Repeated releases mistaken for independent corroboration",
+      "title": "One project described with two different asset nouns",
+      "rationale": "The same plant called a \"plant\" in one document and a \"facility\" in another is one project. The matched asset noun must not be part of a project's identity.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-recur-002-a",
+          "sourceDocumentId": "syn-recur-002-a",
+          "title": "Release",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new plant in Carrow Ridge, Tennessee, a $210 million investment.",
+          "originGroup": "release-D",
+          "url": "https://newsroom.brindlemoor.example/syn-recur-002-a"
+        },
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-07T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-recur-002-b",
+          "sourceDocumentId": "syn-recur-002-b",
+          "title": "Release, follow-up",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods confirmed it will build a new facility in Carrow Ridge, Tennessee, a $210 million investment.",
+          "originGroup": "release-D",
+          "url": "https://newsroom.brindlemoor.example/syn-recur-002-b"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "counts": {
+          "signals": 1,
+          "opportunities": 1
+        }
+      },
+      "knownDefects": [
+        {
+          "defect": "D10",
+          "dimensions": [
+            "cardinality"
+          ]
+        }
+      ]
+    }
+  ]
+}

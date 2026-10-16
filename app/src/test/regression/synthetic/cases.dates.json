@@ -1,0 +1,157 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-DATE-001",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "title": "An announcement whose text states no date",
+      "rationale": "The release date is when it was PUBLISHED. The text gives no date for any project event, so `event_date` must stay empty (ADR 0004: missing dates remain missing).",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-date-001",
+          "sourceDocumentId": "syn-date-001-1",
+          "title": "An announcement whose text states no date",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new 280,000 square foot manufacturing plant in Carrow Ridge, Tennessee, a $210 million investment that will create 240 jobs.",
+          "url": "https://newsroom.brindlemoor.example/syn-date-001"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "eventDate": null
+      },
+      "knownDefects": [
+        {
+          "defect": "D09",
+          "dimensions": [
+            "eventDate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-DATE-002",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "title": "A forecast start is an interval, not an event date",
+      "rationale": "A stated expectation (\"is expected to begin in the first quarter of 2027\") belongs in the temporal interval fields, never in `event_date`, and never as the publication date.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-date-002",
+          "sourceDocumentId": "syn-date-002-1",
+          "title": "A forecast start is an interval, not an event date",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new 280,000 square foot manufacturing plant in Carrow Ridge, Tennessee, a $210 million investment that will create 240 jobs. Construction is expected to begin in the first quarter of 2027.",
+          "url": "https://newsroom.brindlemoor.example/syn-date-002"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "eventDate": null
+      },
+      "knownDefects": [
+        {
+          "defect": "D09",
+          "dimensions": [
+            "eventDate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-DATE-003",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "title": "A stated past event, published eight days later",
+      "rationale": "The text states the groundbreaking happened on May 12; the release is dated May 20. When the text states the date, that date (not the publication date) is the event date.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-20T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-date-003",
+          "sourceDocumentId": "syn-date-003-1",
+          "title": "A stated past event, published eight days later",
+          "publisher": "tessaly",
+          "text": "On May 12, 2026, Tessaly Bottling Company held a groundbreaking ceremony for its new $180 million bottling plant in Ashgrove Mill, Wisconsin, creating 150 jobs.",
+          "url": "https://newsroom.tessaly.example/syn-date-003"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "eventDate": "2026-05-12"
+      },
+      "knownDefects": [
+        {
+          "defect": "D09",
+          "dimensions": [
+            "eventDate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-DATE-004",
+      "failureMode": "FP05_DATE_SUBSTITUTION",
+      "family": "Publication date versus event date",
+      "title": "CONTROL: a source that states no publication date",
+      "rationale": "With no publication date the pipeline writes no event date. This is the one behaviour of the date path that is already correct, and it must survive the repair.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": null,
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-date-004",
+          "sourceDocumentId": "syn-date-004-1",
+          "title": "CONTROL: a source that states no publication date",
+          "publisher": "brindlemoor",
+          "text": "Brindlemoor Foods will build a new 280,000 square foot manufacturing plant in Carrow Ridge, Tennessee, a $210 million investment that will create 240 jobs.",
+          "url": "https://newsroom.brindlemoor.example/syn-date-004"
+        }
+      ],
+      "expected": {
+        "outcome": "signal",
+        "signals": [
+          {
+            "family": "facility_construction",
+            "negative": false
+          }
+        ],
+        "promotion": "emerging",
+        "eventDate": null
+      },
+      "knownDefects": []
+    }
+  ]
+}

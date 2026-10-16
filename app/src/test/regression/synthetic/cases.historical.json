@@ -1,0 +1,131 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "cases": [
+    {
+      "id": "SYN-HIST-001",
+      "failureMode": "FP07_HISTORY",
+      "family": "Historical company events",
+      "title": "A company-history timeline",
+      "rationale": "Openings and expansions from 1958 and 1962 are history. They must not become signals today.",
+      "documents": [
+        {
+          "documentType": "web_page",
+          "publishedAt": null,
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-hist-001",
+          "sourceDocumentId": "syn-hist-001-1",
+          "title": "A company-history timeline",
+          "publisher": "brindlemoor",
+          "text": "Our history. In 1958 the company opened a new plant in Hollis Bay, Ohio. In 1962 it expanded manufacturing capacity at its Winterhold, Indiana plant, employing 400 people.",
+          "url": "https://newsroom.brindlemoor.example/syn-hist-001"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D04",
+          "dimensions": [
+            "signal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-HIST-002",
+      "failureMode": "FP07_HISTORY",
+      "family": "Historical company events",
+      "title": "A site profile describing past expansions",
+      "rationale": "A site page that recounts a 1994 opening and a 2003 line is a profile, not an announcement.",
+      "documents": [
+        {
+          "documentType": "web_page",
+          "publishedAt": null,
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-hist-002",
+          "sourceDocumentId": "syn-hist-002-1",
+          "title": "A site profile describing past expansions",
+          "publisher": "kestrelwood",
+          "text": "The Ashgrove Mill bakery, which opened in 1994, was expanded in 2003 with a $20 million new production line and now employs 310 people.",
+          "url": "https://newsroom.kestrelwood.example/syn-hist-002"
+        }
+      ],
+      "expected": {
+        "outcome": "no_signal",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D04",
+          "dimensions": [
+            "signal",
+            "promotion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SYN-HIST-003",
+      "failureMode": "FP19_COMPLETED",
+      "family": "Historical company events",
+      "title": "CONTROL: a completed opening is not an active pursuit",
+      "rationale": "Whether to RECORD a completed opening as a signal is a lifecycle decision (D-R3). What must hold now is that it does not become an active opportunity.",
+      "documents": [
+        {
+          "documentType": "press_release",
+          "publishedAt": "2026-05-06T14:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-hist-003",
+          "sourceDocumentId": "syn-hist-003-1",
+          "title": "CONTROL: a completed opening is not an active pursuit",
+          "publisher": "kestrelwood",
+          "text": "Kestrelwood Dairy Cooperative today celebrated the opening of its new $90 million processing plant in Ashgrove Mill, Wisconsin. The plant began production in January 2027 and employs 85 people.",
+          "url": "https://newsroom.kestrelwood.example/syn-hist-003"
+        }
+      ],
+      "expected": {
+        "outcome": "unspecified",
+        "promotion": "none"
+      },
+      "knownDefects": []
+    },
+    {
+      "id": "SYN-HIST-004",
+      "failureMode": "FP07_HISTORY",
+      "family": "Historical company events",
+      "title": "A 2019 announcement republished in 2026",
+      "rationale": "The text carries its own dates (a 2019 archive, a 2021 opening). A republished archive page is not a new project, and a repair must compare the text's dates with the document's.",
+      "documents": [
+        {
+          "documentType": "web_page",
+          "publishedAt": "2026-09-02T09:00:00.000Z",
+          "sourceId": "synthetic-newsroom",
+          "key": "syn-hist-004",
+          "sourceDocumentId": "syn-hist-004-1",
+          "title": "A 2019 announcement republished in 2026",
+          "publisher": "brindlemoor",
+          "text": "Reprinted from our 2019 archive: Brindlemoor will build a new 250,000 square foot plant in Carrow Ridge, Tennessee, a $180 million investment creating 200 jobs, scheduled to open in 2021.",
+          "url": "https://newsroom.brindlemoor.example/syn-hist-004"
+        }
+      ],
+      "expected": {
+        "outcome": "abstain",
+        "promotion": "none"
+      },
+      "knownDefects": [
+        {
+          "defect": "D04",
+          "dimensions": [
+            "signal",
+            "promotion"
+          ]
+        }
+      ]
+    }
+  ]
+}

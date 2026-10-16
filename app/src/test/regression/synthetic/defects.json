@@ -1,0 +1,124 @@
+{
+  "sentinel": "SYNTHETIC-REGRESSION-FIXTURE",
+  "synthetic": true,
+  "schemaVersion": 1,
+  "note": "Every organisation, place, person, figure and sentence in this file is invented. Hosts use the reserved .example top-level domain. Nothing here is, or is derived from, a real source.",
+  "defects": [
+    {
+      "id": "D01",
+      "summary": "A dollar amount, place or date ANYWHERE in the 420-character window corroborates an action and asset it has nothing to do with; nothing binds the facts to one assertion.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:115",
+        "app/netlify/functions/_shared/connectors/classify.ts:171-184"
+      ]
+    },
+    {
+      "id": "D02",
+      "summary": "Hypothetical, conditional and unattributed-rumour language is graded `probable` as if it were a statement of intent; a second regex category is all it takes.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:146-153"
+      ]
+    },
+    {
+      "id": "D03",
+      "summary": "Standing-programme, modernisation and accounting-policy language matches the action and asset patterns and records a facility signal.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:68-112"
+      ]
+    },
+    {
+      "id": "D04",
+      "summary": "Past-dated events (company history, archived or republished announcements) are not excluded: nothing compares the dates in the text with the date of the document.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:155-231"
+      ]
+    },
+    {
+      "id": "D05",
+      "summary": "An administrative permit renewal that carries a capacity figure and a place is graded `probable` `utility_infrastructure` and stored as `energy_project`.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:100-103",
+        "app/netlify/functions/_shared/connectors/pipeline.ts:428-449"
+      ]
+    },
+    {
+      "id": "D06",
+      "summary": "The closure pattern allows only plain words between the verb and the asset, and the corroboration patterns do not recognise \"employees\" counts or \"in <Month> <year>\"; an ordinary closure sentence with a \"City, State\" place is missed.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:104-111",
+        "app/netlify/functions/_shared/connectors/classify.ts:59-66"
+      ]
+    },
+    {
+      "id": "D07",
+      "summary": "A negative (closure or consolidation) match opens an opportunity: `upsertOpportunity` has no guard on `match.negative`; the flag only changes the link role.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/pipeline.ts:943-1021"
+      ]
+    },
+    {
+      "id": "D08",
+      "summary": "`plant` in \"plant-based\" is read as a physical asset.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:49"
+      ]
+    },
+    {
+      "id": "D09",
+      "summary": "The document publication date is written as the signal `event_date`, precision `exact_day`, basis `stated`, whether or not the text states any date for the event.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/pipeline.ts:1319",
+        "app/netlify/functions/_shared/connectors/pipeline.ts:388-404"
+      ]
+    },
+    {
+      "id": "D10",
+      "summary": "The cluster key buckets by the month of the (publication) date and by the matched asset noun, so one project reported in two months, or with two nouns, becomes two signals and two opportunities.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:237-246"
+      ]
+    },
+    {
+      "id": "D11",
+      "summary": "Independence is counted per connector source id, not per originating statement: the same release arriving through a second source is counted as corroboration and can open an opportunity.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/pipeline.ts:845-860"
+      ]
+    },
+    {
+      "id": "D12",
+      "summary": "The signal and opportunity are credited to the organisation whose document it is; the relationship graph (franchise bottler, co-manufacturer, operator) is never consulted.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/pipeline.ts:1319-1345"
+      ]
+    },
+    {
+      "id": "D13",
+      "summary": "The location extractor returns every place named, with no role: a headquarters mention is indistinguishable from the project site.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/locations/extract.ts:129-215"
+      ]
+    },
+    {
+      "id": "D14",
+      "summary": "The 420-character window is not entity-aware: another company's closure next to the publisher's unrelated figure is credited to the publisher.",
+      "remediation": "R3",
+      "codePaths": [
+        "app/netlify/functions/_shared/connectors/classify.ts:171-184"
+      ]
+    }
+  ]
+}

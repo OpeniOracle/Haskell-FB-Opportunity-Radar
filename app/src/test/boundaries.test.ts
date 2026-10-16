@@ -178,6 +178,9 @@ const ENV_MODULES = [
  */
 const SELF_REFERENTIAL = [
   'boundaries.test.ts',
+  // Lists the tokens the regression harness must never use, in order to forbid them.
+  // It uses none itself, and asserts that the harness's other files use none.
+  'regressionGuards.test.ts',
   'microsoftSignIn.test.tsx',
   'microsoftFlagContexts.test.ts',
   'bundleSecrets.test.ts',
