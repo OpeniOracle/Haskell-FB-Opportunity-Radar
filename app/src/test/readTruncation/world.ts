@@ -15,6 +15,40 @@ export const NOW = new Date('2026-10-16T12:00:00.000Z')
 export const pad = (n: number) => String(n).padStart(5, '0')
 export const ago = (minutes: number) => new Date(NOW.getTime() - minutes * 60_000).toISOString()
 
+/**
+ * The columns the two change ledgers really have, as `db/migrations/0012` and
+ * `schemas/database.sql` define them. `changeFeed.test.ts` checks this against
+ * the DDL itself, so it cannot drift from the schema without a test failing.
+ */
+export const LEDGER_SCHEMA: Record<string, readonly string[]> = {
+  change_events: [
+    'id',
+    'object_type',
+    'object_id',
+    'change_type',
+    'from_state',
+    'to_state',
+    'materiality',
+    'dedupe_key',
+    'scoring_version',
+    'actor_type',
+    'occurred_at',
+  ],
+  source_health_events: [
+    'id',
+    'source_id',
+    'source_run_id',
+    'prior_status',
+    'new_status',
+    'event_type',
+    'summary',
+    'coverage_impact',
+    'action_required',
+    'resolved_at',
+    'created_at',
+  ],
+}
+
 export interface WorldSize {
   sources?: number
   organizations?: number
@@ -26,7 +60,10 @@ export interface WorldSize {
   /** Evidence linked to each signal. */
   evidencePerSignal?: number
   runs?: number
+  /** Material `change_events` rows, newest first, typed `evidence_added` on an opportunity. */
   changeEvents?: number
+  /** `source_health_events` rows, newest first: a source going from healthy to degraded. */
+  healthEvents?: number
   organizationLocations?: number
   opportunityLocations?: number
   expectations?: number
@@ -43,6 +80,7 @@ export function buildWorld(size: WorldSize = {}): Record<string, Row[]> {
     evidencePerSignal: size.evidencePerSignal ?? 1,
     runs: size.runs ?? 2,
     changeEvents: size.changeEvents ?? 0,
+    healthEvents: size.healthEvents ?? 0,
     organizationLocations: size.organizationLocations ?? 0,
     opportunityLocations: size.opportunityLocations ?? 0,
     expectations: size.expectations ?? 0,
@@ -161,9 +199,30 @@ export function buildWorld(size: WorldSize = {}): Record<string, Row[]> {
 
   const changeEvents = Array.from({ length: n.changeEvents }, (_, i) => ({
     id: `chg-${pad(i + 1)}`,
-    change_kind: 'evidence_added',
-    summary: `Change ${pad(i + 1)}`,
+    object_type: 'opportunity',
+    object_id: `opp-${pad((i % Math.max(1, n.opportunities)) + 1)}`,
+    change_type: 'evidence_added',
+    from_state: null,
+    to_state: null,
+    materiality: 'material',
+    dedupe_key: `evidence-${pad(i + 1)}`,
+    scoring_version: null,
+    actor_type: 'system',
     occurred_at: ago(i + 1),
+  }))
+
+  const healthEvents = Array.from({ length: n.healthEvents }, (_, i) => ({
+    id: `she-${pad(i + 1)}`,
+    source_id: sourceIds[i % sourceIds.length],
+    source_run_id: null,
+    prior_status: 'healthy',
+    new_status: 'degraded',
+    event_type: 'status_change',
+    summary: `Run ${pad(i + 1)} stored 3 of 5 documents.`,
+    coverage_impact: {},
+    action_required: null,
+    resolved_at: null,
+    created_at: ago(i + 1),
   }))
 
   const organizationLocations = Array.from({ length: n.organizationLocations }, (_, i) => ({
@@ -210,6 +269,7 @@ export function buildWorld(size: WorldSize = {}): Record<string, Row[]> {
     signal_evidence: signalEvidence,
     source_runs: runs,
     change_events: changeEvents,
+    source_health_events: healthEvents,
     organization_locations: organizationLocations,
     opportunity_locations: opportunityLocations,
     account_source_expectations: expectations,

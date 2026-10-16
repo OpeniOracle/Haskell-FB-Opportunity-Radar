@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { fakeSupabase } from '@/test/readTruncation/fakeSupabase'
 import type { FakeOptions, Row } from '@/test/readTruncation/fakeSupabase'
-import { NOW, buildWorld, pad } from '@/test/readTruncation/world'
+import { LEDGER_SCHEMA, NOW, buildWorld, pad } from '@/test/readTruncation/world'
 import type { WorldSize } from '@/test/readTruncation/world'
 import { renderApp } from '@/test/render'
 import { createApiDataSource, READ_LIMIT } from '@/data/apiDataSource'
@@ -30,7 +30,7 @@ const holder = vi.hoisted(() => ({ client: null as unknown }))
 vi.mock('@/lib/supabaseClient', () => ({ supabaseBrowser: () => holder.client }))
 
 function dataSource(size: WorldSize = {}, options: FakeOptions = {}, override: Record<string, Row[]> = {}) {
-  const fake = fakeSupabase({ ...buildWorld(size), ...override }, options)
+  const fake = fakeSupabase({ ...buildWorld(size), ...override }, { schema: LEDGER_SCHEMA, ...options })
   holder.client = fake.client
   return createApiDataSource(() => NOW)
 }
@@ -101,6 +101,24 @@ describe('the notice component', () => {
       />,
     )
     expect(screen.getByText('Could not confirm that all signals were loaded (600 came back).')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['not_permitted', 'The recent changes could not be read: a database permission is missing. Your access is unaffected; this is a deployment fault.'],
+    ['not_migrated', 'The recent changes are not available yet: a database migration is outstanding.'],
+    ['unauthorized', 'The recent changes could not be read: the session was not accepted.'],
+    ['error', 'The recent changes could not be read.'],
+  ] as const)('says each kind of failure for what it is: %s', (reason, sentence) => {
+    render(
+      <IncompleteDataNotice
+        completeness={{
+          complete: false,
+          datasets: [{ ...report('change_events', 'failed', 0, null), label: 'recent changes', reason }],
+        }}
+        checkedAt="2026-10-16T12:00:00Z"
+      />,
+    )
+    expect(screen.getByText(sentence)).toBeInTheDocument()
   })
 
   it('names a failed read', () => {
@@ -204,14 +222,59 @@ describe('Daily Pulse', () => {
     expect(screen.getByText(/Could not confirm that all opportunities were loaded/)).toBeInTheDocument()
   })
 
-  it('says recent changes could not be read when that read fails, and still renders the page', async () => {
+  it('says the market changes could not be read when that read fails, and still renders the page', async () => {
     renderApp('/', {
-      data: dataSource({ evidence: 30, signals: 10, opportunities: 5 }, { errors: { change_events: { code: '42703', message: 'column does not exist' } } }),
+      data: dataSource(
+        { evidence: 30, signals: 10, opportunities: 5 },
+        { errors: { change_events: { code: 'XX000', message: 'boom' } } },
+      ),
     })
     await screen.findByRole('heading', { level: 1, name: 'Daily Pulse' })
     await screen.findByText(/Not every record could be loaded/)
-    expect(screen.getByText(/recent changes could not be read/i)).toBeInTheDocument()
-    expect(screen.getByText(/The recent-changes list could not be loaded/)).toBeInTheDocument()
+    expect(screen.getByText('The market changes could not be read.')).toBeInTheDocument()
+    expect(screen.getByText(/Market changes are missing from the recent-changes list/)).toBeInTheDocument()
+    // A failed read is not an empty one: the page must not say nothing was recorded.
+    expect(screen.queryByText(/No changes have been recorded yet/)).toBeNull()
+  })
+
+  it('says a missing privilege is a deployment fault, not the reader’s', async () => {
+    renderApp('/', {
+      data: dataSource(
+        { evidence: 30, signals: 10, opportunities: 5 },
+        { errors: { source_health_events: { code: '42501', message: 'permission denied for table source_health_events' } } },
+      ),
+    })
+    await screen.findByRole('heading', { level: 1, name: 'Daily Pulse' })
+    await screen.findByText(/Not every record could be loaded/)
+    expect(
+      screen.getByText(/The source status changes could not be read: a database permission is missing\. Your access is unaffected/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/No changes have been recorded yet/)).toBeNull()
+  })
+
+  it('says a table that is not there yet is a pending migration', async () => {
+    renderApp('/', {
+      data: dataSource(
+        { evidence: 30, signals: 10, opportunities: 5 },
+        { errors: { change_events: { code: '42P01', message: 'relation "change_events" does not exist' } } },
+      ),
+    })
+    await screen.findByRole('heading', { level: 1, name: 'Daily Pulse' })
+    await screen.findByText(/a database migration is outstanding/)
+  })
+
+  it('says an empty feed is empty, and only when both ledgers were read and held nothing', async () => {
+    renderApp('/', { data: dataSource({ evidence: 30, signals: 10, opportunities: 5 }) })
+    await screen.findByRole('heading', { level: 1, name: 'Daily Pulse' })
+    expect(screen.getByText('No changes have been recorded yet.')).toBeInTheDocument()
+    expect(notice()).toBeNull()
+  })
+
+  it('does not call the feed empty when a ledger has something to list', async () => {
+    renderApp('/', { data: dataSource({ evidence: 30, signals: 10, opportunities: 5, healthEvents: 2 }) })
+    await screen.findByRole('heading', { level: 1, name: 'Daily Pulse' })
+    expect(screen.queryByText(/No changes have been recorded yet/)).toBeNull()
+    expect(document.querySelector('main')?.textContent).toMatch(/Source degraded/)
   })
 
   it('is open about the change feed being the latest 25 on purpose, without calling it a fault', async () => {
@@ -326,7 +389,7 @@ describe('Map', () => {
       uncertainty_radius_m: 8000,
       resolved_at: '2026-10-16T11:00:00.000Z',
     }))
-    holder.client = fakeSupabase(world).client
+    holder.client = fakeSupabase(world, { schema: LEDGER_SCHEMA }).client
     renderApp('/map', { data: createApiDataSource(() => NOW) })
     await screen.findByRole('heading', { level: 1, name: 'Map' })
     await screen.findByText(/Not every record could be loaded/)
@@ -356,7 +419,7 @@ describe('Source Health', () => {
     world.account_source_expectations = [
       { organization_id: 'org-00004', source_family: 'sec-edgar', expectation: 'required', rationale: 'synthetic' },
     ]
-    holder.client = fakeSupabase(world).client
+    holder.client = fakeSupabase(world, { schema: LEDGER_SCHEMA }).client
     renderApp('/admin/health', { data: createApiDataSource(() => NOW) })
     await screen.findByRole('heading', { level: 1, name: 'Source Health & Coverage' })
     await screen.findByText(/Not every record could be loaded/)
@@ -378,7 +441,7 @@ describe('Source Health', () => {
     world.account_source_expectations = [
       { organization_id: 'org-00002', source_family: 'a-source-nobody-observed', expectation: 'required', rationale: 'synthetic' },
     ]
-    holder.client = fakeSupabase(world).client
+    holder.client = fakeSupabase(world, { schema: LEDGER_SCHEMA }).client
     renderApp('/admin/health', { data: createApiDataSource(() => NOW) })
     await screen.findByRole('heading', { level: 1, name: 'Source Health & Coverage' })
     const main = document.querySelector('main')!.textContent!

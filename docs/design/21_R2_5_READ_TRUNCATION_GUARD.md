@@ -131,6 +131,8 @@ These need views and grants (R2 territory, and every column the UI reads needs i
 
 ## 10. A defect found on the way (not fixed here)
 
+> **Update, same day:** repaired in [doc 22](22_PULSE_CHANGE_FEED_REPAIR.md). The read now selects real columns; the market ledger it reads still has no writer, which doc 22 §3 and §8 state. The text below is kept as written when the defect was found.
+
 The Daily Pulse change feed selects `change_kind, summary`, and `change_events` has neither (`db/migrations/0012`: the columns are `change_type`, `object_type`, `object_id`, `from_state`, `to_state`, `materiality`, …). The read therefore errors with `42703` against the real schema, and before this change that error was **swallowed**, so the feed was silently empty. It is now reported as a failed read, so Daily Pulse will show the notice "The recent changes could not be read" until the select is corrected. That correction needs a decision on what a change's summary text should be (the table has no such column), so it is left for a separate change rather than guessed at here.
 
 ## 11. What did not change

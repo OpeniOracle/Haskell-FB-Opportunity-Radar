@@ -18,6 +18,11 @@
  *      cap, as PostgREST does. A table can be told to answer with no count, a
  *      null count, or a wrong one, which are the ways a total goes missing.
  *
+ *   4. COLUMNS THAT EXIST. Given a `schema` for a table, selecting, ordering or
+ *      filtering on a column it does not have fails the way PostgreSQL does
+ *      (SQLSTATE 42703). A fake that returns whatever was asked for is how a read
+ *      of `change_kind` and `summary` went unnoticed: the real table has neither.
+ *
  * Nothing here knows about the application. Every call is recorded so a test can
  * assert how many requests a surface made and what each asked for.
  */
@@ -44,6 +49,11 @@ export interface FakeOptions {
   errors?: Record<string, { code?: string; message: string }>
   /** Tables whose reads reject, as a dropped connection does. */
   rejects?: string[]
+  /**
+   * The columns each listed table really has. A read that names any other column
+   * errors with 42703. Tables not listed accept anything.
+   */
+  schema?: Record<string, readonly string[]>
 }
 
 export interface FakeSupabase {
@@ -108,6 +118,19 @@ export function fakeSupabase(initial: Record<string, Row[]>, options: FakeOption
       if (options.rejects?.includes(table)) throw new Error('network down')
       const failure = options.errors?.[table]
       if (failure) return { data: null, error: failure }
+
+      const known = options.schema?.[table]
+      if (known) {
+        const named = [
+          ...call.columns.split(',').map((c) => c.trim()),
+          ...call.orders.map((o) => o.column),
+          ...call.filters.map(([c]) => c),
+        ]
+        const missing = named.find((c) => c !== '' && c !== '*' && !known.includes(c))
+        if (missing) {
+          return { data: null, error: { code: '42703', message: `column ${table}.${missing} does not exist` } }
+        }
+      }
 
       let rows = [...(tables.get(table) ?? [])]
       for (const [column, value] of call.filters) rows = rows.filter((r) => r[column] === value)

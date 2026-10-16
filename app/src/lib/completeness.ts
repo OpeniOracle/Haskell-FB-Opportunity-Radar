@@ -1,4 +1,5 @@
 import type {
+  DatasetFailureReason,
   DatasetKey,
   DatasetReadReport,
   ReadCompleteness,
@@ -35,7 +36,8 @@ export const DATASET_LABEL: Record<DatasetKey, string> = {
   source_runs: 'collection runs',
   organization_locations: 'account locations',
   opportunity_locations: 'project locations',
-  change_events: 'recent changes',
+  change_events: 'market changes',
+  source_health_events: 'source status changes',
 }
 
 /**
@@ -95,9 +97,27 @@ export function reportLimited(dataset: DatasetKey, returned: number, limit: numb
   return { dataset, label: DATASET_LABEL[dataset], status: 'limited', returned, total: null, limit }
 }
 
-/** A read that errored where the surface can still say something without it. */
-export function reportFailed(dataset: DatasetKey, limit: number): DatasetReadReport {
-  return { dataset, label: DATASET_LABEL[dataset], status: 'failed', returned: 0, total: null, limit }
+/**
+ * A read that errored where the surface can still say something without it.
+ *
+ * `reason` says what kind of failure it was, so "the account may not read this",
+ * "the table is not there yet" and "the request did not complete" are not all
+ * reported as the same sentence. It defaults to the least specific, `error`.
+ */
+export function reportFailed(
+  dataset: DatasetKey,
+  limit: number,
+  reason: DatasetFailureReason = 'error',
+): DatasetReadReport {
+  return {
+    dataset,
+    label: DATASET_LABEL[dataset],
+    status: 'failed',
+    reason,
+    returned: 0,
+    total: null,
+    limit,
+  }
 }
 
 /** `complete` is false for anything but complete or deliberately limited. */
@@ -153,6 +173,26 @@ export interface IncompletenessDescription {
 
 const n = (value: number) => value.toLocaleString('en-US')
 
+/**
+ * One sentence per kind of failure, each pointing at what is actually wrong.
+ *
+ * A missing privilege is a deployment fault and is said not to be about the
+ * reader; a table that does not exist yet is a pending migration; neither is an
+ * outage, and neither is "empty".
+ */
+function failureSentence(d: DatasetReadReport): string {
+  switch (d.reason) {
+    case 'not_permitted':
+      return `The ${d.label} could not be read: a database permission is missing. Your access is unaffected; this is a deployment fault.`
+    case 'not_migrated':
+      return `The ${d.label} are not available yet: a database migration is outstanding.`
+    case 'unauthorized':
+      return `The ${d.label} could not be read: the session was not accepted.`
+    default:
+      return `The ${d.label} could not be read.`
+  }
+}
+
 export function describeIncompleteness(completeness: ReadCompleteness): IncompletenessDescription {
   const short = completeness.datasets.filter(
     (d) => d.status === 'truncated' || d.status === 'indeterminate' || d.status === 'failed',
@@ -166,7 +206,7 @@ export function describeIncompleteness(completeness: ReadCompleteness): Incomple
       case 'indeterminate':
         return `Could not confirm that all ${d.label} were loaded (${n(d.returned)} came back).`
       default:
-        return `The ${d.label} could not be read.`
+        return failureSentence(d)
     }
   })
 
@@ -205,7 +245,10 @@ export function describeIncompleteness(completeness: ReadCompleteness): Incomple
     consequences.push('Run totals cover the loaded runs only.')
   }
   if (any('change_events')) {
-    consequences.push('The recent-changes list could not be loaded.')
+    consequences.push('Market changes are missing from the recent-changes list.')
+  }
+  if (any('source_health_events')) {
+    consequences.push('Source status changes are missing from the recent-changes list.')
   }
   consequences.push('The stored records are unchanged; it is this view of them that is limited.')
 

@@ -20,11 +20,15 @@ import type { ChangeEvent, PulseSnapshot } from '@/types/domain'
 
 const CHANGE_ICON: Record<string, IconName> = {
   stage_promoted: 'check',
+  stage_demoted: 'alert',
+  status_changed: 'refresh',
+  closed: 'check',
   evidence_added: 'document',
   facility_resolved: 'pin',
   negative_signal: 'alert',
   coverage_degraded: 'alert',
   source_recovered: 'refresh',
+  source_notice: 'settings',
 }
 
 /**
@@ -134,9 +138,7 @@ export function Pulse() {
           changesLimit={
             // The feed is the latest N by design. Said where it is listed, so it
             // is never read as the complete history.
-            state.completeness?.datasets.find(
-              (d) => d.dataset === 'change_events' && d.status === 'limited' && d.returned >= d.limit,
-            )?.limit ?? null
+            state.data.changeFeed?.bounded ? state.data.changeFeed.limit : null
           }
         />
       )}
@@ -145,13 +147,15 @@ export function Pulse() {
 }
 
 function PulseBody({ snapshot, changesLimit }: { snapshot: PulseSnapshot; changesLimit: number | null }) {
-  const { coverage, connectorHealth, headline, changesSinceLastVisit } = snapshot
+  const { coverage, connectorHealth, headline, changesSinceLastVisit, changeFeed } = snapshot
   const floor = headline.lowerBounds
   const { search } = useLocation()
   const feedNote = changesLimit ? `Newest first · latest ${changesLimit} changes only` : 'Newest first'
 
-  const byRecency = [...changesSinceLastVisit].sort((a, b) =>
-    b.occurredAt.localeCompare(a.occurredAt),
+  // By the instant, not the string (offsets and fractional seconds differ), with
+  // the id as the tie-break so two renders of the same feed list it identically.
+  const byRecency = [...changesSinceLastVisit].sort(
+    (a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt) || a.id.localeCompare(b.id),
   )
   const attention = byRecency.filter((c) => c.channel === 'market' && c.needsAttention)
   const market = byRecency.filter((c) => c.channel === 'market' && !c.needsAttention)
@@ -443,6 +447,29 @@ function PulseBody({ snapshot, changesLimit }: { snapshot: PulseSnapshot; change
         </section>
       )}
 
+      {/* An empty feed, said as one. It is shown only when every ledger was read
+          successfully and none held a record: a read that failed or was refused is
+          reported by the notice above, and is not "nothing recorded". */}
+      {changeFeed?.empty && (
+        <section className="section" aria-labelledby="no-changes-title">
+          <div className="section__head">
+            <h2 className="section__title" id="no-changes-title">
+              Recent changes
+            </h2>
+          </div>
+          <p className="panel-scope">No changes have been recorded yet.</p>
+        </section>
+      )}
+
+      {/* Recorded changes the page has no validated way to describe. Counted here
+          rather than dropped, and never listed as something they are not. */}
+      {changeFeed && changeFeed.notListed > 0 && (
+        <p className="panel-scope">
+          {changeFeed.notListed} recorded {changeFeed.notListed === 1 ? 'change was' : 'changes were'}{' '}
+          not listed because this page cannot describe {changeFeed.notListed === 1 ? 'it' : 'them'} yet.
+        </p>
+      )}
+
       <section className="section section--system" aria-labelledby="system-title">
         <details className="system-notices" open={systemNeedsAction}>
           <summary className="system-notices__summary">
@@ -466,6 +493,7 @@ function PulseBody({ snapshot, changesLimit }: { snapshot: PulseSnapshot; change
                     <span className="notice-row__subject"> — {change.subjectLabel}</span>
                   </p>
                   <p className="notice-row__detail">{change.detail}</p>
+                  {change.actionHint && <p className="notice-row__detail">{change.actionHint}</p>}
                 </div>
                 <time className="notice-row__when" dateTime={change.occurredAt}>
                   {relativeTime(change.occurredAt)}
