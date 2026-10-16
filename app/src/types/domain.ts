@@ -282,11 +282,20 @@ export type ChangeTone = 'confirmed' | 'developing' | 'emerging' | 'attention' |
 
 export type ChangeKind =
   | 'stage_promoted'
+  | 'stage_demoted'
+  | 'status_changed'
+  | 'closed'
   | 'evidence_added'
   | 'facility_resolved'
   | 'negative_signal'
   | 'coverage_degraded'
   | 'source_recovered'
+  /**
+   * Something the collector recorded about a source that is not a change of its
+   * health: a run it abandoned, skipped, deferred or could not start. Operational,
+   * and never presented as market intelligence.
+   */
+  | 'source_notice'
 
 /**
  * Which audience a change is for.
@@ -435,8 +444,37 @@ export interface PulseSnapshot {
   /** Every enabled source and its current state. */
   sources: PulseSourceItem[]
   changesSinceLastVisit: ChangeEvent[]
+  /**
+   * What the feed above is, said about the feed itself. Absent for fixtures.
+   * See `ChangeFeedMeta`.
+   */
+  changeFeed?: ChangeFeedMeta
   lastVisitAt: string | null
   generatedAt: string
+}
+
+/**
+ * Facts about the change feed that the rows cannot carry themselves.
+ *
+ * A feed with no rows is one of four different things -- nothing recorded, a
+ * read that failed, a read the account may not make, or records the page cannot
+ * describe -- and a person looking at an empty list cannot tell which. The first
+ * is `empty`, the next two are reported by `completeness`, and the last is
+ * `notListed`.
+ */
+export interface ChangeFeedMeta {
+  /** The most the feed lists, across both ledgers. */
+  limit: number
+  /** True when recent records exist beyond the ones listed. */
+  bounded: boolean
+  /**
+   * Recorded changes, among those read, that the page does not list because it has
+   * no validated way to describe them. Counted, never silently dropped, and never
+   * rendered as something they are not.
+   */
+  notListed: number
+  /** True only when every ledger was read successfully and held nothing to list or skip. */
+  empty: boolean
 }
 
 /* ----------------------------------------------------------- Surface envelope */
@@ -499,6 +537,7 @@ export type DatasetKey =
   | 'organization_locations'
   | 'opportunity_locations'
   | 'change_events'
+  | 'source_health_events'
 
 /**
  * The five things a read can turn out to be.
@@ -515,11 +554,26 @@ export type DatasetKey =
  */
 export type DatasetStatus = 'complete' | 'truncated' | 'indeterminate' | 'limited' | 'failed'
 
+/**
+ * Why a read failed, for the failures a person can do something different about.
+ *
+ * `not_permitted` is a missing database privilege (SQLSTATE 42501): a deployment
+ * fault, and never a statement about the person reading. `not_migrated` is a table
+ * the deployed code expects and the database does not have yet. `unauthorized` is
+ * a rejected or expired session. `error` is everything else.
+ *
+ * Row-level security is NOT in this list, and cannot be: it withholds rows
+ * silently, so a policy that hides every row reads exactly like an empty table.
+ */
+export type DatasetFailureReason = 'not_permitted' | 'not_migrated' | 'unauthorized' | 'error'
+
 export interface DatasetReadReport {
   dataset: DatasetKey
   /** What a person calls it: "evidence records", not `evidence`. */
   label: string
   status: DatasetStatus
+  /** Present only when `status` is `failed`. */
+  reason?: DatasetFailureReason
   /** Rows that came back. */
   returned: number
   /** Rows the database holds for the query. Null when it could not be established. */

@@ -26,12 +26,14 @@
 import type { DataSource } from '@/data/DataSource'
 import type {
   ActiveRun,
+  ChangeFeedMeta,
   Company,
   CompanySummary,
   ConnectorRecord,
   ConnectorRun,
   ConnectorState,
   DataSourceMeta,
+  DatasetFailureReason,
   DatasetKey,
   DatasetReadReport,
   EvidenceRecord,
@@ -62,6 +64,8 @@ import {
   reportLimited,
   reportRead,
 } from '@/lib/completeness'
+import { assembleFeed, describeMarketChange, describeSourceEvent } from '@/lib/changeFeed'
+import type { Described, RecordLookup } from '@/lib/changeFeed'
 import { isApprovedDashboardUrl, isApprovedEmbedUrl } from '@/lib/spyglass'
 
 /** Beyond this, "current" is a claim the data does not support. */
@@ -171,6 +175,38 @@ function classifyError(error: { code?: string; message?: string } | null): Fail 
   if (code === '42P01' || /does not exist/i.test(message)) return FAILURE.notMigrated
 
   return FAILURE.requestFailed
+}
+
+/**
+ * What kind of failure an error was, for a dataset report.
+ *
+ * Reuses `classifyError`, so the two cannot disagree about what a SQLSTATE means.
+ */
+function failureReasonOf(error: { code?: string; message?: string } | null): DatasetFailureReason {
+  const fail = classifyError(error)
+  if (fail === FAILURE.notPermitted) return 'not_permitted'
+  if (fail === FAILURE.notMigrated) return 'not_migrated'
+  if (fail === FAILURE.unauthorized) return 'unauthorized'
+  return 'error'
+}
+
+/**
+ * A ledger read that cannot throw.
+ *
+ * The change feed is the one part of Daily Pulse the page can do without, so a
+ * request that rejects outright (a dropped connection, say) is reported as a
+ * failed read of that ledger rather than taking the whole surface down. The error
+ * it returns is classified like any other.
+ */
+async function readLedger(
+  query: PromiseLike<{ data: unknown[] | null; error: { code?: string; message?: string } | null }>,
+): Promise<{ data: unknown[] | null; error: { code?: string; message?: string } | null }> {
+  try {
+    const { data, error } = await query
+    return { data, error }
+  } catch {
+    return { data: null, error: { code: '', message: 'The request did not complete.' } }
+  }
 }
 
 interface Freshness {
@@ -1288,24 +1324,109 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
         if (!freshness.everCollected) return unavailable(FAILURE.neverCollected, checkedAt)
 
         /*
-           A SLICE ON PURPOSE, AND A FAILURE THAT IS NOT SWALLOWED.
+           THE CHANGE FEED: TWO LEDGERS, EACH A SLICE ON PURPOSE.
 
-           The feed is the latest N, so it is reported as `limited`, which is not
-           a fault and never trips the notice. Its error used to be dropped on the
-           floor: a failed read and an empty table both produced an empty feed,
-           and the page could not tell which one it was showing. A failure is now
-           reported as one, and the rest of the page still renders.
+           `change_events` is the market ledger and `source_health_events` the
+           operational one (docs/design/22). Each read asks for the latest N, so
+           each is reported as `limited`, which is not a fault and never trips the
+           incomplete-data notice. Each can also FAIL, and a failure is reported
+           as one, with its kind: a missing privilege, a table that is not there
+           yet and a request that did not complete are different sentences, and
+           none of them is an empty feed. The rest of the page renders either way.
+
+           `change_events` is read for MATERIAL rows only, which is what ADR 0007
+           gives Pulse and what its partial index serves. Only columns that exist
+           are selected; the earlier `change_kind` and `summary` never did.
         */
-        const changesRead = await client
-          .from('change_events')
-          .select('id, change_kind, summary, occurred_at')
-          .order('occurred_at', { ascending: false })
-          .order('id')
-          .limit(CHANGES_LIMIT)
-        const changes = changesRead.error ? [] : (changesRead.data ?? [])
-        const changesReport = changesRead.error
-          ? reportFailed('change_events', CHANGES_LIMIT)
-          : reportLimited('change_events', changes.length, CHANGES_LIMIT)
+        const [marketRead, systemRead] = await Promise.all([
+          readLedger(
+            client
+              .from('change_events')
+              .select(
+                'id, object_type, object_id, change_type, from_state, to_state, materiality, actor_type, occurred_at',
+              )
+              .eq('materiality', 'material')
+              .order('occurred_at', NEWEST_FIRST)
+              .order('id')
+              .limit(CHANGES_LIMIT),
+          ),
+          readLedger(
+            client
+              .from('source_health_events')
+              .select('id, source_id, prior_status, new_status, event_type, summary, action_required, created_at')
+              .order('created_at', NEWEST_FIRST)
+              .order('id')
+              .limit(CHANGES_LIMIT),
+          ),
+        ])
+        const marketRows = marketRead.error ? [] : (marketRead.data ?? [])
+        const systemRows = systemRead.error ? [] : (systemRead.data ?? [])
+        const marketReport = marketRead.error
+          ? reportFailed('change_events', CHANGES_LIMIT, failureReasonOf(marketRead.error))
+          : reportLimited('change_events', marketRows.length, CHANGES_LIMIT)
+        const systemReport = systemRead.error
+          ? reportFailed('source_health_events', CHANGES_LIMIT, failureReasonOf(systemRead.error))
+          : reportLimited('source_health_events', systemRows.length, CHANGES_LIMIT)
+
+        const opportunityById = new Map(graph.opportunities.map((o) => [o.id, o]))
+        const sourceById = new Map(graph.sources.map((s) => [s.id, s]))
+        const lookup: RecordLookup = {
+          opportunity: (id) => {
+            const row = opportunityById.get(id)
+            if (!row) return null
+            return {
+              title: row.title,
+              organizationName: row.organization_id
+                ? (graph.organizationById.get(row.organization_id)?.canonical_name ?? null)
+                : null,
+            }
+          },
+          organization: (id) => {
+            const row = graph.organizationById.get(id)
+            return row ? { name: row.canonical_name } : null
+          },
+          signal: (id) => {
+            const row = graph.signalById.get(id)
+            return row ? { title: row.title } : null
+          },
+          source: (id) => {
+            const row = sourceById.get(id)
+            return row ? { name: row.name ?? row.id } : null
+          },
+          wasWhole: (kind) =>
+            exact(
+              graph,
+              kind === 'opportunity'
+                ? 'opportunities'
+                : kind === 'organization'
+                  ? 'organizations'
+                  : kind === 'signal'
+                    ? 'signals'
+                    : 'sources',
+            ),
+        }
+        const described: Described[][] = [
+          marketRows.map((row) => describeMarketChange(row as Record<string, unknown>, lookup)),
+          systemRows.map((row) => describeSourceEvent(row as Record<string, unknown>, lookup)),
+        ]
+        const feed = assembleFeed(described, CHANGES_LIMIT)
+        const changeFeed: ChangeFeedMeta = {
+          limit: CHANGES_LIMIT,
+          // More recent records exist than are listed: either a ledger filled its
+          // slice (there may be older rows behind it) or the union overflowed.
+          bounded:
+            feed.overflowed ||
+            marketRows.length >= CHANGES_LIMIT ||
+            systemRows.length >= CHANGES_LIMIT,
+          notListed: feed.notListed,
+          // Empty is a claim about the ledgers, so it is made only when both were
+          // read successfully and neither held anything.
+          empty:
+            !marketRead.error &&
+            !systemRead.error &&
+            marketRows.length === 0 &&
+            systemRows.length === 0,
+        }
 
         const enabled = graph.sources.filter((s) => s.enabled)
         const since = isoDaysAgo(now, NEW_SIGNAL_WINDOW_DAYS)
@@ -1407,24 +1528,13 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             state: s.health_status ?? 'unknown',
             lastSuccessAt: s.last_success_at,
           })),
-          changesSinceLastVisit: (changes ?? []).map((c) => ({
-            id: c.id as string,
-            kind: 'evidence_added',
-            tone: 'neutral',
-            channel: 'market',
-            title: (c.summary as string) ?? '',
-            detail: (c.summary as string) ?? '',
-            occurredAt: (c.occurred_at as string) ?? '',
-            subjectLabel: (c.change_kind as string) ?? '',
-            needsAttention: false,
-            actionHint: null,
-            opportunityId: null,
-          })) as PulseSnapshot['changesSinceLastVisit'],
+          changesSinceLastVisit: feed.events,
+          changeFeed,
           lastVisitAt: null,
           generatedAt: checkedAt,
         }
 
-        const completeness = completenessFor(graph, [...GRAPH_DATASETS], changesReport)
+        const completeness = completenessFor(graph, [...GRAPH_DATASETS], marketReport, systemReport)
         if (freshness.stale) {
           return {
             kind: 'stale',

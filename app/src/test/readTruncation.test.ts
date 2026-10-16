@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CountMode, FakeOptions, FakeSupabase, Row } from '@/test/readTruncation/fakeSupabase'
 import { fakeSupabase } from '@/test/readTruncation/fakeSupabase'
-import { NOW, buildWorld, pad } from '@/test/readTruncation/world'
+import { LEDGER_SCHEMA, NOW, buildWorld, pad } from '@/test/readTruncation/world'
 import type { WorldSize } from '@/test/readTruncation/world'
 import type { DatasetKey, SurfaceState } from '@/types/domain'
 import { FAILURE, READ_LIMIT, createApiDataSource } from '@/data/apiDataSource'
@@ -26,7 +26,7 @@ const holder = vi.hoisted(() => ({ client: null as unknown }))
 vi.mock('@/lib/supabaseClient', () => ({ supabaseBrowser: () => holder.client }))
 
 function connect(size: WorldSize = {}, options: FakeOptions = {}, override: Record<string, Row[]> = {}) {
-  const fake = fakeSupabase({ ...buildWorld(size), ...override }, options)
+  const fake = fakeSupabase({ ...buildWorld(size), ...override }, { schema: LEDGER_SCHEMA, ...options })
   holder.client = fake.client
   return { fake, source: createApiDataSource(() => NOW) }
 }
@@ -207,7 +207,7 @@ describe.each([
 
     expect(report(state, dataset)).toMatchObject({ status: 'truncated', returned: READ_LIMIT, total: READ_LIMIT + 1 })
     const others = state.completeness!.datasets.filter(
-      (d) => d.dataset !== dataset && d.dataset !== 'change_events',
+      (d) => d.dataset !== dataset && d.dataset !== 'change_events' && d.dataset !== 'source_health_events',
     )
     expect(others.every((d) => d.status === 'complete')).toBe(true)
     expect(state.completeness?.complete).toBe(false)
@@ -476,14 +476,19 @@ describe('failed reads', () => {
     expect((await source.getMapLocations()).kind).toBe('unavailable')
   })
 
-  it('a failed recent-changes read does not take Pulse down, and is reported rather than swallowed', async () => {
-    const { source } = connect({}, { errors: { change_events: { code: '42703', message: 'column does not exist' } } })
+  it('a failed change-feed read does not take Pulse down, and is reported rather than swallowed', async () => {
+    const { source } = connect(
+      { changeEvents: 3, healthEvents: 2 },
+      { errors: { change_events: { code: '42703', message: 'column does not exist' } } },
+    )
     const state = await source.getPulse()
     if (state.kind !== 'ready') throw new Error(`expected ready, got ${state.kind}`)
 
     expect(report(state, 'change_events').status).toBe('failed')
     expect(state.completeness?.complete).toBe(false)
-    expect(state.data.changesSinceLastVisit).toEqual([])
+    // The other ledger still lists, and the feed is NOT called empty.
+    expect(state.data.changesSinceLastVisit.length).toBeGreaterThan(0)
+    expect(state.data.changeFeed?.empty).toBe(false)
     // Everything else on the page is exactly as it was.
     expect(report(state, 'evidence').status).toBe('complete')
   })
@@ -562,14 +567,16 @@ describe('the recent-changes feed', () => {
     const state = await source.getPulse()
     expect(report(state, 'change_events')).toMatchObject({ status: 'limited', returned: 25, limit: 25 })
     expect(state.completeness?.complete).toBe(true)
+    expect(state.kind === 'ready' && state.data.changeFeed?.bounded).toBe(true)
   })
 
-  it('reads the latest 25, in a stable order', async () => {
+  it('reads the latest 25 MATERIAL change events, in a stable order', async () => {
     const { source, fake } = connect({ changeEvents: 40 })
     await source.getPulse()
     const call = fake.calls.find((c) => c.table === 'change_events')!
     expect(call.limit).toBe(25)
     expect(call.orders.map((o) => o.column)).toEqual(['occurred_at', 'id'])
+    expect(call.filters).toEqual([['materiality', 'material']])
     expect(call.count).toBeUndefined() // a slice by design needs no total
   })
 })
@@ -705,10 +712,11 @@ describe('requests', () => {
       await run()
       return fake.calls.length - before
     }
-    // 1 freshness read + the eight graph reads, plus each surface's own.
+    // 1 freshness read + the eight graph reads, plus each surface's own
+    // (Pulse reads both change ledgers).
     expect(await count(() => source.getOpportunities())).toBe(9)
     expect(await count(() => source.getCompanies())).toBe(9)
-    expect(await count(() => source.getPulse())).toBe(10)
+    expect(await count(() => source.getPulse())).toBe(11)
     expect(await count(() => source.getSourceHealth())).toBe(10)
     expect(await count(() => source.getMapLocations())).toBe(11)
   })
