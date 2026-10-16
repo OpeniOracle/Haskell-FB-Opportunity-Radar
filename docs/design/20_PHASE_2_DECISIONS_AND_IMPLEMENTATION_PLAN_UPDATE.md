@@ -66,7 +66,7 @@ This replaces the ordering in doc 18 §11 and doc 19 §11 without editing either
 |---:|---|---|---|---|
 | 1 | R1 — ingestion integrity | **Merged** (#17, `689eb56`) | Stale-run recovery, honest skips/partials, access-mode enforcement, unexecuted remediation SQL | — |
 | 2 | R1.5 — synthetic regression harness | **Merged** (#18, `17d681b`) | Tests and a diagnostic report only; **no behaviour change** | — |
-| 3 | R2 — schema | Needs authorisation | Provenance/fingerprints, identifier vocabulary, jobs/tasks, **plus** `review_state` (D-R1), `project_lifecycle` + `commercial_qualification` (D-R3), `sources.rights_class` (D-R2), `evidence.origin_key`, `signals.event_date_role` | 1 |
+| 3 | **R2 — schema** | **Implemented in its own PR, awaiting review** (design: doc 23; **no migration applied**; ADR 0017 *Proposed*) | Fingerprints, identifier vocabulary, task queue, **plus** `review_state` (D-R1), `project_lifecycle` + `commercial_qualification` (D-R3), `sources.rights_class` (D-R2), `signals.event_date_role`. **Two named items were not added because the schema already has them:** `evidence.origin_key` is `evidence_families.family_key`, and `ingestion_jobs` is `source_runs` (doc 23 §3) | 1 |
 | 4 | **R2.5 — read-truncation guard** | **Implemented in its own PR, awaiting review** (design: doc 21) | Deterministic order, database totals, and a visible "showing N of M" on the 1,000-row reads — **before** any large source. Reports truncation; does not paginate | 1 |
 | 5 | R3 — derivation correctness | Needs authorisation | Repairs the defects R1.5 pins; each repair retires its markers | 2, 3 |
 | 6 | R4 — durable execution | Needs authorisation | Dispatcher, worker, heartbeat, re-dispatch | 3 |

@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { R2_CASES } from './tests/r2-cases.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = readFileSync(join(HERE, 'tests', 'fixtures.sql'), 'utf8')
@@ -2076,6 +2077,9 @@ begin
 end
 $$;`,
   },
+
+  // ---- R2 schema foundation (0025 - 0030): see tests/r2-cases.mjs. ---------
+  ...R2_CASES,
 ]
 
 function runSql(sql) {

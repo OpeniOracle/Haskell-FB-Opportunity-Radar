@@ -49,7 +49,7 @@ insert into sources (
     jsonb_build_object('minRequestIntervalMs', 220, 'concurrency', 3),
     24,
     now(),
-    'US government work, public domain. Fair-access guidance requires a declared User-Agent naming a monitored contact.'
+    'US government work, public domain. Determination: ADR 0014 (accepted 2026-08-26) archives U.S. government works under the pilot. Fair-access guidance requires a declared User-Agent naming a monitored contact.'
 )
 on conflict (id) do update set
     name              = excluded.name,

@@ -648,6 +648,12 @@ jobs:
       - name: The 0021 operator file matches the canonical migration
         run: node db/tools/build-operator-sql.mjs --check
 
+      # The R2 operator files (apply and rollback) are generated from migrations
+      # 0025 - 0030 the same way, and for the same reason: a file an operator
+      # pastes into a production database must be the migration CI tested.
+      - name: The R2 operator files match the canonical migrations
+        run: node db/tools/build-r2-operator-sql.mjs --check
+
       - name: The operator file asks the operator to supply nothing
         run: |
           f=db/operator/0021_live_source_ingestion.operator.sql
