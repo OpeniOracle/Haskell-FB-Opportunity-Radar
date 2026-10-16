@@ -40,6 +40,7 @@ window (0016) all have code or migrations behind them now. Status here still mea
 | [0014](0014-d19-pilot-evidence-access-rule.md) | The pilot evidence-access rule: government material archived, corporate material by reference | **Accepted for the pilot** (D19, pilot scope only) | — |
 | [0015](0015-evidence-proxy-immediate-revocation.md) | Immediate revocation is scoped to the evidence proxy | **Accepted** | — |
 | [0016](0016-first-cohort-backfill-window.md) | The first cohort's backfill window is twelve months | **Accepted** | — |
+| [0017](0017-source-rights-classes-beyond-the-pilot-rule.md) | Source rights classes beyond the pilot rule: state, local, economic-development and municipal records are reference-only until rights are established | **Proposed** (D-R2) | separate review |
 
 Records marked **revised** were changed by a later reconciliation pass.
 
