@@ -293,7 +293,11 @@ q "update evidence set raw_storage_uri = 'evidence/mars/page-2.html'
 refuses 'reference a Storage object' "a row that references a Storage object"
 
 production_shape
-q "update sources set access_mode = 'archived_full_text' where id = 'mars-newsroom';" >/dev/null
+# A registry that DISAGREES with ADR 0014. Since 0026 the database itself refuses
+# to archive a source that has not declared an open or licensed posture
+# (sources_archive_requires_established_rights), so the disagreement has to be
+# expressed the way a real one would be: archived AND declared open.
+q "update sources set access_mode = 'archived_full_text', license_mode = 'open' where id = 'mars-newsroom';" >/dev/null
 refuses 'is not access_mode reference_only' "a registry that does not say reference_only"
 
 production_shape
