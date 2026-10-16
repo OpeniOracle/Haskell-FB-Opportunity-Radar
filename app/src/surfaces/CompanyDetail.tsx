@@ -10,6 +10,7 @@ import { OwnershipTimeline } from '@/components/OwnershipTimeline'
 import { RecordLink } from '@/components/RecordLink'
 import {
   DegradedNotice,
+  IncompleteDataNotice,
   EmptyState,
   LoadingState,
   StaleNotice,
@@ -27,7 +28,8 @@ import {
   retainedStakesAsOf,
 } from '@/lib/ownership'
 import { opportunityDetailPath } from '@/lib/opportunityFilters'
-import type { Company, OrganizationRelationship } from '@/types/domain'
+import { RELATIONSHIP_DATASETS, figureIsExact } from '@/lib/completeness'
+import type { Company, OrganizationRelationship, ReadCompleteness } from '@/types/domain'
 
 /**
  * The default "as at" date for the ownership graph.
@@ -104,13 +106,28 @@ export function CompanyDetail() {
         <StaleNotice notice={state.notice} asOf={state.asOf} checkedAt={state.checkedAt} />
       )}
 
-      {hasData && <CompanyBody company={state.data} />}
+      {hasData && (
+        <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+      )}
+
+      {hasData && <CompanyBody company={state.data} completeness={state.completeness} />}
     </>
   )
 }
 
-function CompanyBody({ company }: { company: Company }) {
+function CompanyBody({
+  company,
+  completeness,
+}: {
+  company: Company
+  completeness: ReadCompleteness | undefined
+}) {
   const { search } = useLocation()
+  // "No open opportunities" and "nothing recorded" are statements about ABSENCE,
+  // which a cut-short read manufactures. Each is worded as a finding only when
+  // everything it rests on was read.
+  const opportunitiesWhole = figureIsExact(completeness, 'opportunities')
+  const recordsWhole = figureIsExact(completeness, ...RELATIONSHIP_DATASETS)
   const [, setSearchParams] = useSearchParams()
   const asOf = parseAsOf(search, today())
 
@@ -315,7 +332,9 @@ function CompanyBody({ company }: { company: Company }) {
         </h2>
         {company.openOpportunities.length === 0 ? (
           <p className="drawer__prose drawer__prose--small">
-            No open opportunities for this company.
+            {opportunitiesWhole
+              ? 'No open opportunities for this company.'
+              : 'No open opportunities were found for this company among the records that loaded, and those are incomplete.'}
           </p>
         ) : (
           <ul className="record-list">
@@ -338,7 +357,9 @@ function CompanyBody({ company }: { company: Company }) {
         </h2>
         {company.timeline.length === 0 ? (
           <p className="drawer__prose drawer__prose--small">
-            Nothing has been recorded against this company yet.
+            {recordsWhole
+              ? 'Nothing has been recorded against this company yet.'
+              : 'Nothing was found for this company among the records that loaded, and those are incomplete.'}
           </p>
         ) : (
           <ol className="timeline">

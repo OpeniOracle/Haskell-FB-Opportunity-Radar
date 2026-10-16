@@ -1,8 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { App } from '@/App'
+import { AuthProvider } from '@/auth/AuthProvider'
+import { AppShell } from '@/components/AppShell'
+import { DataSourceProvider } from '@/data/DataSourceContext'
+import { IncompleteDataNotice } from '@/components/SurfaceStates'
 import { FakeAuth, makeSession } from '@/test/authFake'
+import type { ReadCompleteness } from '@/types/domain'
 import '@/styles/tokens.css'
 import '@/styles/base.css'
 
@@ -82,16 +87,64 @@ const SCENARIOS: Record<string, () => FakeAuth> = {
     new FakeAuth({ microsoftEnabled: true, standing: 'not_invited' }),
 }
 
-const build = SCENARIOS[scenario]
-if (!build) throw new Error(`Unknown harness scenario: ${scenario}`)
-
 const container = document.getElementById('root')
 if (!container) throw new Error('Root element #root is missing.')
 
-createRoot(container).render(
-  <StrictMode>
-    <BrowserRouter>
-      <App authPort={build()} />
-    </BrowserRouter>
-  </StrictMode>,
-)
+/*
+   THE INCOMPLETE-DATA NOTICE, INSIDE THE REAL SHELL.
+
+   Not an authentication screen, so it does not go through `App`: it mounts the
+   real shell and the real component against the real stylesheet, with a
+   completeness report shaped like the worst realistic one (three short
+   datasets, long labels). What is measured is that the notice stays inside the
+   viewport, wraps rather than overflowing, and that its disclosure works -- the
+   things jsdom cannot see because it has no layout engine.
+*/
+const SAMPLE_COMPLETENESS: ReadCompleteness = {
+  complete: false,
+  datasets: [
+    { dataset: 'evidence', label: 'evidence records', status: 'truncated', returned: 1000, total: 1500, limit: 1000 },
+    { dataset: 'signal_evidence', label: 'signal–evidence links', status: 'truncated', returned: 1000, total: 12345, limit: 1000 },
+    { dataset: 'account_source_expectations', label: 'coverage expectations', status: 'indeterminate', returned: 1000, total: null, limit: 1000 },
+  ],
+}
+
+if (scenario === 'incomplete-notice') {
+  createRoot(container).render(
+    <StrictMode>
+      <BrowserRouter>
+        <AuthProvider port={new FakeAuth({ initialSession: makeSession() })}>
+          <DataSourceProvider>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route
+                path="*"
+                element={
+                  <>
+                    <h1 className="page-head__title">Daily Pulse</h1>
+                    <IncompleteDataNotice completeness={SAMPLE_COMPLETENESS} checkedAt="2026-10-16T12:00:00Z" />
+                  </>
+                }
+              />
+            </Route>
+          </Routes>
+          </DataSourceProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </StrictMode>,
+  )
+} else {
+  mountAuthScenario(container)
+}
+
+function mountAuthScenario(root: HTMLElement) {
+  const build = SCENARIOS[scenario]
+  if (!build) throw new Error(`Unknown harness scenario: ${scenario}`)
+  createRoot(root).render(
+    <StrictMode>
+      <BrowserRouter>
+        <App authPort={build()} />
+      </BrowserRouter>
+    </StrictMode>,
+  )
+}

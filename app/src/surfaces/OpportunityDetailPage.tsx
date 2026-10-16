@@ -5,6 +5,7 @@ import { IllustrativeNote } from '@/components/Illustrative'
 import { OpportunityDetail } from '@/components/OpportunityDetail'
 import {
   DegradedNotice,
+  IncompleteDataNotice,
   EmptyState,
   LoadingState,
   StaleNotice,
@@ -50,6 +51,14 @@ export function OpportunityDetailPage() {
     : undefined
 
   const backToList = { pathname: '/opportunities', search }
+  // Only the opportunities read decides this: an address is looked up among the
+  // opportunities that loaded, so a cut-short link table does not make a missing
+  // address "unknown". Absent completeness makes no claim, so a fixture reads as
+  // whole.
+  const listIsWhole =
+    !hasData ||
+    !state.completeness ||
+    state.completeness.datasets.find((d) => d.dataset === 'opportunities')?.status === 'complete'
 
   return (
     <>
@@ -66,12 +75,15 @@ export function OpportunityDetailPage() {
           address against. Distinct from "no such opportunity", which means the
           set exists and this id is not in it. */}
       {state.kind === 'empty' && (
-        <EmptyState
-          title="No opportunities to open"
-          body={state.reason}
-          next="This address will resolve once opportunities have been ranked."
-          checkedAt={state.checkedAt}
-        />
+        <>
+          <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+          <EmptyState
+            title="No opportunities to open"
+            body={state.reason}
+            next="This address will resolve once opportunities have been ranked."
+            checkedAt={state.checkedAt}
+          />
+        </>
       )}
 
       {state.kind === 'unavailable' && (
@@ -95,11 +107,29 @@ export function OpportunityDetailPage() {
         <StaleNotice notice={state.notice} asOf={state.asOf} checkedAt={state.checkedAt} />
       )}
 
+      {hasData && (
+        <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+      )}
+
+      {/*
+        "NO SUCH OPPORTUNITY" IS A FINDING ONLY IF THE WHOLE LIST WAS READ.
+
+        The page resolves an address against the opportunities that LOADED. When
+        the read was cut short, an address that matches nothing may name a real
+        opportunity that is past the cap, and telling someone with a valid link
+        that it does not exist would be a false statement made from a partial
+        read. The two cases are worded differently, and neither shows a
+        neighbouring record.
+      */}
       {hasData && !opportunity && (
         <UnavailableState
-          title="No such opportunity"
-          reason="That address does not match any opportunity. Nothing has been opened, and no other record has been shown in its place."
-          blockedBy={`Unknown identifier: ${opportunityId ?? '(none)'}`}
+          title={listIsWhole ? 'No such opportunity' : 'This opportunity did not load'}
+          reason={
+            listIsWhole
+              ? 'That address does not match any opportunity. Nothing has been opened, and no other record has been shown in its place.'
+              : 'That address is not among the opportunities that loaded, and the list is incomplete, so the opportunity may exist but could not be opened here. No other record has been shown in its place.'
+          }
+          blockedBy={`${listIsWhole ? 'Unknown identifier' : 'Not among the records loaded'}: ${opportunityId ?? '(none)'}`}
           checkedAt={state.checkedAt}
           role="status"
         />

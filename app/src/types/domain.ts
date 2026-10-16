@@ -158,6 +158,12 @@ export interface FacilityRef {
 
 export interface EvidenceSummary {
   count: number
+  /**
+   * True when `count` can only be a floor: the links from this opportunity to
+   * its signals and documents were read from a table the database cut short, so
+   * documents may exist that this record cannot see. Absent means exact.
+   */
+  countIsLowerBound?: boolean
   independentPublishers: number
   newestRetrievedAt: string
   /** Highest access mode present across the supporting evidence. */
@@ -318,6 +324,15 @@ export interface CoverageSummary {
   accountsBelowExpected: number
   /** Named so the surface can say WHICH accounts are uncovered, per ADR 0010. */
   accountsUncovered: string[]
+  /**
+   * True when the links coverage is computed from were read incompletely.
+   *
+   * Coverage is derived: an account is "covered" when a signal links it to the
+   * source. A missing link does not mean a missing document -- it means the
+   * figure may OVERSTATE the gap -- so this is not a floor but a caution, and
+   * the surface says "may be overstated" rather than "at least".
+   */
+  mayBeOverstated?: boolean
 }
 
 export interface ConnectorHealthSummary {
@@ -331,10 +346,16 @@ export interface ConnectorHealthSummary {
 /**
  * The four counts Daily Pulse leads with.
  *
- * These are COUNTS OF RECORDS, not estimates: each one is the number of rows a
- * query returned. `newSignalCount` is bounded by a stated window rather than by
- * "since your last visit", because there is no stored last-visit time and
- * pretending there is would make the number unreproducible.
+ * These are COUNTS OF RECORDS, not estimates -- with one condition. A dataset's
+ * count is the TOTAL THE DATABASE REPORTED when it reported one, and otherwise
+ * the number of rows that came back, in which case `lowerBounds` says so and the
+ * surface must show it as "at least". A query cut short never yields a count
+ * presented as the whole: that is the failure this field exists to prevent.
+ *
+ * `newSignalCount` is bounded by a stated window rather than by "since your last
+ * visit", because there is no stored last-visit time and pretending there is
+ * would make the number unreproducible. It is counted over the signals that were
+ * LOADED, so it is a floor whenever the signals read was incomplete.
  */
 export interface PulseHeadline {
   opportunityCount: number
@@ -344,6 +365,13 @@ export interface PulseHeadline {
   newSignalWindowDays: number
   evidenceCount: number
   latestEvidenceAt: string | null
+  /** Which of the counts above are floors. Absent, or false, means exact. */
+  lowerBounds?: {
+    opportunityCount: boolean
+    signalCount: boolean
+    newSignalCount: boolean
+    evidenceCount: boolean
+  }
 }
 
 /** One collected document, as Daily Pulse lists it. */
@@ -367,6 +395,8 @@ export interface PulseOpportunityItem {
   confidenceLevel: ConfidenceLevel
   sourceDate: OpportunityDate | null
   evidenceCount: number
+  /** `evidenceCount` is a floor, not a total. See `EvidenceSummary.countIsLowerBound`. */
+  evidenceCountIsLowerBound?: boolean
   distinguisher: string | null
 }
 
@@ -431,7 +461,82 @@ export type SurfaceStatus<T> =
  * has to answer, and it is the one a user cannot infer from anything else on
  * screen. A surface that cannot show its data can still show when it tried.
  */
-export type SurfaceState<T> = SurfaceStatus<T> & { checkedAt: string | null }
+export type SurfaceState<T> = SurfaceStatus<T> & {
+  checkedAt: string | null
+  /**
+   * Whether every read behind this surface returned everything it was asked for.
+   *
+   * ORTHOGONAL TO `kind`. A surface can be `ready` -- every source collected on
+   * time -- and still be built from a read the database cut short, and the two
+   * are separate facts that must not be folded together: freshness says how
+   * current the records are, this says whether the records are all there.
+   *
+   * Absent means "not applicable": a fixture, a single-record lookup, or a
+   * state that carries no data. The live provider sets it on every state that
+   * does carry data, and `readTruncation.test.ts` fails if one does not.
+   */
+  completeness?: ReadCompleteness
+}
+
+/* --------------------------------------------------- Read completeness */
+
+/**
+ * The queries a surface can be built from.
+ *
+ * A closed vocabulary rather than a table name, so a surface can ask "is the
+ * evidence read complete?" without a typo turning the answer into `true`.
+ */
+export type DatasetKey =
+  | 'organizations'
+  | 'opportunities'
+  | 'signals'
+  | 'evidence'
+  | 'opportunity_signals'
+  | 'signal_evidence'
+  | 'sources'
+  | 'account_source_expectations'
+  | 'source_runs'
+  | 'organization_locations'
+  | 'opportunity_locations'
+  | 'change_events'
+
+/**
+ * The five things a read can turn out to be.
+ *
+ * `complete`       every row the database holds for this query came back.
+ * `truncated`      the database reported a total and fewer rows came back.
+ * `indeterminate`  rows came back but the total could not be established, so
+ *                  nothing can be said about whether they are all of them.
+ * `limited`        the read asks for a bounded slice BY DESIGN (the latest N);
+ *                  it is not a claim to be the whole set and is not a fault.
+ * `failed`         the read errored, and the surface can still say something
+ *                  without it. A failure the surface cannot work around makes
+ *                  the whole surface `unavailable` instead.
+ */
+export type DatasetStatus = 'complete' | 'truncated' | 'indeterminate' | 'limited' | 'failed'
+
+export interface DatasetReadReport {
+  dataset: DatasetKey
+  /** What a person calls it: "evidence records", not `evidence`. */
+  label: string
+  status: DatasetStatus
+  /** Rows that came back. */
+  returned: number
+  /** Rows the database holds for the query. Null when it could not be established. */
+  total: number | null
+  /** The most rows the read asked for. */
+  limit: number
+}
+
+export interface ReadCompleteness {
+  /**
+   * True only when no dataset behind the surface is `truncated`,
+   * `indeterminate` or `failed`. A `limited` dataset is not a fault.
+   */
+  complete: boolean
+  /** Only the datasets this surface actually depends on. */
+  datasets: DatasetReadReport[]
+}
 
 /** Provenance of everything on screen. PR 1 is always `fixture`. */
 export interface DataSourceMeta {
@@ -550,6 +655,8 @@ export interface CompanySummary {
   openOpportunityCount: number
   /** Signals recorded against this account, opportunity-bearing or not. */
   signalCount: number
+  /** Which of the counts above are floors. Absent, or false, means exact. */
+  lowerBounds?: { openOpportunityCount: boolean; signalCount: boolean }
   /** When a document about this account was last published or collected. */
   latestEvidenceAt: string | null
   /**
@@ -757,6 +864,19 @@ export interface ConnectorActivity {
   evidenceStored: number
   signalsCreated: number
   opportunitiesCreated: number
+  /**
+   * Which of the counts above are floors. Absent, or false, means exact.
+   *
+   * `documentsDiscovered` is summed over the run history that was LOADED, so it
+   * is a floor when older runs were not read. `evidenceStored`, `signalsCreated`
+   * and `opportunitiesCreated` are counted over loaded rows and recorded links.
+   */
+  lowerBounds?: {
+    documentsDiscovered: boolean
+    evidenceStored: boolean
+    signalsCreated: boolean
+    opportunitiesCreated: boolean
+  }
 }
 
 /**
@@ -812,6 +932,12 @@ export interface SourceHealthSnapshot {
   connectors: ConnectorRecord[]
   coverage: CompanyCoverageRow[]
   lastCycleCompletedAt: string
+  /**
+   * True when the signals, links or expectations coverage is derived from were
+   * read incompletely. A missing link reads as a gap, so the number of accounts
+   * "below expected" may be too HIGH -- a caution, not a floor.
+   */
+  coverageMayBeOverstated?: boolean
 }
 
 /* -------------------------------------------- Spyglass media intelligence */
@@ -950,6 +1076,12 @@ export interface MapSnapshot {
   markers: MapMarker[]
   unlocated: UnlocatedOpportunity[]
   generatedAt: string
+  /**
+   * True when the marker and unlocated counts can only be floors: the location
+   * rows, or the opportunities they attach to, were read incompletely, so a
+   * project may exist that is neither pinned nor listed here.
+   */
+  countsAreLowerBounds?: boolean
 }
 
 /*

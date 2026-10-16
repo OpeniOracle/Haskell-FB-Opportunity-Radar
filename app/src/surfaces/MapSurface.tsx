@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import maplibregl, { type Map as MapLibreMap, type Marker as MapLibreMarker } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { Count } from '@/components/Count'
 import { Icon } from '@/components/Icon'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { StatusPill } from '@/components/StatusPill'
 import {
   EmptyState,
+  IncompleteDataNotice,
   LoadingState,
   DegradedNotice,
   StaleNotice,
@@ -79,12 +81,15 @@ export function MapSurface() {
       {state.kind === 'loading' && <LoadingState label="Loading project locations" rows={2} />}
 
       {state.kind === 'empty' && (
-        <EmptyState
-          title="Nothing has been placed on the map yet"
-          body={state.reason}
-          next="Locations are extracted from collected filings by the location resolver."
-          checkedAt={state.checkedAt}
-        />
+        <>
+          <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+          <EmptyState
+            title="Nothing has been placed on the map yet"
+            body={state.reason}
+            next="Locations are extracted from collected filings by the location resolver."
+            checkedAt={state.checkedAt}
+          />
+        </>
       )}
 
       {state.kind === 'unavailable' && (
@@ -106,6 +111,10 @@ export function MapSurface() {
 
       {state.kind === 'stale' && (
         <StaleNotice notice={state.notice} asOf={state.asOf} checkedAt={state.checkedAt} />
+      )}
+
+      {hasData && (
+        <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
       )}
 
       {hasData && <MapWorkspace snapshot={state.data} />}
@@ -218,12 +227,15 @@ function MapWorkspace({ snapshot }: { snapshot: MapSnapshot }) {
 
       <div className="results" role="status">
         <p className="results__count">
-          <strong>{projects.length}</strong>{' '}
-          {projects.length === 1 ? 'project location' : 'project locations'}
+          <strong>
+            <Count value={projects.length} exact={!snapshot.countsAreLowerBounds} />
+          </strong>{' '}
+          {projects.length === 1 && !snapshot.countsAreLowerBounds ? 'project location' : 'project locations'}
           {context.length > 0 && (
             <span className="results__filtered">
               {' '}
-              · {context.length} account {context.length === 1 ? 'marker' : 'markers'}
+              · <Count value={context.length} exact={!snapshot.countsAreLowerBounds} /> account{' '}
+              {context.length === 1 && !snapshot.countsAreLowerBounds ? 'marker' : 'markers'}
             </span>
           )}
           {activeCount > 0 && <span className="results__filtered"> · filtered</span>}
@@ -275,10 +287,14 @@ function MapWorkspace({ snapshot }: { snapshot: MapSnapshot }) {
             <h2 className="section__title" id="unlocated-title">
               Unlocated opportunities
             </h2>
-            <span className="section__count">{snapshot.unlocated.length}</span>
+            <span className="section__count">
+              <Count value={snapshot.unlocated.length} exact={!snapshot.countsAreLowerBounds} />
+            </span>
             {snapshot.unlocated.length === 0 ? (
               <p className="map-aside__hint">
-                Every opportunity on record has a location from its source document.
+                {snapshot.countsAreLowerBounds
+                  ? 'Every opportunity that loaded has a location, but some records did not load, so this cannot be taken as every opportunity on record.'
+                  : 'Every opportunity on record has a location from its source document.'}
               </p>
             ) : (
               <ul className="map-unlocated__list">

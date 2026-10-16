@@ -2,11 +2,13 @@ import { useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { CoverageCard } from '@/components/CoverageCard'
 import { FutureTimestampWarning, RecordedAt } from '@/components/RecordedAt'
+import { Count } from '@/components/Count'
 import { Icon } from '@/components/Icon'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { StatusPill, type PillTone } from '@/components/StatusPill'
 import {
   DegradedNotice,
+  IncompleteDataNotice,
   EmptyState,
   LoadingState,
   StaleNotice,
@@ -97,12 +99,15 @@ export function SourceHealth() {
       {state.kind === 'loading' && <LoadingState label="Loading source health" rows={2} />}
 
       {state.kind === 'empty' && (
-        <EmptyState
-          title="No sources configured"
-          body={state.reason}
-          next="Health and coverage appear here once a source is enabled."
-          checkedAt={state.checkedAt}
-        />
+        <>
+          <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+          <EmptyState
+            title="No sources configured"
+            body={state.reason}
+            next="Health and coverage appear here once a source is enabled."
+            checkedAt={state.checkedAt}
+          />
+        </>
       )}
 
       {state.kind === 'unavailable' && (
@@ -124,6 +129,10 @@ export function SourceHealth() {
 
       {state.kind === 'stale' && (
         <StaleNotice notice={state.notice} asOf={state.asOf} checkedAt={state.checkedAt} />
+      )}
+
+      {hasData && (
+        <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
       )}
 
       {hasData && <HealthBody snapshot={state.data} />}
@@ -156,9 +165,16 @@ function HealthBody({ snapshot }: { snapshot: SourceHealthSnapshot }) {
             <strong>
               {healthy} of {snapshot.connectors.length} connectors are healthy, and{' '}
               {underCovered.length}{' '}
-              {underCovered.length === 1 ? 'company is' : 'companies are'} still below
-              expected coverage.{' '}
+              {underCovered.length === 1 ? 'company is' : 'companies are'}
+              {snapshot.coverageMayBeOverstated ? ' shown as' : ''} still below expected
+              coverage.{' '}
             </strong>
+            {snapshot.coverageMayBeOverstated && (
+              <>
+                Some of the records coverage is built from did not load, so this may be
+                overstated.{' '}
+              </>
+            )}
             A healthy connector fleet does not mean complete monitoring. These two figures
             are tracked separately and neither substitutes for the other.
           </span>
@@ -321,19 +337,30 @@ function ConnectorCard({ connector }: { connector: ConnectorRecord }) {
       <dl className="connector__facts">
         <div className="fact">
           <dt>Documents discovered</dt>
-          <dd>{activity.documentsDiscovered}</dd>
+          <dd>
+            <Count value={activity.documentsDiscovered} exact={!activity.lowerBounds?.documentsDiscovered} />
+          </dd>
         </div>
         <div className="fact">
           <dt>Evidence stored</dt>
-          <dd>{activity.evidenceStored}</dd>
+          <dd>
+            <Count value={activity.evidenceStored} exact={!activity.lowerBounds?.evidenceStored} />
+          </dd>
         </div>
         <div className="fact">
           <dt>Signals created</dt>
-          <dd>{activity.signalsCreated}</dd>
+          <dd>
+            <Count value={activity.signalsCreated} exact={!activity.lowerBounds?.signalsCreated} />
+          </dd>
         </div>
         <div className="fact">
           <dt>Opportunities created</dt>
-          <dd>{activity.opportunitiesCreated}</dd>
+          <dd>
+            <Count
+              value={activity.opportunitiesCreated}
+              exact={!activity.lowerBounds?.opportunitiesCreated}
+            />
+          </dd>
         </div>
         <div className="fact">
           <dt>Last run</dt>

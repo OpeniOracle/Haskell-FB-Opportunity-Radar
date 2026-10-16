@@ -12,7 +12,8 @@
 |---|---|---|---|
 | `claude/modest-fermi-eu1kn3` (**documentation branch**), head `a279d17` | Doc 18 (Phase 2 engineering audit and data-activation plan), doc 19 (research reconciliation and evidence-quality plan), doc 19a (appendices) | **Never** | **No** |
 | `claude/phase2-pr1-ingestion-integrity` | Roadmap PR 1 (ingestion integrity) | Yes | **Merged** as PR #17, merge commit `689eb56` |
-| `claude/phase2-r1-5-synthetic-regression-harness` (**implementation branch**) | This document and the synthetic regression harness (roadmap R1.5) | Tests only | No (open PR) |
+| `claude/phase2-r1-5-synthetic-regression-harness` | This document and the synthetic regression harness (roadmap R1.5) | Tests only | **Merged** as PR #18, merge commit `17d681b` |
+| `claude/phase2-r2-5-read-truncation-guard` (**implementation branch**) | R2.5, the read-truncation guard (doc 21) | Yes (read model and UI reporting) | No (open PR) |
 
 Docs 18, 19 and 19a are **preserved unchanged** on the documentation branch and are cited here by commit, not copied:
 `https://github.com/OpeniOracle/Haskell-FB-Opportunity-Radar/tree/a279d1756cd8cc6dc5cd82d8d1981d0e9966392a/docs/design`.
@@ -64,9 +65,9 @@ This replaces the ordering in doc 18 §11 and doc 19 §11 without editing either
 | Order | PR | State | Contents | Depends on |
 |---:|---|---|---|---|
 | 1 | R1 — ingestion integrity | **Merged** (#17, `689eb56`) | Stale-run recovery, honest skips/partials, access-mode enforcement, unexecuted remediation SQL | — |
-| 2 | **R1.5 — synthetic regression harness** | **This PR** (open, not merged) | Tests and a diagnostic report only; **no behaviour change** | — |
+| 2 | R1.5 — synthetic regression harness | **Merged** (#18, `17d681b`) | Tests and a diagnostic report only; **no behaviour change** | — |
 | 3 | R2 — schema | Needs authorisation | Provenance/fingerprints, identifier vocabulary, jobs/tasks, **plus** `review_state` (D-R1), `project_lifecycle` + `commercial_qualification` (D-R3), `sources.rights_class` (D-R2), `evidence.origin_key`, `signals.event_date_role` | 1 |
-| 4 | R2.5 — read-truncation guard | Needs authorisation | Deterministic order and a visible "showing N of M" on the 1,000-row reads — **before** any large source | 1 |
+| 4 | **R2.5 — read-truncation guard** | **Implemented in its own PR, awaiting review** (design: doc 21) | Deterministic order, database totals, and a visible "showing N of M" on the 1,000-row reads — **before** any large source. Reports truncation; does not paginate | 1 |
 | 5 | R3 — derivation correctness | Needs authorisation | Repairs the defects R1.5 pins; each repair retires its markers | 2, 3 |
 | 6 | R4 — durable execution | Needs authorisation | Dispatcher, worker, heartbeat, re-dispatch | 3 |
 | 7 | R5a — SEC exhibit repair | Needs authorisation | Exhibit discovery by document type, fixture-based, no cohort change | 5 |

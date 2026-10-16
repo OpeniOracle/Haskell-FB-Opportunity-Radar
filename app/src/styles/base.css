@@ -1779,6 +1779,21 @@ a {
   border-color: var(--c-border);
 }
 
+/* The incomplete-data notice lists what is short. A list, not a paragraph:
+   "1,000 of 1,500 evidence records" is what a reader came to find. */
+.notice__list {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-5);
+}
+
+.notice__list li {
+  margin: 0;
+}
+
+.notice__detail p {
+  margin: var(--sp-1) 0 0;
+}
+
 .notice strong {
   color: inherit;
 }

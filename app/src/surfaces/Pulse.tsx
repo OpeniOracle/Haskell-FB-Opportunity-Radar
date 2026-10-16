@@ -1,9 +1,11 @@
 import { useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Icon, type IconName } from '@/components/Icon'
+import { Count } from '@/components/Count'
 import {
   DegradedNotice,
   EmptyState,
+  IncompleteDataNotice,
   LoadingState,
   StaleNotice,
   UnavailableState,
@@ -85,12 +87,15 @@ export function Pulse() {
       {state.kind === 'loading' && <LoadingState label="Loading the daily pulse" rows={2} />}
 
       {state.kind === 'empty' && (
-        <EmptyState
-          title="You’re caught up"
-          body={state.reason}
-          next="The next collection cycle runs automatically."
-          checkedAt={state.checkedAt}
-        />
+        <>
+          <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+          <EmptyState
+            title="You’re caught up"
+            body={state.reason}
+            next="The next collection cycle runs automatically."
+            checkedAt={state.checkedAt}
+          />
+        </>
       )}
 
       {state.kind === 'unavailable' && (
@@ -118,14 +123,32 @@ export function Pulse() {
         />
       )}
 
-      {hasData && <PulseBody snapshot={state.data} />}
+      {/* Said BEFORE the figures it qualifies, and absent when the read was whole. */}
+      {hasData && (
+        <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+      )}
+
+      {hasData && (
+        <PulseBody
+          snapshot={state.data}
+          changesLimit={
+            // The feed is the latest N by design. Said where it is listed, so it
+            // is never read as the complete history.
+            state.completeness?.datasets.find(
+              (d) => d.dataset === 'change_events' && d.status === 'limited' && d.returned >= d.limit,
+            )?.limit ?? null
+          }
+        />
+      )}
     </>
   )
 }
 
-function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
+function PulseBody({ snapshot, changesLimit }: { snapshot: PulseSnapshot; changesLimit: number | null }) {
   const { coverage, connectorHealth, headline, changesSinceLastVisit } = snapshot
+  const floor = headline.lowerBounds
   const { search } = useLocation()
+  const feedNote = changesLimit ? `Newest first · latest ${changesLimit} changes only` : 'Newest first'
 
   const byRecency = [...changesSinceLastVisit].sort((a, b) =>
     b.occurredAt.localeCompare(a.occurredAt),
@@ -147,6 +170,7 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
               Needs attention today
             </h2>
             <span className="section__count">{attention.length}</span>
+            {changesLimit && <span className="section__note">From the latest {changesLimit} changes</span>}
           </div>
           <div className="attention-list">
             {attention.map((change) => (
@@ -161,7 +185,9 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
           <h2 className="stat__label" id="stat-opportunities">
             <Icon name="target" className="stat__icon" /> Opportunities
           </h2>
-          <p className="stat__value">{headline.opportunityCount}</p>
+          <p className="stat__value">
+            <Count value={headline.opportunityCount} exact={!floor?.opportunityCount} />
+          </p>
           <p className="stat__note">Derived from collected filings</p>
         </section>
 
@@ -170,14 +196,16 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
             <Icon name="spark" className="stat__icon" /> Signals
           </h2>
           <p className="stat__value">
-            {headline.newSignalCount}
-            <span className="stat__of">/{headline.signalCount}</span>
+            <Count value={headline.newSignalCount} exact={!floor?.newSignalCount} />
+            <span className="stat__of">
+              /<Count value={headline.signalCount} exact={!floor?.signalCount} />
+            </span>
           </p>
           {/* The window is stated, because "new" is meaningless without one and
               there is no stored last-visit time to measure against. */}
           <p className="stat__note">
-            New in the last {headline.newSignalWindowDays} days, of {headline.signalCount}{' '}
-            on record
+            New in the last {headline.newSignalWindowDays} days, of{' '}
+            <Count value={headline.signalCount} exact={!floor?.signalCount} /> on record
           </p>
         </section>
 
@@ -185,7 +213,9 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
           <h2 className="stat__label" id="stat-evidence">
             <Icon name="document" className="stat__icon" /> Evidence
           </h2>
-          <p className="stat__value">{headline.evidenceCount}</p>
+          <p className="stat__value">
+            <Count value={headline.evidenceCount} exact={!floor?.evidenceCount} />
+          </p>
           <p className="stat__note">
             {headline.latestEvidenceAt
               ? `Newest ${absoluteDate(headline.latestEvidenceAt)}`
@@ -245,8 +275,8 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
                   </h3>
                   <p className="change__detail">
                     {item.distinguisher ?? `${item.confidenceLevel} confidence`} ·{' '}
-                    {item.evidenceCount}{' '}
-                    {item.evidenceCount === 1 ? 'document' : 'documents'}
+                    <Count value={item.evidenceCount} exact={!item.evidenceCountIsLowerBound} />{' '}
+                    {item.evidenceCount === 1 && !item.evidenceCountIsLowerBound ? 'document' : 'documents'}
                   </p>
                 </div>
                 <span className="change__when">
@@ -388,6 +418,11 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
           {coverage.accountsUncovered.length > 0 && (
             <> Below expected: {coverage.accountsUncovered.join(', ')}.</>
           )}
+          {/* Coverage is DERIVED from links, and a link that did not load reads as
+              a gap. Said beside the figure rather than only in the notice. */}
+          {coverage.mayBeOverstated && (
+            <> Some of the records this is built from did not load, so a gap may be overstated.</>
+          )}
         </p>
       </section>
 
@@ -398,7 +433,7 @@ function PulseBody({ snapshot }: { snapshot: PulseSnapshot }) {
               Other market changes
             </h2>
             <span className="section__count">{market.length}</span>
-            <span className="section__note">Newest first</span>
+            <span className="section__note">{feedNote}</span>
           </div>
           <div className="change-list">
             {market.map((change) => (

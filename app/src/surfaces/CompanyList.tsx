@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { Count } from '@/components/Count'
 import { Icon } from '@/components/Icon'
 import { RecordedAt } from '@/components/RecordedAt'
 import { IllustrativeNote } from '@/components/Illustrative'
 import { StatusPill } from '@/components/StatusPill'
 import {
   DegradedNotice,
+  IncompleteDataNotice,
   EmptyState,
   LoadingState,
   StaleNotice,
@@ -15,8 +17,9 @@ import { useDataSource } from '@/data/DataSourceContext'
 import { useSurfaceData } from '@/hooks/useSurfaceData'
 import { absoluteDate } from '@/lib/format'
 import { companyPath, opportunityPath } from '@/lib/links'
+import { RELATIONSHIP_DATASETS, figureIsExact } from '@/lib/completeness'
 import { countsTowardRelevanceMetrics } from '@/lib/ownership'
-import type { CompanySummary } from '@/types/domain'
+import type { CompanySummary, ReadCompleteness } from '@/types/domain'
 
 type CoverageFilter = 'any' | 'covered' | 'below'
 type ClassFilter = 'any' | 'confirmed' | 'provisional'
@@ -56,12 +59,15 @@ export function CompanyList() {
       {state.kind === 'loading' && <LoadingState label="Loading companies" rows={3} />}
 
       {state.kind === 'empty' && (
-        <EmptyState
-          title="No companies to show"
-          body={state.reason}
-          next="Companies appear here once identity resolution has run."
-          checkedAt={state.checkedAt}
-        />
+        <>
+          <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+          <EmptyState
+            title="No companies to show"
+            body={state.reason}
+            next="Companies appear here once identity resolution has run."
+            checkedAt={state.checkedAt}
+          />
+        </>
       )}
 
       {state.kind === 'unavailable' && (
@@ -85,13 +91,28 @@ export function CompanyList() {
         <StaleNotice notice={state.notice} asOf={state.asOf} checkedAt={state.checkedAt} />
       )}
 
-      {hasData && <CompanyWorkspace companies={state.data} />}
+      {hasData && (
+        <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+      )}
+
+      {hasData && <CompanyWorkspace companies={state.data} completeness={state.completeness} />}
     </>
   )
 }
 
-function CompanyWorkspace({ companies }: { companies: CompanySummary[] }) {
+function CompanyWorkspace({
+  companies,
+  completeness,
+}: {
+  companies: CompanySummary[]
+  completeness: ReadCompleteness | undefined
+}) {
   const { search } = useLocation()
+  const accounts = completeness?.datasets.find((d) => d.dataset === 'organizations')
+  // "No evidence linked" and "no signal here" are statements about ABSENCE, and
+  // absence is exactly what a cut-short read of the links produces.
+  const linksWhole = figureIsExact(completeness, ...RELATIONSHIP_DATASETS)
+  const signalsWhole = figureIsExact(completeness, 'signals', 'signal_evidence')
   const [term, setTerm] = useState('')
   const [coverage, setCoverage] = useState<CoverageFilter>('any')
   const [classification, setClassification] = useState<ClassFilter>('any')
@@ -204,7 +225,12 @@ function CompanyWorkspace({ companies }: { companies: CompanySummary[] }) {
 
       <div className="results" role="status">
         <p className="results__count">
-          <strong>{visible.length}</strong> of {companies.length} companies
+          <strong>{visible.length}</strong> of{' '}
+          <Count value={companies.length} exact={!accounts || accounts.status === 'complete'} />{' '}
+          {accounts?.status === 'truncated' ? 'loaded companies' : 'companies'}
+          {accounts?.status === 'truncated' && accounts.total !== null && (
+            <span className="results__filtered"> · {accounts.total.toLocaleString('en-US')} stored</span>
+          )}
           {activeFilters > 0 && <span className="results__filtered"> · filtered</span>}
         </p>
         <p className="results__preview-note">
@@ -228,7 +254,13 @@ function CompanyWorkspace({ companies }: { companies: CompanySummary[] }) {
             Matching companies
           </h2>
           {visible.map((company) => (
-            <CompanyRow key={company.id} company={company} search={search} />
+            <CompanyRow
+              key={company.id}
+              company={company}
+              search={search}
+              linksWhole={linksWhole}
+              signalsWhole={signalsWhole}
+            />
           ))}
         </div>
       )}
@@ -251,9 +283,13 @@ function isFullyCovered(company: CompanySummary): boolean {
 function CompanyRow({
   company,
   search,
+  linksWhole,
+  signalsWhole,
 }: {
   company: CompanySummary
   search: string
+  linksWhole: boolean
+  signalsWhole: boolean
 }) {
   const headingId = `company-${company.id}`
   const underCovered = company.coverage.missingSources.length > 0
@@ -306,24 +342,34 @@ function CompanyRow({
         <div className="opp__meta">
           <span className="opp__meta-item">
             <Icon name="target" className="opp__meta-icon" />
-            {company.openOpportunityCount}{' '}
-            {company.openOpportunityCount === 1 ? 'opportunity' : 'opportunities'}
+            <Count
+              value={company.openOpportunityCount}
+              exact={!company.lowerBounds?.openOpportunityCount}
+            />{' '}
+            {company.openOpportunityCount === 1 && !company.lowerBounds?.openOpportunityCount
+              ? 'opportunity'
+              : 'opportunities'}
           </span>
           <span className="opp__meta-item">
             <Icon name="spark" className="opp__meta-icon" />
-            {company.signalCount} {company.signalCount === 1 ? 'signal' : 'signals'}
+            <Count value={company.signalCount} exact={!company.lowerBounds?.signalCount} />{' '}
+            {company.signalCount === 1 && !company.lowerBounds?.signalCount ? 'signal' : 'signals'}
           </span>
           <span className="opp__meta-item">
             <Icon name="document" className="opp__meta-icon" />
             {company.latestEvidenceAt
               ? `Latest evidence ${absoluteDate(company.latestEvidenceAt)}`
-              : 'No evidence linked yet'}
+              : linksWhole
+                ? 'No evidence linked yet'
+                : 'No evidence found among the records that loaded'}
           </span>
           <span className="opp__meta-item">
             <Icon name="settings" className="opp__meta-icon" />
             {company.coverage.observedSources.length > 0
               ? `Covered by ${company.coverage.observedSources.join(', ')}`
-              : 'No source has produced a signal here'}
+              : signalsWhole
+                ? 'No source has produced a signal here'
+                : 'No signal found among the records that loaded'}
           </span>
           {company.latestActivityAt && (
             <span className="opp__meta-item">

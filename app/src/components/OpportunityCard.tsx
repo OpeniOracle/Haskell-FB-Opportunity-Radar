@@ -1,3 +1,4 @@
+import { Count } from '@/components/Count'
 import { Icon, type IconName } from '@/components/Icon'
 import { StatusPill, type PillTone } from '@/components/StatusPill'
 import type { Opportunity, OpportunityStage } from '@/types/domain'
@@ -146,7 +147,8 @@ export function OpportunityCard({
           )}
           <span className="opp__meta-item">
             <Icon name="document" className="opp__meta-icon" />
-            {evidence.count} {evidence.count === 1 ? 'document' : 'documents'}
+            <Count value={evidence.count} exact={!evidence.countIsLowerBound} />{' '}
+            {evidence.count === 1 && !evidence.countIsLowerBound ? 'document' : 'documents'}
             {source?.documentType && ` · ${source.documentType}`}
           </span>
         </div>
