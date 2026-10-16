@@ -6,6 +6,7 @@ import { OpportunityDrawer } from '@/components/OpportunityDrawer'
 import { OpportunityFilters } from '@/components/OpportunityFilters'
 import {
   DegradedNotice,
+  IncompleteDataNotice,
   EmptyState,
   LoadingState,
   StaleNotice,
@@ -21,7 +22,8 @@ import {
   regionOptions,
   type OpportunityQuery,
 } from '@/lib/opportunityFilters'
-import type { Opportunity, OpportunityStatus } from '@/types/domain'
+import { Count } from '@/components/Count'
+import type { DatasetReadReport, Opportunity, OpportunityStatus, ReadCompleteness } from '@/types/domain'
 
 /**
  * Opportunities — a comparison surface.
@@ -63,12 +65,15 @@ export function Opportunities() {
       )}
 
       {state.kind === 'empty' && (
-        <EmptyState
-          title="No opportunities to review"
-          body={state.reason}
-          next="New opportunities appear here as evidence is collected."
-          checkedAt={state.checkedAt}
-        />
+        <>
+          <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+          <EmptyState
+            title="No opportunities to review"
+            body={state.reason}
+            next="New opportunities appear here as evidence is collected."
+            checkedAt={state.checkedAt}
+          />
+        </>
       )}
 
       {state.kind === 'unavailable' && (
@@ -92,12 +97,27 @@ export function Opportunities() {
         <StaleNotice notice={state.notice} asOf={state.asOf} checkedAt={state.checkedAt} />
       )}
 
-      {hasData && <OpportunityWorkspace opportunities={state.data} />}
+      {hasData && (
+        <IncompleteDataNotice completeness={state.completeness} checkedAt={state.checkedAt} />
+      )}
+
+      {hasData && (
+        <OpportunityWorkspace opportunities={state.data} completeness={state.completeness} />
+      )}
     </>
   )
 }
 
-function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] }) {
+function OpportunityWorkspace({
+  opportunities,
+  completeness,
+}: {
+  opportunities: Opportunity[]
+  completeness: ReadCompleteness | undefined
+}) {
+  const loaded: DatasetReadReport | undefined = completeness?.datasets.find(
+    (d) => d.dataset === 'opportunities',
+  )
   const [query, setQuery] = useState<OpportunityQuery>(DEFAULT_QUERY)
   const { search } = useLocation()
 
@@ -150,7 +170,14 @@ function OpportunityWorkspace({ opportunities }: { opportunities: Opportunity[] 
 
       <div className="results" role="status">
         <p className="results__count">
-          <strong>{visible.length}</strong> of {opportunities.length} opportunities
+          <strong>{visible.length}</strong> of{' '}
+          <Count value={opportunities.length} exact={!loaded || loaded.status === 'complete'} />{' '}
+          {loaded?.status === 'truncated' ? 'loaded opportunities' : 'opportunities'}
+          {/* The database's own total, when it gave one: "1,000 loaded" beside
+              nothing reads as "1,000 exist". */}
+          {loaded?.status === 'truncated' && loaded.total !== null && (
+            <span className="results__filtered"> · {loaded.total.toLocaleString('en-US')} stored</span>
+          )}
           {activeCount > 0 && <span className="results__filtered"> · filtered</span>}
         </p>
         <IllustrativeNote />

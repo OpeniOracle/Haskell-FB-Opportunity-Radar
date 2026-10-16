@@ -32,6 +32,8 @@ import type {
   ConnectorRun,
   ConnectorState,
   DataSourceMeta,
+  DatasetKey,
+  DatasetReadReport,
   EvidenceRecord,
   FacilityRecord,
   LocationPrecision,
@@ -43,6 +45,7 @@ import type {
   OpportunitySource,
   PulseEvidenceItem,
   PulseSnapshot,
+  ReadCompleteness,
   RecordRef,
   SourceHealthSnapshot,
   SpyglassSnapshot,
@@ -51,6 +54,14 @@ import type {
   UnlocatedOpportunity,
 } from '@/types/domain'
 import { supabaseBrowser } from '@/lib/supabaseClient'
+import {
+  RELATIONSHIP_DATASETS,
+  completenessOf,
+  pick,
+  reportFailed,
+  reportLimited,
+  reportRead,
+} from '@/lib/completeness'
 import { isApprovedDashboardUrl, isApprovedEmbedUrl } from '@/lib/spyglass'
 
 /** Beyond this, "current" is a claim the data does not support. */
@@ -221,9 +232,20 @@ function present<T>(
   freshness: Freshness,
   checkedAt: string,
   emptyReason: string,
+  completeness?: ReadCompleteness,
 ): SurfaceState<T[]> {
   if (!freshness.everCollected) return unavailable(FAILURE.neverCollected, checkedAt)
-  if (rows.length === 0) return { kind: 'empty', reason: emptyReason, checkedAt }
+  /*
+     AN EMPTY STATE STILL CARRIES ITS COMPLETENESS.
+
+     "Nothing has been found" is a statement about the whole table. When the read
+     could not confirm its own total, the surface shows the empty state AND the
+     notice saying why the emptiness could not be confirmed, rather than letting
+     an unconfirmed zero read as a finding.
+  */
+  if (rows.length === 0) {
+    return { kind: 'empty', reason: emptyReason, checkedAt, ...(completeness ? { completeness } : {}) }
+  }
 
   if (freshness.unavailableSources.length > 0) {
     return {
@@ -232,6 +254,7 @@ function present<T>(
       notice: `${freshness.unavailableSources.join(', ')} did not complete its last collection. Records from other sources are current.`,
       affected: freshness.unavailableSources,
       checkedAt,
+      ...(completeness ? { completeness } : {}),
     }
   }
   if (freshness.stale) {
@@ -241,9 +264,10 @@ function present<T>(
       notice: `No source has completed a collection since ${freshness.lastSuccessAt}.`,
       asOf: freshness.lastSuccessAt!,
       checkedAt,
+      ...(completeness ? { completeness } : {}),
     }
   }
-  return { kind: 'ready', data: rows, checkedAt }
+  return { kind: 'ready', data: rows, checkedAt, ...(completeness ? { completeness } : {}) }
 }
 
 /* --------------------------------------------------------------- mapping */
@@ -253,11 +277,46 @@ function present<T>(
  *
  * The pilot corpus is small, and a browser reading a whole table is fine at
  * this size. The cap is here so it stays a bounded read when it is not.
+ *
+ * A BOUNDED READ IS NOT A COMPLETE ONE, AND THIS FILE MUST NEVER LET THE TWO BE
+ * MISTAKEN. Every full-table read below asks the database for its own total in
+ * the same request (`COUNT_EXACT`), compares the rows that came back with it
+ * (`reportRead`), and carries the result on the surface state as `completeness`.
+ * The comparison is with the DATABASE'S total, not with this constant: the
+ * server has a cap of its own, and a smaller one would otherwise make a short
+ * read look whole.
+ *
+ * Exported so a test can build a table one row past it.
  */
-const READ_LIMIT = 1000
+export const READ_LIMIT = 1000
+
+/**
+ * Ask for the total in the SAME request.
+ *
+ * PostgREST returns it in `Content-Range` alongside the rows, so this adds work
+ * for the database (an exact count scans the filtered rows) but no extra round
+ * trip from the browser. Exact rather than estimated, because an estimate that
+ * is off by a hundred rows would turn a truncated read into a "complete" one --
+ * the one error this exists to prevent. At a few thousand rows per table the
+ * scan is negligible; past that, a server-side view is the answer, not a
+ * cheaper count (docs/design/21).
+ */
+const COUNT_EXACT = { count: 'exact' } as const
+
+/**
+ * Newest first, NULLs last.
+ *
+ * PostgreSQL sorts NULL first when descending, which would let rows with no
+ * timestamp claim the places a truncated read keeps. A stable unique column
+ * always follows, so two rows with the same timestamp cannot swap between reads.
+ */
+const NEWEST_FIRST = { ascending: false, nullsFirst: false } as const
 
 /** Signals first observed inside this window are reported as new. */
 const NEW_SIGNAL_WINDOW_DAYS = 7
+
+/** The recent-changes feed is the latest N BY DESIGN, not a read that fell short. */
+const CHANGES_LIMIT = 25
 
 /** A run open longer than this has not finished; it has stopped. */
 const RUN_CONSIDERED_STALE_AFTER_HOURS = 6
@@ -591,13 +650,18 @@ function strongestAccessMode(
 type Client = NonNullable<ReturnType<typeof supabaseBrowser>>
 
 /**
- * Everything the derived record graph holds, read in six queries.
+ * Everything the derived record graph holds, read in eight queries.
  *
  * The previous version issued one query PER OPPORTUNITY to find its signals and
- * then discarded most of what came back. Six reads of the whole (small) graph
- * is both faster and, more usefully, the same data every surface needs — so
- * Pulse, Opportunities, Company and the Map cannot disagree about how many
- * signals an account has.
+ * then discarded most of what came back. Reading the whole (small) graph once is
+ * both faster and, more usefully, the same data every surface needs — so Pulse,
+ * Opportunities, Company and the Map cannot disagree about how many signals an
+ * account has.
+ *
+ * "THE WHOLE GRAPH" IS A CLAIM THE READ HAS TO EARN. Each of the eight is capped,
+ * and the cap is silent: past `READ_LIMIT` the database returns the first rows
+ * and nothing else. `reports` records, per dataset, whether what came back is
+ * all of it, and every surface that builds a figure from the graph says so.
  */
 interface SourceRow {
   id: string
@@ -632,30 +696,146 @@ interface Graph {
   organizationById: Map<string, OrganizationRow>
   signalById: Map<string, SignalRow>
   evidenceById: Map<string, EvidenceRow>
+  /**
+   * What each read returned against what the database holds. Always carries all
+   * eight graph datasets; typed as a partial record only so the Source Health and
+   * Map reads can add their own beside them.
+   */
+  reports: Partial<Record<DatasetKey, DatasetReadReport>>
+}
+
+/** The eight datasets `readGraph` reads, in the order it reads them. */
+const GRAPH_DATASETS = [
+  'organizations',
+  'opportunities',
+  'signals',
+  'evidence',
+  'opportunity_signals',
+  'signal_evidence',
+  'sources',
+  'account_source_expectations',
+] as const satisfies readonly DatasetKey[]
+
+/**
+ * Whether a figure built from these datasets can be shown as exact.
+ *
+ * A figure is exact only if every dataset it passes through came back whole.
+ */
+function exact(graph: Graph, ...keys: DatasetKey[]): boolean {
+  return keys.every((key) => graph.reports[key]?.status === 'complete')
+}
+
+/** The relationships a derived figure passes through: opportunity -> signal -> evidence. */
+function relationshipsExact(graph: Graph): boolean {
+  return exact(graph, ...RELATIONSHIP_DATASETS)
+}
+
+/** Coverage is read off signals, their links and the expectations that define a gap. */
+function coverageExact(graph: Graph): boolean {
+  return exact(graph, 'signals', 'signal_evidence', 'account_source_expectations', 'sources')
+}
+
+/**
+ * The count to print for a dataset: the database's own total when it reported
+ * one, and otherwise what came back -- which the caller must then mark as a floor.
+ */
+function countOf(graph: Graph, key: DatasetKey, fallback: number): number {
+  return graph.reports[key]?.total ?? fallback
+}
+
+/** True when `countOf` is only a floor: the database never reported a total. */
+function countIsFloor(graph: Graph, key: DatasetKey): boolean {
+  return graph.reports[key]?.total == null && graph.reports[key]?.status !== 'complete'
+}
+
+/** The completeness a surface reports: only the datasets it is built from. */
+function completenessFor(graph: Graph, keys: DatasetKey[], ...extra: DatasetReadReport[]): ReadCompleteness {
+  return completenessOf([...pick(graph.reports, keys), ...extra])
 }
 
 async function readGraph(client: Client): Promise<Graph | Fail> {
+  /*
+     EVERY READ IS ORDERED, COUNTED AND CAPPED, IN THAT ORDER OF IMPORTANCE.
+
+     Ordering makes the rows a capped read KEEPS the same on every request, and
+     makes them the newest where "newest" means something. It does not make them
+     complete: that is what the count is for. Each order ends in a unique column
+     so two rows with equal sort keys cannot trade places between requests, which
+     with a cap is the difference between a stable page and one that flickers.
+
+     Only columns these reads already SELECT are used for ordering, and
+     PostgreSQL requires SELECT privilege on an ordered column, so no new grant
+     is implied by any of it.
+  */
   const [orgs, opps, signals, evidence, oppSignals, signalEvidence, sources, expectations] =
     await Promise.all([
-    client.from('organizations').select(ORGANIZATION_COLUMNS).order('canonical_name').limit(READ_LIMIT),
-    client.from('opportunities').select(OPPORTUNITY_COLUMNS).limit(READ_LIMIT),
-    client.from('signals').select(SIGNAL_COLUMNS).limit(READ_LIMIT),
-    client.from('evidence').select(EVIDENCE_COLUMNS).limit(READ_LIMIT),
-    client.from('opportunity_signals').select('opportunity_id, signal_id').limit(READ_LIMIT),
-    client.from('signal_evidence').select('signal_id, evidence_id, source_family_key').limit(READ_LIMIT),
-    client
-      .from('sources')
-      .select('id, name, enabled, health_status, last_success_at, expected_cadence_hours, consecutive_failures')
-      .limit(READ_LIMIT),
-    client
-      .from('account_source_expectations')
-      .select('organization_id, source_family, expectation, rationale')
-      .limit(READ_LIMIT),
-  ])
+      client
+        .from('organizations')
+        .select(ORGANIZATION_COLUMNS, COUNT_EXACT)
+        .order('canonical_name')
+        .order('id')
+        .limit(READ_LIMIT),
+      client
+        .from('opportunities')
+        .select(OPPORTUNITY_COLUMNS, COUNT_EXACT)
+        .order('last_material_change_at', NEWEST_FIRST)
+        .order('id')
+        .limit(READ_LIMIT),
+      client
+        .from('signals')
+        .select(SIGNAL_COLUMNS, COUNT_EXACT)
+        .order('first_observed_at', NEWEST_FIRST)
+        .order('id')
+        .limit(READ_LIMIT),
+      client
+        .from('evidence')
+        .select(EVIDENCE_COLUMNS, COUNT_EXACT)
+        .order('retrieved_at', NEWEST_FIRST)
+        .order('id')
+        .limit(READ_LIMIT),
+      // Composite primary key (opportunity_id, signal_id): unique, and it keeps
+      // an opportunity's links together so a cut falls BETWEEN opportunities.
+      client
+        .from('opportunity_signals')
+        .select('opportunity_id, signal_id', COUNT_EXACT)
+        .order('opportunity_id')
+        .order('signal_id')
+        .limit(READ_LIMIT),
+      client
+        .from('signal_evidence')
+        .select('signal_id, evidence_id, source_family_key', COUNT_EXACT)
+        .order('signal_id')
+        .order('evidence_id')
+        .limit(READ_LIMIT),
+      client
+        .from('sources')
+        .select(
+          'id, name, enabled, health_status, last_success_at, expected_cadence_hours, consecutive_failures',
+          COUNT_EXACT,
+        )
+        .order('id')
+        .limit(READ_LIMIT),
+      // unique (organization_id, source_family)
+      client
+        .from('account_source_expectations')
+        .select('organization_id, source_family, expectation, rationale', COUNT_EXACT)
+        .order('organization_id')
+        .order('source_family')
+        .limit(READ_LIMIT),
+    ])
 
-  for (const result of [orgs, opps, signals, evidence, oppSignals, signalEvidence, sources, expectations]) {
+  const results = [orgs, opps, signals, evidence, oppSignals, signalEvidence, sources, expectations]
+  for (const result of results) {
     if (result.error) return classifyError(result.error)
   }
+
+  /* What each read turned out to be, against the database's own total. A read
+     that errored never reaches here: the surface is `unavailable`, not partial. */
+  const reports: Partial<Record<DatasetKey, DatasetReadReport>> = {}
+  GRAPH_DATASETS.forEach((dataset, i) => {
+    const result = results[i]!
+    reports[dataset] = reportRead(dataset, (result.data ?? []).length, result.count, READ_LIMIT)
+  })
 
   const organizations = (orgs.data ?? []) as unknown as OrganizationRow[]
   const opportunities = (opps.data ?? []) as unknown as OpportunityRow[]
@@ -690,6 +870,7 @@ async function readGraph(client: Client): Promise<Graph | Fail> {
   }
 
   return {
+    reports,
     organizations,
     sources: (sources.data ?? []) as unknown as SourceRow[],
     expectations: (expectations.data ?? []) as unknown as ExpectationRow[],
@@ -805,6 +986,12 @@ function mapOpportunity(graph: Graph, row: OpportunityRow): Opportunity {
     },
     evidence: {
       count: sources.length,
+      /* A floor, and said so, whenever a link table or either end of a link was
+         cut short: the documents behind this opportunity are reached through
+         opportunity -> signal -> evidence, and a missing hop is a missing
+         document that this record cannot know about. Omitted when exact, so an
+         exact read produces exactly the object it always did. */
+      ...(relationshipsExact(graph) ? {} : { countIsLowerBound: true }),
       independentPublishers: publishers.size,
       newestRetrievedAt: newest?.filingDate ?? row.last_material_change_at ?? '',
       strongestAccessMode: strongestAccessMode(sources),
@@ -903,6 +1090,7 @@ function coverageFor(graph: Graph, organizationId: string): CompanySummary['cove
   )
   const expectedSources = expected.map((e) => e.source_family).sort()
   const missingSources = expectedSources.filter((name) => !observedSources.includes(name))
+  const reliable = coverageExact(graph)
 
   return {
     expectedSources,
@@ -914,11 +1102,24 @@ function coverageFor(graph: Graph, organizationId: string): CompanySummary['cove
         .filter(Boolean)
         .sort()
         .pop() ?? '',
+    /*
+       A GAP IS A CLAIM ABOUT ABSENCE, AND ABSENCE IS EXACTLY WHAT A CUT-SHORT
+       READ MANUFACTURES.
+
+       "X has not produced a signal for this account" is true only if every
+       signal, every link and every expectation was read. When one was not, the
+       link that would have covered the account may simply be past the cap, so
+       the sentence says what was actually established: not seen, in what loaded.
+    */
     gapReason:
       expectedSources.length === 0
-        ? 'No coverage expectation has been recorded for this account, so completeness cannot be measured yet.'
+        ? reliable
+          ? 'No coverage expectation has been recorded for this account, so completeness cannot be measured yet.'
+          : 'No coverage expectation was found for this account among the records that loaded, and those are incomplete, so completeness cannot be measured yet.'
         : missingSources.length > 0
-          ? `${missingSources.join(', ')} has not produced a signal for this account.`
+          ? reliable
+            ? `${missingSources.join(', ')} has not produced a signal for this account.`
+            : `${missingSources.join(', ')} was not seen for this account among the records that loaded, and those are incomplete, so this may overstate the gap.`
           : null,
   }
 }
@@ -973,6 +1174,16 @@ function summariseCompany(graph: Graph, org: OrganizationRow): CompanySummary {
     facilityCount: 0,
     openOpportunityCount: opportunities.length,
     signalCount: signals.length,
+    // A floor when the opportunities or signals read was cut short. Omitted
+    // when both are whole, so an exact read produces the object it always did.
+    ...(exact(graph, 'opportunities', 'signals')
+      ? {}
+      : {
+          lowerBounds: {
+            openOpportunityCount: !exact(graph, 'opportunities'),
+            signalCount: !exact(graph, 'signals'),
+          },
+        }),
     latestEvidenceAt,
     topOpportunity,
     latestActivityAt: latestOpportunityAt ?? latestEvidenceAt ?? '',
@@ -1076,11 +1287,25 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
         if (isFail(graph)) return unavailable(graph, checkedAt)
         if (!freshness.everCollected) return unavailable(FAILURE.neverCollected, checkedAt)
 
-        const { data: changes } = await client
+        /*
+           A SLICE ON PURPOSE, AND A FAILURE THAT IS NOT SWALLOWED.
+
+           The feed is the latest N, so it is reported as `limited`, which is not
+           a fault and never trips the notice. Its error used to be dropped on the
+           floor: a failed read and an empty table both produced an empty feed,
+           and the page could not tell which one it was showing. A failure is now
+           reported as one, and the rest of the page still renders.
+        */
+        const changesRead = await client
           .from('change_events')
           .select('id, change_kind, summary, occurred_at')
           .order('occurred_at', { ascending: false })
-          .limit(25)
+          .order('id')
+          .limit(CHANGES_LIMIT)
+        const changes = changesRead.error ? [] : (changesRead.data ?? [])
+        const changesReport = changesRead.error
+          ? reportFailed('change_events', CHANGES_LIMIT)
+          : reportLimited('change_events', changes.length, CHANGES_LIMIT)
 
         const enabled = graph.sources.filter((s) => s.enabled)
         const since = isoDaysAgo(now, NEW_SIGNAL_WINDOW_DAYS)
@@ -1108,6 +1333,7 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             accountsAtOrAboveExpected: covered.length,
             accountsBelowExpected: below.length,
             accountsUncovered: below.map((o) => o.canonical_name),
+            ...(coverageExact(graph) ? {} : { mayBeOverstated: true }),
           },
           connectorHealth: {
             sourcesEnabled: enabled.length,
@@ -1122,12 +1348,29 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             lastCycleCompletedAt: freshness.lastSuccessAt ?? '',
           },
           headline: {
-            opportunityCount: graph.opportunities.length,
-            signalCount: graph.signals.length,
+            /* The DATABASE'S total where it reported one -- so 1,500 stored
+               records read as 1,500 even though 1,000 loaded -- and otherwise
+               what came back, flagged below as a floor. */
+            opportunityCount: countOf(graph, 'opportunities', graph.opportunities.length),
+            signalCount: countOf(graph, 'signals', graph.signals.length),
+            /* Counted over the signals that LOADED, so a floor unless all did. */
             newSignalCount: newSignals.length,
             newSignalWindowDays: NEW_SIGNAL_WINDOW_DAYS,
-            evidenceCount: graph.evidence.length,
+            evidenceCount: countOf(graph, 'evidence', graph.evidence.length),
             latestEvidenceAt,
+            ...(countIsFloor(graph, 'opportunities') ||
+            countIsFloor(graph, 'signals') ||
+            countIsFloor(graph, 'evidence') ||
+            !exact(graph, 'signals')
+              ? {
+                  lowerBounds: {
+                    opportunityCount: countIsFloor(graph, 'opportunities'),
+                    signalCount: countIsFloor(graph, 'signals'),
+                    newSignalCount: !exact(graph, 'signals'),
+                    evidenceCount: countIsFloor(graph, 'evidence'),
+                  },
+                }
+              : {}),
           },
           topOpportunities: [...opportunities]
             .sort(byConfidenceThenRecency)
@@ -1140,6 +1383,7 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
               confidenceLevel: o.confidence.confidenceLevel,
               sourceDate: o.sourceDate,
               evidenceCount: o.evidence.count,
+              ...(o.evidence.countIsLowerBound ? { evidenceCountIsLowerBound: true } : {}),
               distinguisher: o.distinguisher,
             })),
           newSignals: newSignals
@@ -1180,6 +1424,7 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
           generatedAt: checkedAt,
         }
 
+        const completeness = completenessFor(graph, [...GRAPH_DATASETS], changesReport)
         if (freshness.stale) {
           return {
             kind: 'stale',
@@ -1187,9 +1432,10 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             notice: `No source has completed a collection since ${freshness.lastSuccessAt}.`,
             asOf: freshness.lastSuccessAt!,
             checkedAt,
+            completeness,
           }
         }
-        return { kind: 'ready', data: snapshot, checkedAt }
+        return { kind: 'ready', data: snapshot, checkedAt, completeness }
       }),
 
     getOpportunities: () =>
@@ -1207,6 +1453,7 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
           freshness,
           checkedAt,
           'No qualifying opportunity has been found in the collected sources yet. Every document retrieved so far was evaluated and none carried a supported facility signal.',
+          completenessFor(graph, [...RELATIONSHIP_DATASETS, 'organizations']),
         )
       }),
 
@@ -1217,7 +1464,13 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
         if (isFail(graph)) return unavailable(graph, checkedAt)
 
         const rows = graph.organizations.map((org) => summariseCompany(graph, org))
-        return present(rows, freshness, checkedAt, 'No company is being monitored yet.')
+        return present(
+          rows,
+          freshness,
+          checkedAt,
+          'No company is being monitored yet.',
+          completenessFor(graph, [...GRAPH_DATASETS]),
+        )
       }),
 
     getCompany: (companyId: string) =>
@@ -1228,10 +1481,17 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
 
         const org = graph.organizationById.get(companyId)
         if (!org) {
+          /* "No such company" is only a finding if every account was read. When
+             the list was cut short, an id that is not in it may simply be past the
+             cap, and saying it does not exist would be a false statement about the
+             database made on the strength of a partial read. */
+          const wholeList = exact(graph, 'organizations')
           return {
             kind: 'unavailable',
-            reason: 'No such company is being monitored.',
-            blockedBy: 'not_found',
+            reason: wholeList
+              ? 'No such company is being monitored.'
+              : 'That company is not among the accounts that loaded, and the account list is incomplete, so it may still exist.',
+            blockedBy: wholeList ? 'not_found' : 'incomplete_read',
             checkedAt,
           }
         }
@@ -1283,6 +1543,7 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             },
           },
           checkedAt,
+          completeness: completenessFor(graph, [...GRAPH_DATASETS]),
         }
       }),
 
@@ -1394,14 +1655,19 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
         const graph = await readGraph(client)
         if (isFail(graph)) return unavailable(graph, checkedAt)
 
-        const { data: runRows, error: runError } = await client
+        const runsRead = await client
           .from('source_runs')
           .select(
             'id, source_id, run_status, started_at, completed_at, items_seen, items_stored, error_summary, metrics',
+            COUNT_EXACT,
           )
-          .order('started_at', { ascending: false })
+          .order('started_at', NEWEST_FIRST)
+          .order('id')
           .limit(READ_LIMIT)
-        if (runError) return unavailable(classifyError(runError), checkedAt)
+        if (runsRead.error) return unavailable(classifyError(runsRead.error), checkedAt)
+        const runRows = runsRead.data
+        const runsReport = reportRead('source_runs', (runRows ?? []).length, runsRead.count, READ_LIMIT)
+        const runsExact = runsReport.status === 'complete'
 
         /* Evidence per source is a direct column. Signals and opportunities are
            reached through the recorded links, never inferred from a title. */
@@ -1474,6 +1740,19 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
               evidenceStored: evidenceCountBySource.get(source.id) ?? 0,
               signalsCreated: signalsBySource.get(source.id)?.size ?? 0,
               opportunitiesCreated: opportunitiesBySource.get(source.id)?.size ?? 0,
+              /* Each figure is a floor unless everything it is built from loaded:
+                 runs for what was discovered, loaded evidence for what was stored,
+                 and the opportunity -> signal -> evidence links for the rest. */
+              ...(runsExact && exact(graph, 'evidence') && relationshipsExact(graph)
+                ? {}
+                : {
+                    lowerBounds: {
+                      documentsDiscovered: !runsExact,
+                      evidenceStored: !exact(graph, 'evidence'),
+                      signalsCreated: !exact(graph, 'signals', 'signal_evidence'),
+                      opportunitiesCreated: !relationshipsExact(graph),
+                    },
+                  }),
             },
             activeRun,
             lastRunAt: (runs[0]?.started_at as string) ?? '',
@@ -1495,7 +1774,10 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             coverage: coverageFor(graph, org.id),
           })),
           lastCycleCompletedAt: freshness.lastSuccessAt ?? '',
+          ...(coverageExact(graph) ? {} : { coverageMayBeOverstated: true }),
         }
+
+        const completeness = completenessFor(graph, [...GRAPH_DATASETS], runsReport)
 
         // Source Health is the one surface that must render when everything
         // else is empty: "nothing has run" is precisely what it is for.
@@ -1504,6 +1786,7 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             kind: 'empty',
             reason: 'No source is configured yet.',
             checkedAt,
+            completeness,
           }
         }
         if (freshness.unavailableSources.length > 0 || freshness.manualReviewSources.length > 0) {
@@ -1513,9 +1796,10 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             notice: [...freshness.unavailableSources, ...freshness.manualReviewSources].join(', ') + ' needs attention.',
             affected: [...freshness.unavailableSources, ...freshness.manualReviewSources],
             checkedAt,
+            completeness,
           }
         }
-        return { kind: 'ready', data: snapshot, checkedAt }
+        return { kind: 'ready', data: snapshot, checkedAt, completeness }
       }),
 
     getMapLocations: () =>
@@ -1529,17 +1813,47 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             .from('organization_locations')
             .select(
               'id, organization_id, location_type, label, normalized_address, latitude, longitude, precision, resolved_at',
+              COUNT_EXACT,
             )
+            .order('id')
             .limit(READ_LIMIT),
           client
             .from('opportunity_locations')
             .select(
               'id, opportunity_id, evidence_id, location_type, extracted_text, facility_name, normalized_address, latitude, longitude, precision, uncertainty_radius_m, resolved_at',
+              COUNT_EXACT,
             )
+            .order('id')
             .limit(READ_LIMIT),
         ])
         if (orgLocations.error) return unavailable(classifyError(orgLocations.error), checkedAt)
         if (oppLocations.error) return unavailable(classifyError(oppLocations.error), checkedAt)
+
+        const orgLocationsReport = reportRead(
+          'organization_locations',
+          (orgLocations.data ?? []).length,
+          orgLocations.count,
+          READ_LIMIT,
+        )
+        const oppLocationsReport = reportRead(
+          'opportunity_locations',
+          (oppLocations.data ?? []).length,
+          oppLocations.count,
+          READ_LIMIT,
+        )
+        const completeness = completenessFor(
+          graph,
+          ['organizations', ...RELATIONSHIP_DATASETS],
+          orgLocationsReport,
+          oppLocationsReport,
+        )
+        /* Every count on the map is built from loaded rows: pins from location
+           rows joined to loaded opportunities, and the unlocated list from loaded
+           opportunities with no loaded pin. A floor unless all three are whole. */
+        const mapIsWhole =
+          orgLocationsReport.status === 'complete' &&
+          oppLocationsReport.status === 'complete' &&
+          exact(graph, 'opportunities')
 
         const opportunities = new Map(
           graph.opportunities.map((row) => [row.id, mapOpportunity(graph, row)]),
@@ -1652,9 +1966,20 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             id: o.id,
             title: o.title,
             organizationName: o.organization.canonicalName,
+            /*
+               "THE FILING NAMED NO PLACE" IS A CLAIM ABOUT A ROW THAT MAY BE PAST
+               THE CAP.
+
+               A project with no loaded location row reads as having none only if
+               every location row was loaded. When they were not, the row for this
+               project may simply not have come back, and the sentence says that
+               instead of asserting something about the filing.
+            */
             reason: attempted.has(o.id)
               ? `The filing named “${attempted.get(o.id)!.extracted_text}”, which could not be resolved to a place.`
-              : 'The filing did not name a site, a city or a state for this project.',
+              : oppLocationsReport.status === 'complete'
+                ? 'The filing did not name a site, a city or a state for this project.'
+                : 'No location was found for this project among the location records that loaded, and those are incomplete, so one may exist that is not shown here.',
           }))
           .sort((a, b) => a.organizationName.localeCompare(b.organizationName))
 
@@ -1664,10 +1989,21 @@ export function createApiDataSource(clock: () => Date = () => new Date()): DataS
             reason:
               'No opportunity or account has a recorded location yet. Locations are extracted from collected filings; nothing has been placed on a map by hand.',
             checkedAt,
+            completeness,
           }
         }
 
-        return { kind: 'ready', data: { markers, unlocated, generatedAt: checkedAt }, checkedAt }
+        return {
+          kind: 'ready',
+          data: {
+            markers,
+            unlocated,
+            generatedAt: checkedAt,
+            ...(mapIsWhole ? {} : { countsAreLowerBounds: true }),
+          },
+          checkedAt,
+          completeness,
+        }
       }),
 
     getSpyglass: () =>

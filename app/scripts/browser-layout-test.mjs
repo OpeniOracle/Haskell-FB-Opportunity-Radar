@@ -332,6 +332,73 @@ try {
       `password field at ${passwordBox?.x?.toFixed(0)} width ${passwordBox?.width?.toFixed(0)}`)
     await shoot(page, `${tag}-microsoft-login-${viewport.name}`)
 
+    // ---- Incomplete-data notice, inside the real shell ---------------------
+    //
+    // R2.5. The notice is a block with a list and a disclosure, shown on every
+    // data page when a read was cut short. What matters in a real engine: it
+    // stays inside the viewport, wraps instead of overflowing, is a polite
+    // status rather than an alert, keeps its icon small, and its disclosure opens.
+    await page.goto(`${base}/?scenario=incomplete-notice`)
+    await page.locator('.notice--incomplete').waitFor()
+    const incomplete = await page.evaluate(() => {
+      const el = document.querySelector('.notice--incomplete')
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      const icon = el.querySelector('svg')?.getBoundingClientRect() ?? null
+      const items = [...el.querySelectorAll('.notice__list li')].map((li) => li.getBoundingClientRect())
+      const details = el.querySelector('details')
+      return {
+        box: { left: r.left, right: r.right, width: r.width },
+        icon: icon ? { width: icon.width, height: icon.height } : null,
+        itemWidths: items.map((i) => i.width),
+        itemCount: items.length,
+        role: el.getAttribute('role'),
+        hasAlert: Boolean(el.querySelector('[role="alert"]')),
+        // Anything INSIDE the notice that pokes out of the viewport or out of the
+        // notice itself. The page-level scroll width is deliberately not used:
+        // it would also measure the shell around the notice, which this is not
+        // accountable for.
+        overflowing: [...el.querySelectorAll('*')]
+          .filter((n) => n.getBoundingClientRect().right > window.innerWidth + 0.5 || n.getBoundingClientRect().right > r.right + 0.5)
+          .map((n) => n.tagName.toLowerCase()),
+        selfOverflow: el.scrollWidth > el.clientWidth + 1,
+        innerWidth: window.innerWidth,
+        detailsOpen: details?.open ?? null,
+      }
+    })
+    const here = `incomplete notice @${viewport.name}`
+    check(`${here}: is present`, incomplete !== null)
+    if (incomplete) {
+      check(`${here}: sits inside the viewport`, incomplete.box.left >= -0.5 && incomplete.box.right <= incomplete.innerWidth + 0.5,
+        `left ${incomplete.box.left.toFixed(1)} right ${incomplete.box.right.toFixed(1)} of ${incomplete.innerWidth}`)
+      check(`${here}: nothing inside it overflows`, incomplete.overflowing.length === 0 && !incomplete.selfOverflow,
+        `overflowing: ${incomplete.overflowing.join(', ') || 'none'}; selfOverflow=${incomplete.selfOverflow}`)
+      check(`${here}: icon is at most 24px`, incomplete.icon !== null && incomplete.icon.width <= 24.5 && incomplete.icon.height <= 24.5,
+        `icon ${incomplete.icon?.width?.toFixed(1)}x${incomplete.icon?.height?.toFixed(1)}`)
+      check(`${here}: lists every shortfall`, incomplete.itemCount === 3, `${incomplete.itemCount} items`)
+      check(`${here}: each shortfall has room to read (at least 150px)`, incomplete.itemWidths.every((w) => w >= 150),
+        `widths ${incomplete.itemWidths.map((w) => w.toFixed(0)).join(', ')}`)
+      check(`${here}: is a polite status, not an alert`, incomplete.role === 'status' && !incomplete.hasAlert,
+        `role=${incomplete.role}`)
+      check(`${here}: the disclosure starts closed`, incomplete.detailsOpen === false)
+    }
+    await page.locator('.notice--incomplete summary').click()
+    const opened = await page.evaluate(() => {
+      const d = document.querySelector('.notice--incomplete details')
+      const p = d?.querySelector('p')?.getBoundingClientRect()
+      const el = document.querySelector('.notice--incomplete')
+      const r = el?.getBoundingClientRect()
+      return {
+        open: d?.open ?? null,
+        height: p?.height ?? 0,
+        stillInside: r ? r.left >= -0.5 && r.right <= window.innerWidth + 0.5 && el.scrollWidth <= el.clientWidth + 1 : false,
+      }
+    })
+    check(`${here}: the disclosure opens and shows its explanation`, opened.open === true && opened.height > 0,
+      `open=${opened.open} height=${opened.height}`)
+    check(`${here}: opening it keeps the notice inside the viewport`, opened.stillInside, 'the opened notice overflows')
+    await shoot(page, `${tag}-incomplete-notice-${viewport.name}`)
+
     await context.close()
   }
 

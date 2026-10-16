@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from '@/components/Icon'
 import { absoluteDateTime, relativeTime } from '@/lib/format'
+import { describeIncompleteness } from '@/lib/completeness'
+import type { ReadCompleteness } from '@/types/domain'
 
 /**
  * The five non-happy surface states.
@@ -165,6 +167,49 @@ export function StaleNotice({
       <div>
         <strong>Showing data from {absoluteDateTime(asOf)} — </strong>
         {notice}
+      </div>
+      <CheckedAt checkedAt={checkedAt} />
+    </div>
+  )
+}
+
+/**
+ * Said when a read behind the page returned less than the database holds, or
+ * when that could not be established.
+ *
+ * NEUTRAL IN TONE, because nothing has gone wrong with the Radar: the stored
+ * records are intact and this page is showing part of them. It is not an alert,
+ * not an outage and not a reason to doubt the records it does show -- only a
+ * reason not to read a count on it as a total. It sits with the other notices,
+ * above the content, and renders nothing at all when the read was complete, so
+ * a page that is whole looks exactly as it did before.
+ */
+export function IncompleteDataNotice({
+  completeness,
+  checkedAt,
+}: {
+  completeness: ReadCompleteness | undefined
+  checkedAt: string | null
+}) {
+  if (!completeness || completeness.complete) return null
+  const { shortfalls, consequences } = describeIncompleteness(completeness)
+  return (
+    <div className="notice notice--info notice--incomplete" role="status">
+      <Icon name="inbox" className="notice__icon" />
+      <div>
+        <strong>Not every record could be loaded. </strong>
+        This page is showing part of what is stored.
+        <ul className="notice__list">
+          {shortfalls.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+        <details className="notice__detail">
+          <summary>What this means for the figures</summary>
+          {consequences.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </details>
       </div>
       <CheckedAt checkedAt={checkedAt} />
     </div>

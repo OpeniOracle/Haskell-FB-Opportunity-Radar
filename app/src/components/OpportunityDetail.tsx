@@ -1,3 +1,4 @@
+import { Count } from '@/components/Count'
 import { Link } from 'react-router-dom'
 import { Icon } from '@/components/Icon'
 import { SCORE_CAPS, type Opportunity } from '@/types/domain'
@@ -316,7 +317,9 @@ export function OpportunityDetail({
         <dl className="drawer__facts">
           <div className="fact">
             <dt>Items</dt>
-            <dd>{evidence.count}</dd>
+            <dd>
+              <Count value={evidence.count} exact={!evidence.countIsLowerBound} />
+            </dd>
           </div>
           <div className="fact">
             <dt>Independent publishers</dt>
