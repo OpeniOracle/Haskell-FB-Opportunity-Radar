@@ -35,9 +35,9 @@ export const sourceHealthFixture: SourceHealthSnapshot = {
       freshnessHours: 2,
       expectedCadenceHours: 24,
       runHistory: [
-        { id: 'r-edgar-3', startedAt: '2026-08-17T06:10:00Z', completedAt: '2026-08-17T06:10:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '4 filings collected.' },
-        { id: 'r-edgar-2', startedAt: '2026-08-16T06:10:00Z', completedAt: '2026-08-16T06:10:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '1 filing collected.' },
-        { id: 'r-edgar-1', startedAt: '2026-08-15T06:10:00Z', completedAt: '2026-08-15T06:10:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: 'No new filings.' },
+        { id: 'r-edgar-3', startedAt: '2026-08-17T06:10:00Z', completedAt: '2026-08-17T06:10:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '4 filings collected.' },
+        { id: 'r-edgar-2', startedAt: '2026-08-16T06:10:00Z', completedAt: '2026-08-16T06:10:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '1 filing collected.' },
+        { id: 'r-edgar-1', startedAt: '2026-08-15T06:10:00Z', completedAt: '2026-08-15T06:10:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: 'No new filings.' },
       ],
       maintenance: null,
     },
@@ -60,9 +60,9 @@ export const sourceHealthFixture: SourceHealthSnapshot = {
       freshnessHours: 2,
       expectedCadenceHours: 12,
       runHistory: [
-        { id: 'r-news-3', startedAt: '2026-08-17T06:12:00Z', completedAt: '2026-08-17T06:12:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '6 items across 11 newsrooms.' },
-        { id: 'r-news-2', startedAt: '2026-08-16T18:12:00Z', completedAt: '2026-08-16T18:12:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '2 items.' },
-        { id: 'r-news-1', startedAt: '2026-08-16T06:12:00Z', completedAt: '2026-08-16T06:12:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '3 items.' },
+        { id: 'r-news-3', startedAt: '2026-08-17T06:12:00Z', completedAt: '2026-08-17T06:12:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '6 items across 11 newsrooms.' },
+        { id: 'r-news-2', startedAt: '2026-08-16T18:12:00Z', completedAt: '2026-08-16T18:12:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '2 items.' },
+        { id: 'r-news-1', startedAt: '2026-08-16T06:12:00Z', completedAt: '2026-08-16T06:12:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '3 items.' },
       ],
       maintenance: null,
     },
@@ -85,8 +85,8 @@ export const sourceHealthFixture: SourceHealthSnapshot = {
       freshnessHours: 2,
       expectedCadenceHours: 168,
       runHistory: [
-        { id: 'r-fsis-2', startedAt: '2026-08-17T06:14:00Z', completedAt: '2026-08-17T06:14:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: 'Establishment list unchanged.' },
-        { id: 'r-fsis-1', startedAt: '2026-08-10T06:14:00Z', completedAt: '2026-08-10T06:14:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: 'Establishment list unchanged.' },
+        { id: 'r-fsis-2', startedAt: '2026-08-17T06:14:00Z', completedAt: '2026-08-17T06:14:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: 'Establishment list unchanged.' },
+        { id: 'r-fsis-1', startedAt: '2026-08-10T06:14:00Z', completedAt: '2026-08-10T06:14:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: 'Establishment list unchanged.' },
       ],
       maintenance: null,
     },
@@ -110,10 +110,10 @@ export const sourceHealthFixture: SourceHealthSnapshot = {
       expectedCadenceHours: 24,
       // Recovered — and the failures stay on the record.
       runHistory: [
-        { id: 'r-perm-4', startedAt: '2026-08-17T06:15:00Z', completedAt: '2026-08-17T06:15:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: 'Recovered. 3 filings collected.' },
-        { id: 'r-perm-3', startedAt: '2026-08-16T06:15:00Z', completedAt: '2026-08-16T06:15:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'failure', note: 'Upstream returned 503.' },
-        { id: 'r-perm-2', startedAt: '2026-08-15T06:15:00Z', completedAt: '2026-08-15T06:15:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'failure', note: 'Upstream returned 503.' },
-        { id: 'r-perm-1', startedAt: '2026-08-14T06:15:00Z', completedAt: '2026-08-14T06:15:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '1 filing collected.' },
+        { id: 'r-perm-4', startedAt: '2026-08-17T06:15:00Z', completedAt: '2026-08-17T06:15:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: 'Recovered. 3 filings collected.' },
+        { id: 'r-perm-3', startedAt: '2026-08-16T06:15:00Z', completedAt: '2026-08-16T06:15:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'failure', note: 'Upstream returned 503.' },
+        { id: 'r-perm-2', startedAt: '2026-08-15T06:15:00Z', completedAt: '2026-08-15T06:15:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'failure', note: 'Upstream returned 503.' },
+        { id: 'r-perm-1', startedAt: '2026-08-14T06:15:00Z', completedAt: '2026-08-14T06:15:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '1 filing collected.' },
       ],
       maintenance: null,
     },
@@ -136,9 +136,9 @@ export const sourceHealthFixture: SourceHealthSnapshot = {
       freshnessHours: 24,
       expectedCadenceHours: 12,
       runHistory: [
-        { id: 'r-trade-3', startedAt: '2026-08-17T06:09:00Z', completedAt: '2026-08-17T06:09:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'partial_success', note: 'Minimum-content validation failed on 4 of 19 items; those were parked rather than stored.' },
-        { id: 'r-trade-2', startedAt: '2026-08-16T18:09:00Z', completedAt: '2026-08-16T18:09:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'partial_success', note: 'Minimum-content validation failed on 3 of 17 items.' },
-        { id: 'r-trade-1', startedAt: '2026-08-16T06:09:00Z', completedAt: '2026-08-16T06:09:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '15 items collected.' },
+        { id: 'r-trade-3', startedAt: '2026-08-17T06:09:00Z', completedAt: '2026-08-17T06:09:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'partial_success', note: 'Minimum-content validation failed on 4 of 19 items; those were parked rather than stored.' },
+        { id: 'r-trade-2', startedAt: '2026-08-16T18:09:00Z', completedAt: '2026-08-16T18:09:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'partial_success', note: 'Minimum-content validation failed on 3 of 17 items.' },
+        { id: 'r-trade-1', startedAt: '2026-08-16T06:09:00Z', completedAt: '2026-08-16T06:09:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '15 items collected.' },
       ],
       maintenance: null,
     },
@@ -161,9 +161,9 @@ export const sourceHealthFixture: SourceHealthSnapshot = {
       freshnessHours: 120,
       expectedCadenceHours: 24,
       runHistory: [
-        { id: 'r-inc-3', startedAt: '2026-08-17T06:05:00Z', completedAt: '2026-08-17T06:05:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'failure', note: 'Page structure changed; extraction produced no records.' },
-        { id: 'r-inc-2', startedAt: '2026-08-16T06:05:00Z', completedAt: '2026-08-16T06:05:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'failure', note: 'Page structure changed; extraction produced no records.' },
-        { id: 'r-inc-1', startedAt: '2026-08-12T06:05:00Z', completedAt: '2026-08-12T06:05:00Z', itemsSeen: 0, itemsStored: 0, outcome: 'success', note: '2 announcements collected.' },
+        { id: 'r-inc-3', startedAt: '2026-08-17T06:05:00Z', completedAt: '2026-08-17T06:05:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'failure', note: 'Page structure changed; extraction produced no records.' },
+        { id: 'r-inc-2', startedAt: '2026-08-16T06:05:00Z', completedAt: '2026-08-16T06:05:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'failure', note: 'Page structure changed; extraction produced no records.' },
+        { id: 'r-inc-1', startedAt: '2026-08-12T06:05:00Z', completedAt: '2026-08-12T06:05:00Z', itemsSeen: 0, itemsStored: 0, documentsDeferred: 0, outcome: 'success', note: '2 announcements collected.' },
       ],
       // A bounded engineering task, never routine data entry.
       maintenance: {

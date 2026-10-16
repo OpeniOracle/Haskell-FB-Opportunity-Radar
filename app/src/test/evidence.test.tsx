@@ -61,8 +61,15 @@ describe('provenance', () => {
     await screen.findByRole('heading', { level: 1, name: 'Innovation centre programme update' })
 
     // Business-readable in the reading path; the recorded value kept alongside.
-    expect(screen.getAllByText('Saved copy of the full article').length).toBeGreaterThan(0)
+    // The mode is a retention PERMISSION, and the label says only that.
+    expect(screen.getAllByText('Public record — full text may be kept').length).toBeGreaterThan(0)
     expect(screen.getByText('archived_full_text')).toBeInTheDocument()
+
+    // Whether a saved copy exists is archive_uri, which the browser cannot
+    // read. So the page never claims one -- it says none can be opened.
+    expect(screen.getByText('Saved copy')).toBeInTheDocument()
+    expect(screen.getByText(/^No saved copy is available to open\./)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/copy of the full article/i)
     expect(screen.getByText('How this source was obtained')).toBeInTheDocument()
     const pill = document.querySelector('.pill')!
     expect(pill.getAttribute('title')).toMatch(/no promotion rule is applied/)

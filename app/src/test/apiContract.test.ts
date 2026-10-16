@@ -343,7 +343,9 @@ describe('/api/admin-run source filter', () => {
     // The wiring, asserted at the call site rather than only through behaviour,
     // because the failure mode is a parameter that goes nowhere.
     expect(text.length).toBeGreaterThan(500)
-    expect(text).toMatch(/collect\(window,\s*onlySources\)/)
+    // ...and with the OPERATOR budget: admin-run is a synchronous function, so
+    // Netlify ends it at 60 seconds, not at the schedule's 30.
+    expect(text).toMatch(/collect\(window,\s*onlySources,\s*OPERATOR_BUDGET_MS\)/)
     expect(text).toContain('parseSources')
   })
 

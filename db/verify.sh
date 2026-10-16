@@ -132,6 +132,16 @@ step "3f. The interface can read the columns it asks for"
 bash "$ROOT/db/tests/client-column-grants.sh"
 
 # --------------------------------------------------------------------------
+step "3g. The run lifecycle and access-mode writes are accepted, and the guards hold"
+bash "$ROOT/db/tests/ingestion-integrity.sh"
+
+# --------------------------------------------------------------------------
+step "3h. The 2026-10 remediation file: applies, refuses a repeat, rolls back whole"
+# The committed operator file, byte for byte, against production's observed
+# shape. Run here so both PostgreSQL versions in the matrix exercise it.
+bash "$ROOT/db/tests/remediation-2026-10.sh"
+
+# --------------------------------------------------------------------------
 step "5. The Supabase SQL Editor operator file for 0021"
 # Run here rather than as a separate CI job so that it is exercised on every
 # PostgreSQL version in the matrix. The file an operator pastes into the

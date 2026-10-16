@@ -165,6 +165,14 @@ const ENV_MODULES = [
  *                         `ops@example.invalid` — and the file asserts that
  *                         `describeServerVariables()` leaks none of them
  *
+ *   ingestionIntegrity.test.ts
+ *                         drives `runIngestion` end to end through the real SEC
+ *                         and Mars connectors over an injected transport, so it
+ *                         must name `data.sec.gov`, `www.sec.gov` and
+ *                         `www.mars.com` exactly as `liveConnectors.test.ts`
+ *                         does. Every organization in it is an "Example"
+ *                         company; it names no pilot account
+ *
  * Excluded by exact name so the exemption stays auditable. Excluding all of
  * `test/` would hide a real leak in any future test file.
  */
@@ -187,6 +195,7 @@ const SELF_REFERENTIAL = [
   'sourceConnectivity.test.ts',
   'evidencePayload.test.ts',
   'secOpportunityPath.test.ts',
+  'ingestionIntegrity.test.ts',
 ]
 
 const files = walk(srcDir)

@@ -17,6 +17,13 @@ import type {
 } from '../../netlify/functions/_shared/connectors/types'
 
 /**
+ * What the SEC source registry row permits: U.S. government material, archived
+ * in full under ADR 0014, open licence. `runConnectorPass` takes this as a
+ * required argument, so these tests state it rather than inherit a default.
+ */
+const SEC_ACCESS = { accessMode: 'archived_full_text', licenseMode: 'open' } as const
+
+/**
  * WHAT THE MODEL IS ACTUALLY FOR, ASSERTED RATHER THAN DESCRIBED.
  *
  * The documentation said classification "fails closed" without `MODEL_API_KEY`,
@@ -256,7 +263,8 @@ async function runOnce() {
     [COMPANY],
     'run-1',
     1,
-  )
+      SEC_ACCESS,
+    )
   return { result, rows }
 }
 
@@ -403,7 +411,7 @@ describe('a source run succeeds even when no document qualifies', () => {
 
   it('reports success, writes the evidence, and derives nothing', async () => {
     const { client, rows } = memoryClient()
-    const result = await runConnectorPass(client, onlyNoise, context(), [COMPANY], 'run-2', 1)
+    const result = await runConnectorPass(client, onlyNoise, context(), [COMPANY], 'run-2', 1, SEC_ACCESS)
 
     // THIS IS THE CASE THAT DECIDES WHAT SOURCE HEALTH SHOWS. Retrieval worked,
     // so the source is healthy and `last_success_at` advances; zero
@@ -422,7 +430,7 @@ describe('a source run succeeds even when no document qualifies', () => {
 
   it('names why each document was rejected, so zero is explainable', async () => {
     const { client } = memoryClient()
-    const result = await runConnectorPass(client, onlyNoise, context(), [COMPANY], 'run-3', 1)
+    const result = await runConnectorPass(client, onlyNoise, context(), [COMPANY], 'run-3', 1, SEC_ACCESS)
     const reasons = Object.keys(result.counters.rejectionReasons)
     expect(reasons.length).toBeGreaterThan(0)
     expect(reasons.join(' ')).not.toMatch(/model/i)

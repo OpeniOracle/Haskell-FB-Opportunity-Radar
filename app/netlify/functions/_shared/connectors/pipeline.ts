@@ -74,6 +74,12 @@ export interface IngestionCounters {
   opportunitiesCreated: number
   opportunitiesUpdated: number
   opportunitiesSuppressed: number
+  /**
+   * Discovered but not begun, because the invocation's time budget was spent.
+   * Not a rejection and not a failure: the next run picks them up. Counted so a
+   * run that stopped early can never read as a run that finished.
+   */
+  documentsDeferred: number
   rejectionReasons: Record<string, number>
 }
 
@@ -130,8 +136,140 @@ export function emptyCounters(): IngestionCounters {
     opportunitiesCreated: 0,
     opportunitiesUpdated: 0,
     opportunitiesSuppressed: 0,
+    documentsDeferred: 0,
     rejectionReasons: {},
   }
+}
+
+/* ------------------------------------------------------------ access policy */
+
+/**
+ * WHAT A SOURCE PERMITS US TO RETAIN, TAKEN FROM THE SOURCE REGISTRY.
+ *
+ * The pipeline wrote `access_mode: 'structured_primary'` for every connector.
+ * That is the mode that permits a body, so the reference-only Mars newsroom --
+ * copyrighted corporate pages, ADR 0014 -- stored 53 complete pages as
+ * `body_text`, and `evidence_reference_only_has_no_body` never fired because
+ * no row ever claimed to be reference-only. The constraint was right; the row
+ * lied to it.
+ *
+ * The mode now comes from `sources.access_mode` and `sources.license_mode`, and
+ * the evidence row records it. The mode is a statement about what we are
+ * permitted to retain (migration 0004's own wording), not about where a copy
+ * happens to sit -- whether an archive object exists is `archive_uri`'s job.
+ *
+ * FAIL CLOSED, in the direction ADR 0006 states: "unknown licensing defaults to
+ * reference-only".
+ *
+ *   - a mode outside the vocabulary, or none at all       -> reference_only
+ *   - a body-bearing mode whose licence is not `open` or
+ *     `licensed` (`unknown`, `restricted`, missing)        -> reference_only
+ *   - `licensed_full_text` without `license_mode = licensed` -> reference_only
+ */
+export const ACCESS_MODES = [
+  'structured_primary',
+  'archived_full_text',
+  'licensed_full_text',
+  'reference_only',
+  'metadata_only',
+] as const
+export type AccessMode = (typeof ACCESS_MODES)[number]
+
+export interface SourceAccessInput {
+  readonly accessMode: string | null | undefined
+  readonly licenseMode: string | null | undefined
+}
+
+export interface EvidenceAccessPolicy {
+  /** Written to `evidence.access_mode`. */
+  readonly mode: AccessMode
+  /** Extracted text may be persisted in `body_text`. */
+  readonly retainsBody: boolean
+  /** The official URL may be persisted in `locator`. */
+  readonly retainsLocator: boolean
+  /**
+   * The text may be read IN MEMORY to classify it. False only for
+   * `metadata_only`, which by definition holds no text to derive from, so
+   * nothing derived from text may be written for it either.
+   */
+  readonly classifies: boolean
+  /**
+   * The most characters of source text any row may carry: the evidence excerpt,
+   * and the excerpt copies on signals and opportunities. ADR 0014 retains "the
+   * minimum supporting excerpt" for reference-only material.
+   */
+  readonly maxExcerptChars: number
+  /** Why this mode, when it is not the configured one. Null when they agree. */
+  readonly downgradedFrom: string | null
+}
+
+/** The excerpt bound for material we may not keep in full. */
+export const REFERENCE_EXCERPT_MAX_CHARS = 500
+/** The bound the pipeline has always applied to an excerpt from a held body. */
+export const FULL_TEXT_EXCERPT_MAX_CHARS = 2000
+
+function isAccessMode(value: string | null | undefined): value is AccessMode {
+  return (ACCESS_MODES as readonly string[]).includes(value ?? '')
+}
+
+export function evidenceAccessPolicy(source: SourceAccessInput): EvidenceAccessPolicy {
+  const configured = source.accessMode ?? null
+  const licence = source.licenseMode ?? null
+
+  const reference = (downgradedFrom: string | null): EvidenceAccessPolicy => ({
+    mode: 'reference_only',
+    retainsBody: false,
+    retainsLocator: true,
+    classifies: true,
+    maxExcerptChars: REFERENCE_EXCERPT_MAX_CHARS,
+    downgradedFrom,
+  })
+
+  if (!isAccessMode(configured)) {
+    return reference(`access mode ${configured === null ? 'not configured' : `"${configured}" not recognised`}`)
+  }
+
+  switch (configured) {
+    case 'reference_only':
+      return reference(null)
+    case 'metadata_only':
+      return {
+        mode: 'metadata_only',
+        retainsBody: false,
+        // `evidence_metadata_only_has_no_locator`.
+        retainsLocator: false,
+        classifies: false,
+        maxExcerptChars: 0,
+        downgradedFrom: null,
+      }
+    case 'licensed_full_text':
+      if (licence !== 'licensed') {
+        return reference(`licensed_full_text requires license_mode "licensed", found "${licence ?? 'none'}"`)
+      }
+      break
+    case 'structured_primary':
+    case 'archived_full_text':
+      if (licence !== 'open' && licence !== 'licensed') {
+        return reference(`${configured} requires license_mode "open" or "licensed", found "${licence ?? 'none'}"`)
+      }
+      break
+  }
+
+  return {
+    mode: configured,
+    retainsBody: true,
+    retainsLocator: true,
+    classifies: true,
+    maxExcerptChars: FULL_TEXT_EXCERPT_MAX_CHARS,
+    downgradedFrom: null,
+  }
+}
+
+/** A classifier match whose excerpt is held to the source's bound. */
+function boundMatch(match: ClassificationMatch, policy: EvidenceAccessPolicy): ClassificationMatch {
+  return match.excerpt.length <= policy.maxExcerptChars
+    ? match
+    : { ...match, excerpt: match.excerpt.slice(0, policy.maxExcerptChars) }
 }
 
 /**
@@ -447,11 +585,12 @@ export async function upsertEvidence(
     retrieved: RetrievedDocument
     excerpt: string | null
     classificationStatus: string
-    accessMode: string
+    /** What the source permits us to keep. See `evidenceAccessPolicy`. */
+    access: EvidenceAccessPolicy
     now: string
   },
 ): Promise<EvidenceWriteResult> {
-  const { document, retrieved } = input
+  const { document, retrieved, access } = input
   const published = normalizePublished(document)
 
   /*
@@ -459,16 +598,32 @@ export async function upsertEvidence(
      by both the insert and the enrichment path, so a row written today and a
      row enriched tomorrow cannot disagree about what they hold.
   */
-  const officialUrl = retrieved.finalUrl || document.url
-  const bodyText = retrieved.extractedText
-    ? retrieved.extractedText.slice(0, MAX_BODY_TEXT_CHARS)
-    : null
+  /*
+     WHAT THE SOURCE PERMITS, APPLIED ONCE, HERE, FOR BOTH PATHS.
+
+     A reference-only or metadata-only source never has its text persisted:
+     not on insert, not on enrichment, and not handed back for a resume from
+     storage. The text the connector extracted lives in memory for the
+     classifier and is dropped with this function's frame. What remains is
+     what ADR 0014 lists -- URL, title, publisher, dates, hash, and the minimum
+     supporting excerpt, bounded by `maxExcerptChars`.
+  */
+  const officialUrl = access.retainsLocator ? retrieved.finalUrl || document.url : null
+  const bodyText =
+    access.retainsBody && retrieved.extractedText
+      ? retrieved.extractedText.slice(0, MAX_BODY_TEXT_CHARS)
+      : null
+  const excerpt =
+    access.maxExcerptChars > 0 && input.excerpt ? input.excerpt.slice(0, access.maxExcerptChars) : null
   const locatorMetadata = {
     documentType: document.documentType,
     ...(published.observedPrecision
       ? { publishedPrecisionObserved: published.observedPrecision }
       : {}),
     ...document.metadata,
+    // A source whose configuration could not support the mode it asked for is
+    // recorded at the safer mode, and the row says why.
+    ...(access.downgradedFrom ? { accessModeDowngradedFrom: access.downgradedFrom } : {}),
   }
 
   const { data: existingRow, error: readError } = await client
@@ -504,9 +659,13 @@ export async function upsertEvidence(
     */
     const enrichment: Record<string, unknown> = { last_seen_at: input.now }
 
+    // `bodyText` and `officialUrl` are already null wherever the source does
+    // not permit them, so enrichment can never add what the policy forbids.
+    // It also never REMOVES anything: an existing row is corrected by the
+    // operator remediation, not silently rewritten by a scheduled run.
     if (!existing.body_text && bodyText) enrichment.body_text = bodyText
     if (!existing.locator && officialUrl) enrichment.locator = officialUrl
-    if (!existing.evidence_excerpt && input.excerpt) enrichment.evidence_excerpt = input.excerpt
+    if (!existing.evidence_excerpt && excerpt) enrichment.evidence_excerpt = excerpt
 
     // A row that was never evaluated, or that a re-read now has something to
     // say about. `unclassified` means "not yet looked at", so it is always
@@ -534,8 +693,13 @@ export async function upsertEvidence(
       superseded: false,
       unchanged: true,
       enriched,
-      // What the row holds, including anything this run just wrote into it.
-      storedBodyText: (enrichment.body_text as string | undefined) ?? existing.body_text,
+      // What the row holds, including anything this run just wrote into it --
+      // and nothing at all for a source whose text we may not keep. A row
+      // stored before the access mode was enforced may still carry a body;
+      // reading it back to classify would be using a copy we should not hold.
+      storedBodyText: access.retainsBody
+        ? ((enrichment.body_text as string | undefined) ?? existing.body_text)
+        : null,
     }
   }
 
@@ -560,7 +724,7 @@ export async function upsertEvidence(
     extraction_method: 'connector_text_extraction',
     extractor_version: PIPELINE_VERSION,
     transformation_version: PIPELINE_VERSION,
-    evidence_excerpt: input.excerpt,
+    evidence_excerpt: excerpt,
     // What the SOURCE stated about precision is kept here, because the
     // column's vocabulary has no sub-day member.
     evidence_locator: locatorMetadata,
@@ -573,13 +737,16 @@ export async function upsertEvidence(
        `evidence_excerpt`, the matched window, which IS granted, alongside
        `locator`, the official document URL.
 
-       `structured_primary` permits both. `evidence_reference_only_has_no_body`
-       and `evidence_metadata_only_has_no_locator` bind the other two modes, and
-       neither is weakened here.
+       Both are null wherever the source's access mode forbids them. The mode
+       written here is the one that decided that, so
+       `evidence_reference_only_has_no_body` and
+       `evidence_metadata_only_has_no_locator` check the real write path: if
+       this code ever tried to keep a body under a reference-only source, the
+       database would refuse the row.
     */
     body_text: bodyText,
     locator: officialUrl,
-    access_mode: input.accessMode,
+    access_mode: access.mode,
     data_sensitivity_class: 'public',
     classification_status: input.classificationStatus,
     review_status: 'unreviewed',
@@ -906,6 +1073,20 @@ export interface SourcePassResult {
   readonly errors: readonly string[]
 }
 
+/**
+ * What the runner lends a pass so the run can be held and bounded.
+ *
+ * `heartbeat` renews the run's lease and throws `RunLeaseLostError` when the
+ * run has been closed by a recovery; the pass then stops starting documents and
+ * rethrows. `budgetExhausted` turns true once the invocation is close to its
+ * platform limit; the pass stops starting documents and reports the rest as
+ * deferred, so the run is closed by its holder rather than by the platform.
+ */
+export interface PassControl {
+  readonly heartbeat?: () => Promise<void>
+  readonly budgetExhausted?: () => boolean
+}
+
 export async function runConnectorPass(
   client: SupabaseClient,
   connector: Connector,
@@ -913,11 +1094,36 @@ export async function runConnectorPass(
   companies: readonly CompanyRow[],
   sourceRunId: string,
   concurrency: number,
+  /**
+   * REQUIRED, with no default, so that no caller -- the runner, a backfill, a
+   * test -- can reach the write path without saying what the source permits.
+   * A forgotten argument is a compile error, not a silent `structured_primary`.
+   */
+  source: SourceAccessInput,
+  control: PassControl = {},
 ): Promise<SourcePassResult> {
   const counters = emptyCounters()
   const errors: string[] = []
   const byEntityKey = new Map(companies.map((c) => [c.entity_key, c]))
   const now = ctx.now().toISOString()
+  const access = evidenceAccessPolicy(source)
+  const exhausted = control.budgetExhausted ?? (() => false)
+
+  // A lease lost mid-pass stops every worker, then surfaces once.
+  let lost: unknown = null
+  const beat = async (): Promise<boolean> => {
+    if (lost !== null) return false
+    if (!control.heartbeat) return true
+    try {
+      await control.heartbeat()
+      return true
+    } catch (error) {
+      lost = error
+      return false
+    }
+  }
+
+  if (!(await beat())) throw lost
 
   const discovery = await connector.discover(ctx)
 
@@ -957,6 +1163,13 @@ export async function runConnectorPass(
   counters.documentsDiscovered = discovery.documents.length
 
   await mapWithLimit(discovery.documents, concurrency, async (document) => {
+    if (lost !== null) return
+    if (exhausted()) {
+      counters.documentsDeferred += 1
+      return
+    }
+    if (!(await beat())) return
+
     const company = byEntityKey.get(document.organizationEntityKey)
     if (!company) {
       reject(counters, 'document is about a company outside the approved cohort')
@@ -994,14 +1207,17 @@ export async function runConnectorPass(
        genuinely nothing to read is a 304, where the body was never sent --
        there `extractedText` is null and the stored classification stands.
     */
-    let classification: ClassificationResult = retrieved.extractedText
-      ? classifyText(retrieved.extractedText)
-      : { matches: [], rejectionReason: null }
+    // Classified in memory, under the source's terms. Metadata-only holds no
+    // text, so nothing may be derived from text for it either.
+    let classification: ClassificationResult =
+      access.classifies && retrieved.extractedText
+        ? classifyText(retrieved.extractedText)
+        : { matches: [], rejectionReason: null }
 
     const status =
       classification.matches.length > 0
         ? 'candidate_signal'
-        : retrieved.extractedText
+        : access.classifies && retrieved.extractedText
           ? 'not_relevant'
           : 'unclassified'
 
@@ -1014,9 +1230,9 @@ export async function runConnectorPass(
         connectorVersion: connector.version,
         document: retrieved.document,
         retrieved,
-        excerpt: classification.matches[0]?.excerpt.slice(0, 2000) ?? null,
+        excerpt: classification.matches[0]?.excerpt ?? null,
         classificationStatus: status,
-        accessMode: 'structured_primary',
+        access,
         now,
       })
     } catch (error) {
@@ -1048,7 +1264,7 @@ export async function runConnectorPass(
             .from('evidence')
             .update({
               classification_status: 'candidate_signal',
-              evidence_excerpt: classification.matches[0]!.excerpt.slice(0, 2000),
+              evidence_excerpt: classification.matches[0]!.excerpt.slice(0, access.maxExcerptChars),
             })
             .eq('id', write.evidenceId)
           if (error) throw new Error(`evidence reclassification failed: ${describeDbError(error)}`)
@@ -1094,7 +1310,11 @@ export async function runConnectorPass(
     }
     counters.documentsAccepted += 1
 
-    for (const match of classification.matches) {
+    // Every copy of source text that leaves this function -- the signal
+    // summary, the opportunity summary -- is held to the same bound as the
+    // evidence excerpt. A reference-only source cannot reach a secondary
+    // table with more of its text than its own evidence row may hold.
+    for (const match of classification.matches.map((m) => boundMatch(m, access))) {
       try {
         const eventDate = retrieved.document.publishedAt
         const signal = await upsertSignal(client, {
@@ -1140,7 +1360,9 @@ export async function runConnectorPass(
     }
   })
 
-  const runStatus: SourcePassResult['runStatus'] =
+  if (lost !== null) throw lost
+
+  const completeStatus: SourcePassResult['runStatus'] =
     errors.length === 0
       ? counters.evidenceCreated === 0 && counters.documentsUnchanged > 0
         ? 'unchanged'
@@ -1149,16 +1371,45 @@ export async function runConnectorPass(
         ? 'partial_success'
         : 'failure'
 
+  /*
+     A RUN THAT STOPPED EARLY DID NOT FINISH, AND SAYS SO.
+
+     Deferred documents were never looked at. If some were processed, the run is
+     a partial success -- it did retrieve something, so the source was reached
+     -- and its health is degraded, never healthy. If none were, nothing was
+     collected at all and the run is a failure, which never advances
+     last_success_at.
+  */
+  const deferred = counters.documentsDeferred > 0
+  const processed = counters.documentsRetrieved > 0
+  const runStatus: SourcePassResult['runStatus'] = !deferred
+    ? completeStatus
+    : completeStatus === 'failure' || !processed
+      ? 'failure'
+      : 'partial_success'
+
+  const healthStatus = deferred
+    ? 'degraded'
+    : runStatus === 'failure'
+      ? 'source_unavailable'
+      : runStatus === 'partial_success'
+        ? 'degraded'
+        : 'healthy'
+
+  const base =
+    completeStatus === 'unchanged' && !deferred
+      ? 'Every document discovered was already held and unchanged.'
+      : `${counters.evidenceCreated} evidence record(s) written from ${counters.documentsDiscovered} discovered.`
+  const note = deferred
+    ? `${base} ${counters.documentsDeferred} document(s) were not started because the invocation's time budget was spent; the next run continues.`
+    : base
+
   return {
     sourceId: connector.sourceId,
     runStatus,
-    healthStatus:
-      runStatus === 'failure' ? 'source_unavailable' : runStatus === 'partial_success' ? 'degraded' : 'healthy',
+    healthStatus,
     counters,
-    note:
-      runStatus === 'unchanged'
-        ? 'Every document discovered was already held and unchanged.'
-        : `${counters.evidenceCreated} evidence record(s) written from ${counters.documentsDiscovered} discovered.`,
+    note,
     errors,
   }
 }
