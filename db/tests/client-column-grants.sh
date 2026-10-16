@@ -75,6 +75,32 @@ then
 fi
 pass "opportunities: the list column set"
 
+# R2 (0025 - 0030). The columns the display rule needs to tell a machine-derived
+# candidate from an accepted opportunity, and an ended project from an active one.
+# `opportunities` and `sources` are granted column by column, and a column grant
+# does not reach a column added later: this is the exact trap 0021 fell into.
+if ! as_authenticated "select id, review_state, project_lifecycle, commercial_qualification
+        from opportunities;" >/dev/null
+then
+    fail "the R2 opportunity columns are not granted: review_state, project_lifecycle, commercial_qualification"
+fi
+pass "opportunities: review_state, project_lifecycle, commercial_qualification (0025)"
+
+if ! as_authenticated "select id, name, rights_class from sources;" >/dev/null; then
+    fail "sources.rights_class is not granted (0026)"
+fi
+pass "sources: rights_class (0026)"
+
+# `signals` and `facility_identifiers` are granted at TABLE level, which does
+# cover a column added later. Asserted, not assumed.
+if ! as_authenticated "select id, event_date, event_date_role from signals;" >/dev/null; then
+    fail "signals.event_date_role is not readable (0027)"
+fi
+if ! as_authenticated "select id, facility_id, identifier_system, identifier_value from facility_identifiers;" >/dev/null; then
+    fail "facility_identifiers is not readable"
+fi
+pass "signals.event_date_role and facility_identifiers: readable under their table-level grants"
+
 step "What is still withheld from the browser"
 # The grant is narrow on purpose. Preserved content and operational
 # configuration stay server-side; a column list is the only way to say that.
@@ -87,6 +113,34 @@ for forbidden in 'select body_text from evidence;' \
     fi
 done
 pass "body_text, archive_uri, raw_storage_uri and connector_config are all still refused"
+
+# R2 must not widen what a column list withholds. These were withheld before it
+# and are withheld after it; none is read by any surface.
+for forbidden in 'select derived_by from opportunities;' \
+                 'select derived_at from opportunities;' \
+                 'select opportunity_key from opportunities;' \
+                 'select account_strategy from opportunities;' \
+                 'select connector_id from sources;' \
+                 'select query_scope from sources;' \
+                 'select extracted_text_uri from evidence;'; do
+    if as_authenticated "$forbidden" >/dev/null 2>&1; then
+        fail "R2 widened a column grant: the browser can read: $forbidden"
+    fi
+done
+pass "derived_by, derived_at, opportunity_key, account_strategy, connector_id, query_scope and extracted_text_uri are still refused"
+
+# The two server-side tables R2 creates. RLS is enabled and forced, every
+# privilege is revoked and no policy exists: a signed-in session sees nothing.
+for forbidden in 'select count(*) from ingestion_tasks;' \
+                 'select count(*) from evidence_text_fingerprints;' \
+                 "insert into ingestion_tasks (source_run_id, task_key) values (gen_random_uuid(), 'x');" \
+                 "update sources set rights_class = 'federal_public_record';" \
+                 "update opportunities set review_state = 'accepted';"; do
+    if as_authenticated "$forbidden" >/dev/null 2>&1; then
+        fail "the browser can reach what R2 keeps server-side: $forbidden"
+    fi
+done
+pass "the work queue and the fingerprints are unreachable, and the new columns are not writable, from the browser"
 
 step "The allowlist is still unreadable by a signed-in session"
 # Migration 0016 revokes it. Publishing the roster of everyone with access to
@@ -108,6 +162,25 @@ GRANTED="$(PGDATABASE="$DB" psql -tAX -qc "
 EXPECTED='classification_status,connector_id,connector_version,first_seen_at,last_seen_at,review_status,source_document_id'
 [ "$GRANTED" = "$EXPECTED" ] || fail "evidence grants are $GRANTED, expected $EXPECTED"
 pass "evidence: seven columns granted, document_revision and superseded_at withheld"
+
+step "The R2 columns granted are exactly the columns named, and no others"
+GRANTED_OPP="$(PGDATABASE="$DB" psql -tAX -qc "
+    select string_agg(column_name, ',' order by column_name)
+      from information_schema.column_privileges
+     where grantee = 'authenticated' and table_name = 'opportunities'
+       and column_name in ('review_state','project_lifecycle','commercial_qualification',
+                           'opportunity_key','derived_by','derived_at','account_strategy');")"
+EXPECTED_OPP='commercial_qualification,project_lifecycle,review_state'
+[ "$GRANTED_OPP" = "$EXPECTED_OPP" ] || fail "opportunities grants are $GRANTED_OPP, expected $EXPECTED_OPP"
+pass "opportunities: three R2 columns granted; opportunity_key, derived_by, derived_at and account_strategy withheld"
+GRANTED_SRC="$(PGDATABASE="$DB" psql -tAX -qc "
+    select string_agg(column_name, ',' order by column_name)
+      from information_schema.column_privileges
+     where grantee = 'authenticated' and table_name = 'sources'
+       and column_name in ('rights_class','connector_id','connector_config','query_scope',
+                           'extraction_config','retry_policy','operator_intervention');")"
+[ "$GRANTED_SRC" = "rights_class" ] || fail "sources grants are $GRANTED_SRC, expected rights_class"
+pass "sources: rights_class granted; the operational configuration columns withheld"
 
 psql -d postgres -q -c "drop database if exists $DB;" >/dev/null
 printf '\n\033[32mClient column grants: the interface can read what it asks for.\033[0m\n'
