@@ -149,6 +149,12 @@ step "3i. R2 on a database that already holds data: nothing changes, rollback is
 bash "$ROOT/db/tests/r2-existing-rows.sh"
 
 # --------------------------------------------------------------------------
+step "3j. The R2 operator files: apply equals migrate, one statement, exact rollback"
+# The files an operator actually pastes into the dashboard, against a database
+# shaped like production. Run here so both PostgreSQL versions exercise them.
+bash "$ROOT/db/tests/operator-r2.sh"
+
+# --------------------------------------------------------------------------
 step "5. The Supabase SQL Editor operator file for 0021"
 # Run here rather than as a separate CI job so that it is exercised on every
 # PostgreSQL version in the matrix. The file an operator pastes into the
